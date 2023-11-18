@@ -1,0 +1,14 @@
+name: neuropy
+channels:
+  - defaults
+dependencies:
+  - pandas
+  - numpy
+  - scikit-learn
+  - pytorch
+  - scipy
+  - matplotlib
+  - spyder-kernels
+  - notebook
+  - h5py
+prefix: C:\Users\tanne\miniconda3\envs\neuropy
