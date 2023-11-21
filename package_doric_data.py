@@ -5,6 +5,8 @@ Created on Wed Nov 15 23:30:18 2023
 @author: tanne
 """
 
+# %% Declare imports and methods
+
 import sys
 from os import path
 sys.path.append(path.join(path.dirname(path.abspath(__file__)), '..'))
@@ -120,6 +122,8 @@ def package_data(data, signals_of_interest, save_path, target_dt = 0.005):
         pickle.dump(save_data, f)
 
     return save_data
+
+# %% Run packaging
 
 filename = 'Test_0000'
 load_path = path.join(utils.get_user_home(), 'downloads', filename+'.doric')
