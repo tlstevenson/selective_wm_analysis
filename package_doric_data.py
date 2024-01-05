@@ -7,126 +7,79 @@ Created on Wed Nov 15 23:30:18 2023
 
 # %% Declare imports and methods
 
-import sys
-from os import path
-sys.path.append(path.join(path.dirname(path.abspath(__file__)), '..'))
-
+import init
+import os.path as path
 from sys_neuro_tools import doric_utils as dor
 from sys_neuro_tools import acq_utils as acq
-import pyutils.utils as utils
-import numpy as np
 import pickle
 import matplotlib.pyplot as plt
 
-def test_package_data(load_path, save_path):
-
-    signals_of_interest = ['405', '490']
-
-    data, issues = dor.get_and_check_data(load_path)
-    if len(issues) > 0:
-        print('Issues found:\n{0}'.format('\n'.join(issues)))
-
-    dec_data = package_data(data, signals_of_interest, save_path)
-
-    fig, axs = plt.subplots(2,2, layout='constrained')
-    axs = axs.flatten()
-
-    for i, name in enumerate(dec_data['signals'].keys()):
-        ax = axs[i]
-        ax.plot(data[name]['Time'], data[name]['Values'], label='Raw Data')
-        ax.plot(dec_data['time'], dec_data['signals'][name], label='Decimated Data')
-        ax.set_title(name)
-
-    lines, labels = ax.get_legend_handles_labels()
-    fig.legend(lines, labels)
-
-
-def package_data(data, signals_of_interest, save_path, target_dt = 0.005):
-    '''
-    Extract the relevant signals from a doric data file into a simpler pkl file, with optional decimation
-
-    Parameters
-    ----------
-    data : Flattened data to package
-    signals_of_interest : Names of the signals of interest
-    save_path : Path to save
-    target_dt : Target timestep. Determines decimation amount. Optional, default is 0.005.
-
-    Returns
-    -------
-    The saved data structure
-
-    '''
+def package_data(data, save_path, ttl_name = 'ttl', target_dt = 0.005):
+    ''' Decimate and save data to a pkl file '''
 
     # get trial start timestamps
-    trial_start_ts, trial_nums = acq.parse_trial_times(data['TTL']['DIO01'], data['TTL']['Time'])
+    trial_start_ts, trial_nums = acq.parse_trial_times(data[ttl_name]['values'], data[ttl_name]['time'])
 
-    # Extract relevant signals
-    signals = {}
-    time = []
-    for name, signal in data.items():
-        if any([soi in name for soi in signals_of_interest]):
-            if len(time) == 0:
-                time = signal['Time']
-            else:
-                # ensure the timestamps are the same
-                if not np.array_equal(time, signal['Time']):
-                    print('Time arrays are not equal')
-            signals[name] = signal['Values']
-
-    # decimate signals
-    # calculate desired decimation factor
-    current_dt = np.mean(np.diff(time))
-    current_sf = np.round(1/current_dt)
-    target_sf = np.round(1/target_dt)
-    if current_sf > target_sf:
-        decimation = int(current_sf/target_sf)
-    else:
-        decimation = 1
-
-    # instead of using signal processing decimation methods, where there is assumed to be a true underlying signal
-    # simply average over the number of bins given by the decimation factor to get the downsampled data
-    if decimation > 1:
-        dec_signals = {}
-        # first do signals
-        for name, signal in signals.items():
-            start_idx = 0
-            end_idx = decimation
-            dec_signal = []
-            while start_idx < len(signal):
-                dec_signal.append(np.mean(signal[start_idx:end_idx]))
-                start_idx = end_idx
-                end_idx += decimation
-
-                if end_idx > len(signal):
-                    end_idx = len(signal)
-
-            dec_signals[name] = np.array(dec_signal)
-
-        # then do the time stamps where the new time value is centered on the decimation window
-        if decimation % 2 == 0:
-            start_t_offset = (decimation+1)/2 * current_dt
-        else:
-            start_t_offset = decimation/2 * current_dt
-
-        dec_time = time[0] + start_t_offset + (np.arange(len(dec_signal))*decimation*current_dt)
-        dec_time = np.array(dec_time)
-    else:
-        dec_signals = signals
-        dec_time = time
+    dec_time, dec_signals, dec_info = acq.decimate_data(data, target_dt = target_dt)
 
     save_data = {'trial_start_ts': trial_start_ts, 'trial_nums': trial_nums,
-                 'time': dec_time, 'signals': dec_signals, 'decimation': decimation}
+                 'time': dec_time, 'signals': dec_signals, 'decimation': dec_info}
 
     with open(save_path, 'wb') as f:
         pickle.dump(save_data, f)
 
     return save_data
 
-# %% Run packaging
+# %% Declare file & look at structure
 
-filename = 'Test_0000'
-load_path = path.join(utils.get_user_home(), 'downloads', filename+'.doric')
-save_path = path.join(utils.get_user_home(), 'downloads', filename+'.pkl')
+filename = 'Session_94072'
+load_path = path.join('E:', 'Data', 'Rat 179', filename+'.doric')
+save_path = path.join('E:', 'Data', 'Rat 179', filename+'.pkl')
 
-test_package_data(load_path, save_path)
+dor.h5print(load_path)
+
+# %% Get specific data
+
+data_path = '/DataAcquisition/FPConsole/Signals/Series0001/'
+
+# for Neuroscience Studio 2.6.4
+# signal_name_dict = {'ttl': {'time': 'DigitalIO/Time', 'values': 'DigitalIO/DIO01'},
+#                     'DMS_405': {'time': 'AIN01xAOUT01-LockIn/Time', 'values': 'AIN01xAOUT01-LockIn/Values'},
+#                     'DMS_490': {'time': 'AIN01xAOUT02-LockIn/Time', 'values': 'AIN01xAOUT02-LockIn/Values'},
+#                     'PFC_405': {'time': 'AIN02xAOUT01-LockIn/Time', 'values': 'AIN02xAOUT01-LockIn/Values'},
+#                     'PFC_490': {'time': 'AIN02xAOUT02-LockIn/Time', 'values': 'AIN02xAOUT02-LockIn/Values'}}
+
+# declare which channels were PFC and DMS
+PFC_ch = '2'
+DMS_ch = '1'
+
+signal_name_dict = {'ttl': {'time': 'DigitalIO/Time', 'values': 'DigitalIO/DIO01'},
+                    'DMS_420': {'time': 'LockInAOUT01/Time', 'values': 'LockInAOUT01/AIN0' + DMS_ch},
+                    'DMS_490': {'time': 'LockInAOUT02/Time', 'values': 'LockInAOUT02/AIN0' + DMS_ch},
+                    'DMS_405': {'time': 'LockInAOUT03/Time', 'values': 'LockInAOUT03/AIN0' + DMS_ch},
+                    'PFC_420': {'time': 'LockInAOUT01/Time', 'values': 'LockInAOUT01/AIN0' + PFC_ch},
+                    'PFC_490': {'time': 'LockInAOUT02/Time', 'values': 'LockInAOUT02/AIN0' + PFC_ch},
+                    'PFC_405': {'time': 'LockInAOUT03/Time', 'values': 'LockInAOUT03/AIN0' + PFC_ch}}
+
+data = dor.get_specific_data(load_path, data_path, signal_name_dict)
+# %% fill missing data
+data, issues = dor.fill_missing_data(data, 'time')
+if len(issues) > 0:
+    print('Issues found:\n{0}'.format('\n'.join(issues)))
+
+# %% Package data
+dec_data = package_data(data, save_path)
+
+# %% Plot comparison of raw and decimated data
+
+fig, axs = plt.subplots(2,2, layout='constrained', figsize=(12,10))
+axs = axs.flatten()
+
+for i, signal_name in enumerate([k for k in data.keys() if k != 'ttl']):
+    ax = axs[i]
+    ax.plot(data[signal_name]['time'], data[signal_name]['values'], label='Raw Data')
+    ax.plot(dec_data['time'], dec_data['signals'][signal_name], label='Decimated Data')
+    ax.set_title(signal_name)
+
+lines, labels = axs[0].get_legend_handles_labels()
+fig.legend(lines, labels)
