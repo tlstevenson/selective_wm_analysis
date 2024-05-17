@@ -37,7 +37,7 @@ def package_data(data, save_paths, ttl_name = 'ttl', target_dt = 0.005):
     return save_data
 
 # %% Declare file & look at structure
-sess_id = 93580
+sess_id = 94072
 filename = 'Session_{}'.format(sess_id)
 load_path = path.join('E:', 'Data', 'Rat 179', filename+'.doric')
 
@@ -55,8 +55,8 @@ data_path = '/DataAcquisition/FPConsole/Signals/Series0001/'
 #                     'PFC_490': {'time': 'AIN02xAOUT02-LockIn/Time', 'values': 'AIN02xAOUT02-LockIn/Values'}}
 
 # declare which channels were PFC and DMS
-PFC_ch = '2'
-DMS_ch = '1'
+PFC_ch = '1'
+DMS_ch = '2'
 
 signal_name_dict = {'ttl': {'time': 'DigitalIO/Time', 'values': 'DigitalIO/DIO01'},
                     'DMS_420': {'time': 'LockInAOUT01/Time', 'values': 'LockInAOUT01/AIN0' + DMS_ch},
@@ -73,7 +73,7 @@ if len(issues) > 0:
     print('Issues found:\n{0}'.format('\n'.join(issues)))
 
 # %% Package data
-save_paths = [path.join('E:', 'Data', 'Rat 179', filename+'.pkl'), path.join(utils.get_user_home(), 'fp_data', filename+'pkl')]
+save_paths = [path.join('E:', 'Data', 'Rat 179', filename+'.pkl'), path.join(utils.get_user_home(), 'fp_data', filename+'.pkl')]
 dec_data = package_data(data, save_paths)
 
 # %% Plot comparison of raw and decimated data

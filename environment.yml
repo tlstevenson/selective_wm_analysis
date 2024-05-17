@@ -1,6 +1,7 @@
 name: neuropy
 channels:
   - defaults
+  - conda-forge
 dependencies:
   - pandas
   - numpy
