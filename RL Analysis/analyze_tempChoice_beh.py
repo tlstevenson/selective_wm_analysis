@@ -38,12 +38,12 @@ import statsmodels.api as sm
 
 subj_ids = [179]
 sess_ids = db_access.get_subj_sess_ids(subj_ids, protocol='ClassicRLTasks', stage_num=3)
-sess_ids = bah.limit_sess_ids(sess_ids, 12)
+sess_ids = bah.limit_sess_ids(sess_ids, 12, last_idx=-1)
 #sess_ids = {179: [95201, 95312, 95347]}
 
 # get trial information
 loc_db = db.LocalDB_BasicRLTasks('temporalChoice')
-all_sess = loc_db.get_behavior_data(utils.flatten(sess_ids)) #, reload=True
+all_sess = loc_db.get_behavior_data(utils.flatten(sess_ids), reload=True) #, reload=True
 # make slow delay a string for better plot formatting
 all_sess['slow_delay'] = all_sess['slow_delay'].apply(lambda x: '{:.0f}'.format(x))
 
@@ -133,11 +133,12 @@ for subj_id in subj_ids:
     # get switching rates by previous fast/slow choice in each block rate and slow choice delay
     block_rates = np.sort(subj_sess_resp['block_rates'].unique())
     slow_delays = np.sort(subj_sess_resp['slow_delay'].unique())
+    trial_groups = ['fast', 'slow', 'all']
     
-    n_switches = {br: {d: {t: {'k': 0, 'n': 0} for t in ['fast', 'slow']} for d in slow_delays} for br in block_rates}
+    n_switches = {br: {d: {t: {'k': 0, 'n': 0} for t in trial_groups} for d in slow_delays} for br in block_rates}
 
     for sess_id in sess_ids[subj_id]:
-        ind_sess = subj_sess_resp[subj_sess_resp['sessid'] == sess_id]
+        ind_sess = subj_sess_resp[subj_sess_resp['sessid'] == sess_id].reset_index(drop=True)
 
         if len(ind_sess) == 0:
             continue
@@ -149,7 +150,7 @@ for subj_id in subj_ids:
         fast_choice = ind_sess['chose_fast_port'].to_numpy()[:-1]
         
         # ignore any switches between block switches
-        block_trans_sel = ind_sess['block_trial'].diff() < 0
+        block_trans_sel = ind_sess['block_trial'].diff()[1:] < 0
         switches = switches[~block_trans_sel]
         block_rate = block_rate[~block_trans_sel]
         slow_delay = slow_delay[~block_trans_sel]
@@ -159,240 +160,199 @@ for subj_id in subj_ids:
             rate_sel = block_rate == br
             for d in slow_delays:
                 delay_sel = (slow_delay == d) & rate_sel
-                fast_sel = delay_sel & fast_choice
-                slow_sel = delay_sel & ~fast_choice
-            
-                n_switches[br][d]['fast']['k'] += sum(fast_sel & switches)
-                n_switches[br][d]['fast']['n'] += sum(fast_sel)
-                n_switches[br][d]['slow']['k'] += sum(slow_sel & switches)
-                n_switches[br][d]['slow']['n'] += sum(slow_sel)
+                for group in trial_groups:
+                    match group:
+                        case 'fast':
+                            sel = delay_sel & fast_choice
+                        case 'slow':
+                            sel = delay_sel & ~fast_choice
+                        case 'all':
+                            sel = delay_sel
                 
-            
-    # # plot results
-    # # define reusable helper methods
-    # def comp_p(n_dict): return n_dict['k']/n_dict['n']
-    # def comp_err(n_dict): return abs(utils.binom_cis(n_dict['k'], n_dict['n']) - comp_p(n_dict))
-    
-    # fig = plt.figure(layout='constrained', figsize=(9, 7))
-    # fig.suptitle('Switching Probabilities (Rat {})'.format(subj_id))
-    # gs = GridSpec(2, len(block_rates), figure=fig, height_ratios=[3,2])
-    
-    # # first row, left, is the win-stay/lose-switch rates by choice probability
-    # ax = fig.add_subplot(gs[0, :-1])
-    # stay_reward_vals = [comp_p(n_stay_reward_choice[p]) for p in choice_probs]
-    # stay_reward_err = np.asarray([comp_err(n_stay_reward_choice[p]) for p in choice_probs]).T
-    # switch_noreward_vals = [comp_p(n_switch_noreward_choice[p]) for p in choice_probs]
-    # switch_noreward_err = np.asarray([comp_err(n_switch_noreward_choice[p]) for p in choice_probs]).T
-
-    # ax.errorbar(choice_probs, stay_reward_vals, yerr=stay_reward_err, fmt='o', capsize=4, label='Win Stay')
-    # ax.errorbar(choice_probs, switch_noreward_vals, yerr=switch_noreward_err, fmt='o', capsize=4, label='Lose Switch')
-    # ax.set_ylabel('Proportion of Choices')
-    # ax.set_xlabel('Choice Reward Probability (%)')
-    # ax.set_xticks(choice_probs, ['{:.0f}'.format(p) for p in choice_probs*100])
-    # ax.set_xlim(0, 1)
-    # ax.set_ylim(-0.05, 1.05)
-    # ax.grid(axis='y')
-    # ax.legend(loc='best')
-    
-    # # first row, right, is the stay percentage after reward/no reward by block rate
-    # ax = fig.add_subplot(gs[0, -1])
-    # stay_reward_vals = [comp_p(n_stay_reward_block[br]) for br in block_rates]
-    # stay_reward_err = np.asarray([comp_err(n_stay_reward_block[br]) for br in block_rates]).T
-    # stay_noreward_vals = [comp_p(n_stay_noreward_block[br]) for br in block_rates]
-    # stay_noreward_err = np.asarray([comp_err(n_stay_noreward_block[br]) for br in block_rates]).T
-
-    # plot_utils.plot_stacked_bar([stay_reward_vals, stay_noreward_vals], value_labels=['Rewarded', 'Unrewarded'],
-    #                             x_labels=block_rates, err=[stay_reward_err, stay_noreward_err], ax=ax)
-    # ax.set_ylabel('p(Stay)')
-    # ax.set_xlabel('Block Reward Probability (Left/Right %)')
-    # ax.set_ylim(-0.05, 1.05)
-    # ax.legend(loc='lower left')
-    
-    # # second row is empirical transition matrices
-    # for i, br in enumerate(block_rates):
-    #     ax = fig.add_subplot(gs[1, i])
-    #     p_mat = trans_mats[br]['k']/trans_mats[br]['n']
-    #     plot_utils.plot_value_matrix(p_mat, ax=ax, xticklabels=['high', 'low'], yticklabels=['high', 'low'], cbar=False, cmap='vlag')
-    #     ax.set_ylabel('Choice Reward Rate')
-    #     ax.set_xlabel('Next Choice Reward Rate')
-    #     ax.xaxis.set_label_position('top')
-    #     ax.set_title('Block Rate {}%'.format(br))
-        
-        
-    # # Simple summary of choice behavior
-    # fig = plt.figure(layout='constrained', figsize=(6, 3))
-    # fig.suptitle('Choice Probabilities ({})'.format(subj_id))
-    # gs = GridSpec(1, 2, figure=fig, width_ratios=[3,4])
-
-    # data = choose_high_trial_probs['block_prob']
-    # x_labels = data.index.to_list()
-    # x_vals = np.array([int(x.split('/')[0]) for x in x_labels])
-    
-    # ax = fig.add_subplot(gs[0, 0])
-    # ax.errorbar(x_vals, data['rate'], yerr=bah.convert_rate_err_to_mat(data), fmt='o', capsize=4)
-    # plot_utils.plot_dashlines(x_vals/100, dir='h', ax=ax)
-    # ax.set_ylabel('p(Choose High)')
-    # ax.set_xlabel('Block Reward Probability (High/Low %)')
-    # ax.set_xticks(x_vals, x_labels)
-    # ax.set_xlim(50, 100)
-    # ax.set_ylim(0.5, 1)
-    # ax.set_title('Choose High Side')
-
-    
-    # stay_reward_vals = [comp_p(n_stay_reward_block[br]) for br in block_rates]
-    # stay_reward_err = np.asarray([comp_err(n_stay_reward_block[br]) for br in block_rates]).T
-    # stay_noreward_vals = [comp_p(n_stay_noreward_block[br]) for br in block_rates]
-    # stay_noreward_err = np.asarray([comp_err(n_stay_noreward_block[br]) for br in block_rates]).T
-
-    # ax = fig.add_subplot(gs[0, 1])
-    # plot_utils.plot_stacked_bar([stay_reward_vals, stay_noreward_vals], value_labels=['Rewarded', 'Unrewarded'],
-    #                             x_labels=block_rates, err=[stay_reward_err, stay_noreward_err], ax=ax)
-    # ax.set_ylabel('p(Stay)')
-    # ax.set_xlabel('Block Reward Probability (High/Low %)')
-    # ax.set_ylim(-0.05, 1.05)
-    # ax.legend(loc='lower right')
-    # ax.set_title('Choose Previous Side')
-
-    
-            
-# %% Response TImes
-
-for subj_id in subj_ids:
-    subj_sess = all_sess[all_sess['subjid'] == subj_id]
-    
-    # organize time to reward and time to engage center port by prior reward, block probabilities, and whether switched response
-    timing_data = pd.DataFrame(columns=['RT', 'cpoke_in_time', 'cpoke_out_latency', 'choice', 'reward_type', 'response_type', 'block_prob', 'all'])
-    
-    for sess_id in sess_ids[subj_id]:
-        ind_sess = subj_sess[subj_sess['sessid'] == sess_id].reset_index(drop=True)
-
-        if len(ind_sess) == 0:
-            continue
-        
-        data = ind_sess[['RT', 'cpoke_in_time', 'cpoke_out_latency', 'choice', 'block_prob']].iloc[1:].reset_index(drop=True) # ignore first trial because no trial before
-        # add reward and response type labels 
-        choices = ind_sess['choice'].to_numpy()
-        stays = choices[:-1] == choices[1:]
-        
-        data['reward_type'] = ind_sess['rewarded'].iloc[:-1].apply(lambda x: 'prev rewarded' if x else 'prev unrewarded').reset_index(drop=True)
-        # NEED TO UPDATE FOR STAY/SWITCH
-        data['response_type'] = pd.Series(stays).apply(lambda x: 'stay' if x else 'switch')
-        # ignore trials where the current response or the past response was none
-        data = data[(choices[:-1] != 'none') & (choices[1:] != 'none')]
-        data['all'] = 'All'
-        
-        timing_data = pd.concat([timing_data, data], ignore_index=True)                               
-        
-    # collapse reward type and response type into one column and add 'all' to block_prob column
-    timing_data = pd.lreshape(timing_data, {'type': ['reward_type', 'response_type', 'choice']})
-    timing_data = pd.lreshape(timing_data, {'prob': ['block_prob', 'all']})
-    
-    # fig = plt.figure(layout='constrained', figsize=(8, 7))
-    # fig.suptitle('Response Latencies')
-    # gs = GridSpec(2, 1, figure=fig)
-    
-    # # first row is response times
-    # ax = fig.add_subplot(gs[0])
-    # sb.violinplot(data=timing_data, x='prob', y='RT', hue='type', inner='quart', ax=ax) # split=True, gap=.1, 
-    # ax.set_xlabel('Block Reward Probability (High/Low %)')
-    # ax.set_ylabel('Response Latency (s)')
-    # ax.set_title('Time from Cue to Response')
-    
-    # # first row is cpoke times
-    # ax = fig.add_subplot(gs[1])
-    # sb.violinplot(data=timing_data[timing_data['cpoke_in_time'] < 60], x='prob', y='cpoke_in_time', hue='type', inner='quart', ax=ax)
-    # ax.set_xlabel('Block Reward Probability (High/Low %)')
-    # ax.set_ylabel('Next Trial Latency (s)')
-    # ax.set_title('Time to Engage Center Port on Next Trial')
-    
-    # show box plots
-    fig = plt.figure(layout='constrained', figsize=(8, 9))
-    fig.suptitle('Response Latencies (Rat {})'.format(subj_id))
-    gs = GridSpec(3, 1, figure=fig)
-    
-    # first row is response times
-    ax = fig.add_subplot(gs[0])
-    sb.boxplot(data=timing_data, x='prob', y='RT', hue='type', ax=ax) # gap=0.1, 
-    ax.set_xlabel('Block Reward Probability (High/Low %)')
-    ax.set_ylabel('Response Latency (s)')
-    ax.set_title('Time from Cue to Response')
-    ax.legend(ncol=3, title='Trial Type', loc='upper left')
-    
-    ax = fig.add_subplot(gs[1])
-    sb.boxplot(data=timing_data[timing_data['cpoke_out_latency'] < 1], x='prob', y='cpoke_out_latency', hue='type', ax=ax) # gap=0.1, 
-    ax.set_xlabel('Block Reward Probability (High/Low %)')
-    ax.set_ylabel('Center Poke Out Latency (s)')
-    ax.set_title('Time from Cue to Center Poke Out')
-    ax.legend(ncol=3, title='Trial Type', loc='upper left')
-    
-    # second row is cpoke times
-    ax = fig.add_subplot(gs[2])
-    sb.boxplot(data=timing_data[timing_data['cpoke_in_time'] < 60], x='prob', y='cpoke_in_time', hue='type', ax=ax)
-    ax.set_xlabel('Block Reward Probability (High/Low %)')
-    ax.set_ylabel('Next Trial Latency (s)')
-    ax.set_title('Time to Engage Center Port on Next Trial')
-    ax.legend(ncol=3, title='Trial Type', loc='upper left')
-    
-# %% Effect of inter trial interval on choice behavior
-
-# look at relationship between previous reward and future choice (stay/switch) based on how long it took to start the next trial
-
-t_thresh = 60    
-# create uneven bins tiling the cpoke in times so bins have roughly the same amount of data points
-bin_edges = np.concatenate((np.arange(0, 10, 2), np.arange(10, t_thresh, 20), [np.inf]))
-# get bins output by pandas for indexing
-bins = pd.IntervalIndex.from_breaks(bin_edges)
-
-for subj_id in subj_ids:
-    subj_sess = all_sess[all_sess['subjid'] == subj_id]
-    subj_sess_resp = subj_sess[subj_sess['choice'] != 'none']
-
-    # create structures to accumulate event data across sessions
-    stay_reward = {'k': np.zeros(len(bins)), 'n': np.zeros(len(bins))}
-    stay_noreward = copy.deepcopy(stay_reward)
-
-    for sess_id in sess_ids[subj_id]:
-        ind_sess = subj_sess_resp[subj_sess_resp['sessid'] == sess_id]
-
-        if len(ind_sess) == 0:
-            continue
-        
-        cpoke_in_bins = pd.cut(ind_sess['cpoke_in_time'], bins)[1:] # ignore first trial time since no trial before
-
-        choices = ind_sess['choice'].to_numpy()
-        stays = choices[:-1] == choices[1:]
-        rewarded = ind_sess['rewarded'].to_numpy()[:-1] # ignore last trial reward since no trial after
-        
-        for i, b in enumerate(bins):
-            bin_sel = cpoke_in_bins == b
-            stay_reward['k'][i] += sum(rewarded & stays & bin_sel)
-            stay_reward['n'][i] += sum(rewarded & bin_sel)
-            stay_noreward['k'][i] += sum(~rewarded & stays & bin_sel)
-            stay_noreward['n'][i] += sum(~rewarded & bin_sel)
+                    n_switches[br][d][group]['k'] += sum(sel & switches)
+                    n_switches[br][d][group]['n'] += sum(sel)
+                
             
     # plot results
     # define reusable helper methods
     def comp_p(n_dict): return n_dict['k']/n_dict['n']
-    def comp_err(n_dict): return abs(np.array([utils.binom_cis(n_dict['k'][i], n_dict['n'][i]) for i in range(len(n_dict['k']))]) - comp_p(n_dict)[:,None])
+    def comp_err(n_dict): return abs(utils.binom_cis(n_dict['k'], n_dict['n']) - comp_p(n_dict))
     
-    # first row, left, is the win-stay/lose-switch rates by choice probability
-    stay_reward_vals = comp_p(stay_reward)
-    stay_reward_err = comp_err(stay_reward).T
-    stay_noreward_vals = comp_p(stay_noreward)
-    stay_noreward_err = comp_err(stay_noreward).T
+    x_vals = [float(x) for x in slow_delays]
     
-    # x = (bin_edges[:-1] + bin_edges[1:])/2
-    # x[-1] = t_thresh
-    x = np.arange(len(bins))
-    
-    _, ax = plt.subplots(1, 1, layout='constrained', figsize=(6, 4))
-    ax.set_title('Stay Probabilities by Trial Latency (Rat {})'.format(subj_id))
+    fig, axs = plt.subplots(3, 1, layout='constrained', figsize=(5, 8))
+    fig.suptitle('Switching Probabilities (Rat {})'.format(subj_id))
 
-    ax.errorbar(x, stay_reward_vals, yerr=stay_reward_err, fmt='o', capsize=4, label='Rewarded')
-    ax.errorbar(x, stay_noreward_vals, yerr=stay_noreward_err, fmt='o', capsize=4, label='Unrewarded')
-    ax.set_ylabel('p(stay)')
-    ax.set_xlabel('Next Trial Latency (s)')
-    ax.set_xticks(x, ['{:.0f} - {:.0f}'.format(b.left, b.right) for b in bins])
-    ax.set_ylim(-0.05, 1.05)
-    ax.grid(axis='y')
-    ax.legend(loc='best')
+    trial_group_titles = {'fast': 'Fast', 'slow': 'Slow', 'all': 'Either'}
+    for i, group in enumerate(trial_groups):
+        
+        ax = axs[i]
+        
+        for br in block_rates:
+            y_vals = []
+            y_err = []
+            for d in slow_delays:
+                n_dict = n_switches[br][d][group]
+                y_vals.append(comp_p(n_dict))
+                y_err.append(comp_err(n_dict))
+            
+            ax.errorbar(x_vals, y_vals, yerr=np.array(y_err).T, fmt='o-', capsize=4, label=br)
+    
+        ax.set_ylabel('p(Switch)')
+        ax.set_xlabel('Slow Reward Delay (s)')
+        ax.set_ylim(0, 1)
+        ax.set_title('Switch Rates After Choosing {} Side'.format(trial_group_titles[group]))
+        ax.legend(title='Reward Rates (Fast/Slow, μL/s)', ncols=2)
+
+            
+# %% Response Times
+
+for subj_id in subj_ids:
+    subj_sess = all_sess[all_sess['subjid'] == subj_id]
+    subj_sess_no_instruct = subj_sess[~subj_sess['instruct_trial']]
+    # subj_sess_resp = subj_sess_no_instruct[subj_sess_no_instruct['choice'] != 'none']
+    
+    # organize time to reward and time to engage center port by prior reward, block probabilities, and whether switched response
+    timing_data = pd.DataFrame(columns=['RT', 'cpoke_in_latency', 'next_cpoke_in_latency', 'choice', 'port_speed_choice', 'choice_rate', 'choice_delay', 'reward', 'block_rates', 'slow_delay', 'all'])
+    
+    for sess_id in sess_ids[subj_id]:
+        ind_sess = subj_sess_no_instruct[subj_sess_no_instruct['sessid'] == sess_id].reset_index(drop=True)
+
+        if len(ind_sess) == 0:
+            continue
+        
+        data = ind_sess[['RT', 'cpoke_in_latency', 'next_cpoke_in_latency', 'choice', 'port_speed_choice', 'choice_rate', 'choice_delay', 'reward', 'block_rates', 'slow_delay']].iloc[1:] # ignore first trial because no trial before
+        # add response type labels 
+        choices = ind_sess['choice'].to_numpy()
+        stays = choices[:-1] == choices[1:]
+        
+        # ignore trials after a block switch ans trials where current response or previous response was none
+        # ignore trials where the current response or the past response was none
+        trial_sel = (choices[:-1] != 'none') & (choices[1:] != 'none') & ~(ind_sess['block_trial'].diff()[1:] < 0)
+        stays = stays[trial_sel]
+        data = data[trial_sel].reset_index(drop=True)
+
+        data['response_type'] = pd.Series(stays).apply(lambda x: 'stay' if x else 'switch')
+        data['all_rates'] = 'all'
+        data['all_delays'] = 'all'
+        
+        timing_data = pd.concat([timing_data, data], ignore_index=True)                               
+        
+    # collapse trial types into one column and add 'all' to block rates and slow delays columns
+    timing_data = pd.lreshape(timing_data, {'type': ['choice', 'response_type', 'port_speed_choice']})
+    timing_data = pd.lreshape(timing_data, {'rates': ['block_rates', 'all_rates']})
+    timing_data = pd.lreshape(timing_data, {'delays': ['slow_delay', 'all_delays']})
+    
+    # plot for RTs
+    fig = plt.figure(layout='constrained', figsize=(8, 10))
+    fig.suptitle('Response Latencies (Cue to Response) - Rat {}'.format(subj_id))
+    gs = GridSpec(4, 1, figure=fig)
+
+    ax = fig.add_subplot(gs[0])
+    sb.boxplot(data=timing_data, x='rates', y='RT', hue='type', ax=ax) # gap=0.1, 
+    ax.set_xlabel('Block Reward Rates (μL/s, Fast/Slow)')
+    ax.set_ylabel('Response Latency (s)')
+    ax.set_title('Block Rates by Choice Type')
+    ax.legend(ncol=3, title='Choice Type', loc='upper right')
+    
+    ax = fig.add_subplot(gs[1])
+    sb.boxplot(data=timing_data, x='delays', y='RT', hue='type', ax=ax) # gap=0.1, 
+    ax.set_xlabel('Slow Reward Delay (s)')
+    ax.set_ylabel('Response Latency (s)')
+    ax.set_title('Slow Choice Delays by Choice Type')
+    ax.legend(ncol=3, title='Choice Type', loc='upper right')
+    
+    ax = fig.add_subplot(gs[2])
+    sb.boxplot(data=timing_data, x='rates', y='RT', hue='choice_delay', ax=ax) # gap=0.1, 
+    ax.set_xlabel('Block Reward Rates (μL/s, Fast/Slow)')
+    ax.set_ylabel('Response Latency (s)')
+    ax.set_title('Block Rates by Choice Delay')
+    ax.legend(title='Choice Delay', loc='upper right', ncol=2)
+    
+    ax = fig.add_subplot(gs[3])
+    sb.boxplot(data=timing_data, x='delays', y='RT', hue='reward', ax=ax) # gap=0.1, 
+    ax.set_xlabel('Slow Reward Delay (s)')
+    ax.set_ylabel('Response Latency (s)')
+    ax.set_title('Slow Choice Delays by Reward Volume')
+    ax.legend(title='Reward Volume', loc='upper right', ncol=2)
+    
+    # plot for next cpoke in latencies
+    y_max = 30
+    cpoke_in_data = timing_data[timing_data['next_cpoke_in_latency'] > 0.001]
+
+    fig = plt.figure(layout='constrained', figsize=(8, 10))
+    fig.suptitle('Center Poke In Latencies (Port On to Poke In, Post Response) - Rat {}'.format(subj_id))
+    gs = GridSpec(4, 1, figure=fig)
+    
+    ax = fig.add_subplot(gs[0])
+    sb.boxplot(data=cpoke_in_data, x='rates', y='next_cpoke_in_latency', hue='type', ax=ax) # gap=0.1, 
+    ax.set_xlabel('Block Reward Rates (μL/s, Fast/Slow)')
+    ax.set_ylabel('Cpoke In Latency (s)')
+    ax.set_title('Block Rates by Choice Type')
+    ax.set_ylim(0, y_max)
+    ax.legend(ncol=3, title='Choice Type', loc='upper right')
+    
+    ax = fig.add_subplot(gs[1])
+    sb.boxplot(data=cpoke_in_data, x='delays', y='next_cpoke_in_latency', hue='type', ax=ax) # gap=0.1, 
+    ax.set_xlabel('Slow Reward Delay (s)')
+    ax.set_ylabel('Cpoke In Latency (s)')
+    ax.set_title('Slow Choice Delays by Choice Type')
+    ax.set_ylim(0, y_max)
+    ax.legend(ncol=3, title='Choice Type', loc='upper right')
+    
+    ax = fig.add_subplot(gs[2])
+    sb.boxplot(data=cpoke_in_data, x='rates', y='next_cpoke_in_latency', hue='choice_delay', ax=ax) # gap=0.1, 
+    ax.set_xlabel('Block Reward Rates (μL/s, Fast/Slow)')
+    ax.set_ylabel('Cpoke In Latency (s)')
+    ax.set_title('Block Rates by Choice Delay')
+    ax.set_ylim(0, y_max)
+    ax.legend(title='Choice Delay', loc='upper right', ncol=2)
+    
+    ax = fig.add_subplot(gs[3])
+    sb.boxplot(data=cpoke_in_data, x='delays', y='next_cpoke_in_latency', hue='reward', ax=ax) # gap=0.1, 
+    ax.set_xlabel('Slow Reward Delay (s)')
+    ax.set_ylabel('Cpoke In Latency (s)')
+    ax.set_title('Slow Choice Delays by Reward Volume')
+    ax.set_ylim(0, y_max)
+    ax.legend(title='Reward Volume', loc='upper right', ncol=2)
+    
+    
+    # plot for current trial cpoke in latencies
+    cpoke_in_data = timing_data[timing_data['cpoke_in_latency'] > 0.001]
+    
+    fig = plt.figure(layout='constrained', figsize=(8, 10))
+    fig.suptitle('Center Poke In Latencies (Port On to Poke In, Pre Response) - Rat {}'.format(subj_id))
+    gs = GridSpec(4, 1, figure=fig)
+    
+    ax = fig.add_subplot(gs[0])
+    sb.boxplot(data=cpoke_in_data, x='rates', y='cpoke_in_latency', hue='type', ax=ax) # gap=0.1, 
+    ax.set_xlabel('Block Reward Rates (μL/s, Fast/Slow)')
+    ax.set_ylabel('Cpoke In Latency (s)')
+    ax.set_title('Block Rates by Choice Type')
+    ax.set_ylim(0, y_max)
+    ax.legend(ncol=3, title='Choice Type', loc='upper right')
+    
+    ax = fig.add_subplot(gs[1])
+    sb.boxplot(data=cpoke_in_data, x='delays', y='cpoke_in_latency', hue='type', ax=ax) # gap=0.1, 
+    ax.set_xlabel('Slow Reward Delay (s)')
+    ax.set_ylabel('Cpoke In Latency (s)')
+    ax.set_title('Slow Choice Delays by Choice Type')
+    ax.set_ylim(0, y_max)
+    ax.legend(ncol=3, title='Choice Type', loc='upper right')
+    
+    ax = fig.add_subplot(gs[2])
+    sb.boxplot(data=cpoke_in_data, x='rates', y='cpoke_in_latency', hue='choice_delay', ax=ax) # gap=0.1, 
+    ax.set_xlabel('Block Reward Rates (μL/s, Fast/Slow)')
+    ax.set_ylabel('Cpoke In Latency (s)')
+    ax.set_title('Block Rates by Choice Delay')
+    ax.set_ylim(0, y_max)
+    ax.legend(title='Choice Delay', loc='upper right', ncol=2)
+    
+    ax = fig.add_subplot(gs[3])
+    sb.boxplot(data=cpoke_in_data, x='delays', y='cpoke_in_latency', hue='reward', ax=ax) # gap=0.1, 
+    ax.set_xlabel('Slow Reward Delay (s)')
+    ax.set_ylabel('Cpoke In Latency (s)')
+    ax.set_title('Slow Choice Delays by Reward Volume')
+    ax.set_ylim(0, y_max)
+    ax.legend(title='Reward Volume', loc='upper right', ncol=2)
+    

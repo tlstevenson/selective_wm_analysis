@@ -15,7 +15,7 @@ import scipy.signal as sig
 
 def get_all_processed_signals(raw_lig, raw_iso):
     ''' Gets all possible processed signals and intermediaries for the given raw signals '''
-    
+
     # use isosbestic correction
     dff_iso, fitted_iso = fp_utils.calc_iso_dff(raw_lig, raw_iso)
 
@@ -59,7 +59,7 @@ def get_all_processed_signals(raw_lig, raw_iso):
             'z_df_baseline_iso': utils.z_score(df_baseline_iso)}
 
 
-def view_processed_signals(processed_signals, t, dec=10, title='Full Signals', vert_marks=[], 
+def view_processed_signals(processed_signals, t, dec=10, title='Full Signals', vert_marks=[],
                            filter_outliers=False, outlier_zthresh=10, t_min=0, t_max=np.inf):
 
     if utils.is_dict(list(processed_signals.values())[0]):
@@ -68,20 +68,21 @@ def view_processed_signals(processed_signals, t, dec=10, title='Full Signals', v
         n_panel_stacks = 1
         # make a temporary outer dictionary for ease of use with for loop
         processed_signals = {'temp': processed_signals}
-        
+
     t = t[::dec]
-    
+
     t_min_idx = np.argmax(t > t_min)
     t_max_idx = np.argwhere(t < t_max)[-1,0]
 
     # plot the raw signals and their baseline fits, baseline corrected signals, raw ligand and fitted iso, dff and baseline corrected df
     fig, axs = plt.subplots(2*n_panel_stacks, 2, layout='constrained', figsize=[20,6*n_panel_stacks])
     plt.suptitle(title)
-    
-    vert_marks = vert_marks[(vert_marks > t_min) & (vert_marks < t_max)]
-    
+
+    if len(vert_marks) > 0:
+        vert_marks = vert_marks[(vert_marks > t_min) & (vert_marks < t_max)]
+
     for i, (sub_key, sub_signals) in enumerate(processed_signals.items()):
-        
+
         # remove outliers in z-score space
         filt_sel = np.full(t.shape, True)
         if filter_outliers:
@@ -90,13 +91,13 @@ def view_processed_signals(processed_signals, t, dec=10, title='Full Signals', v
             z_iso = utils.z_score(sub_signals['raw_iso'][::dec])
             filt_sel = filt_sel & (np.abs(z_lig) < outlier_zthresh)
             filt_sel = filt_sel & (np.abs(z_iso) < outlier_zthresh)
-        
+
         # repurpose outlier filter for time filter as well
         filt_sel[:t_min_idx] = False
         filt_sel[t_max_idx:] = False
-            
+
         filt_t = t[filt_sel]
-        
+
         gen_sub_title = sub_key + ' {}' if sub_key != 'temp' else '{}'
 
         # plot raw signals and baseline
@@ -114,7 +115,7 @@ def view_processed_signals(processed_signals, t, dec=10, title='Full Signals', v
         ls = [l1[0], l2[0], l3[0], l4[0]]
         labs = [l.get_label() for l in ls]
         ax.legend(ls, labs)
-        
+
         # plot baseline corrected signals
         ax = axs[i,1]
         l2 = ax.plot(filt_t, sub_signals['baseline_corr_iso'][::dec][filt_sel], label='Baseline Corrected Iso', color=color2, alpha=0.5)
@@ -126,7 +127,7 @@ def view_processed_signals(processed_signals, t, dec=10, title='Full Signals', v
         ls = [l1[0], l2[0]]
         labs = [l.get_label() for l in ls]
         ax.legend(ls, labs)
-        
+
         # plot raw ligand and fitted iso
         ax = axs[n_panel_stacks+i,0]
         l2 = ax.plot(filt_t, sub_signals['fitted_iso'][::dec][filt_sel], label='Fitted Iso', color=color2, alpha=0.5)
@@ -138,7 +139,7 @@ def view_processed_signals(processed_signals, t, dec=10, title='Full Signals', v
         ls = [l1[0], l2[0]]
         labs = [l.get_label() for l in ls]
         ax.legend(ls, labs)
-        
+
         # plot iso dFF and baseline corrected dF
         ax = axs[n_panel_stacks+i,1]
         ax2 = ax.twinx()
@@ -154,34 +155,34 @@ def view_processed_signals(processed_signals, t, dec=10, title='Full Signals', v
         ax2.zorder = 1
         ax.zorder = 2
         ax.set_frame_on(False)
-        
+
         ls = [l1[0], l2[0]]
         labs = [l.get_label() for l in ls]
         ax.legend(ls, labs)
-        
 
-def view_signal(processed_signals, t, signal_type, title=None, dec=10, vert_marks=[], 
+
+def view_signal(processed_signals, t, signal_type, title=None, dec=10, vert_marks=[],
                 filter_outliers=False, outlier_zthresh=10, t_min=0, t_max=np.inf, figsize=None,
                 ylabel=''):
-    
+
     if utils.is_dict(list(processed_signals.values())[0]):
         n_panel_stacks = len(processed_signals.values())
     else:
         n_panel_stacks = 1
         # make a temporary outer dictionary for ease of use with for loop
         processed_signals = {'temp': processed_signals}
-        
+
     t = t[::dec]
-    
+
     t_min_idx = np.argmax(t > t_min)
     t_max_idx = np.argwhere(t < t_max)[-1,0]
-    
+
     if title is None:
         title = signal_type
-    
+
     if figsize is None:
         figsize = (7, 3*n_panel_stacks)
-    
+
     _, axs = plt.subplots(n_panel_stacks, 1, layout='constrained', figsize=figsize)
     plt.suptitle(title)
 
@@ -195,13 +196,13 @@ def view_signal(processed_signals, t, signal_type, title=None, dec=10, vert_mark
             # filter based on raw signals
             z_sig = utils.z_score(sub_signals[signal_type][::dec])
             filt_sel = filt_sel & (np.abs(z_sig) < outlier_zthresh)
-        
+
         # repurpose outlier filter for time filter as well
         filt_sel[:t_min_idx] = False
         filt_sel[t_max_idx:] = False
-            
+
         filt_t = t[filt_sel]
-    
+
         # plot raw signals and baseline
         ax = axs[i]
         ax.plot(filt_t, sub_signals[signal_type][::dec][filt_sel])
@@ -209,7 +210,7 @@ def view_signal(processed_signals, t, signal_type, title=None, dec=10, vert_mark
         ax.set_title(sub_key)
         ax.set_xlabel('Time (s)')
         ax.set_ylabel(ylabel)
-    
+
 
 def plot_aligned_signals(signal_dict, t, title, sub_titles_dict, x_label, y_label,
                          cmap = 'viridis', outlier_thresh=10, trial_markers=None):
@@ -267,11 +268,11 @@ def plot_aligned_signals(signal_dict, t, title, sub_titles_dict, x_label, y_labe
 
         # create color bar legend for heatmap plots
         fig.colorbar(hm, ax=axs[i*2,:].ravel().tolist(), label=y_label)
-    
-        
+
+
 def get_signal_type_labels(signal_type):
     ''' Get signal titles and labels based on the type of signal '''
-    match signal_type: 
+    match signal_type:
         case 'dff_iso':
             title = 'Isosbestic Normalized'
             ax_label = 'dF/F'
@@ -302,7 +303,7 @@ def get_signal_type_labels(signal_type):
         case 'raw_iso':
             title = 'Raw Isosbestic Signal'
             ax_label = 'dF/F' if trial_normalize else 'V'
-            
+
     return title, ax_label
 
 
@@ -310,9 +311,9 @@ def plot_power_spectra(signal, dt, f_max=40, title=''):
     #signal = signal - np.mean(signal)
     # ps = np.abs(np.fft.rfft(signal))**2
     # freqs = np.fft.rfftfreq(signal.size, dt)
-    
+
     freqs, ps = sig.welch(signal, fs = 1/dt, nperseg = round(1/dt)*60, scaling='spectrum')
-    
+
     #freqs, ps = sig.periodogram(signal, fs = 1/dt, scaling='spectrum')
     # same as FFT but simpler
 
@@ -324,10 +325,10 @@ def plot_power_spectra(signal, dt, f_max=40, title=''):
     ax.set_xlim([1, f_max])
     ax.set_title(title)
 
-    
+
 def remove_outliers(mat, outlier_thresh):
     mat[np.abs(mat) > outlier_thresh] = np.nan
-        
+
     return mat
 
 
@@ -339,10 +340,10 @@ def stack_fp_mats(mat_dict, regions, sess_ids, subjects, signal_type, filter_out
     for region in regions:
         for group in groups:
             for subj_id in subjects:
-                mat = np.vstack([mat_dict[sess_id][signal_type][region][group] for sess_id in sess_ids[subj_id]])
+                mat = np.vstack([mat_dict[sess_id][signal_type][region][group] for sess_id in sess_ids[subj_id] if group in mat_dict[sess_id][signal_type][region].keys()])
                 if filter_outliers:
                     mat = remove_outliers(mat, outlier_thresh)
-                    
+
                 stacked_mats[region][group] = mat
 
     return stacked_mats
@@ -351,9 +352,9 @@ def stack_fp_mats(mat_dict, regions, sess_ids, subjects, signal_type, filter_out
 # def combine_group_mats(data_dict, grouping=None):
 #     if grouping is None:
 #         grouping = {'all': list(data_dict[regions[0]].keys())}
-        
+
 #     for region in regions:
 #         for name, groups in grouping.items():
 #             data_dict[region][name] = np.vstack([data_dict[region][group] for group in groups])
-        
+
 #     return data_dict

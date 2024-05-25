@@ -8,106 +8,98 @@ Created on Sun Nov 26 22:33:24 2023
 # %% imports
 
 import init
-
-import os.path as path
 import pandas as pd
 import pyutils.utils as utils
 from sys_neuro_tools import plot_utils, fp_utils
+from hankslab_db import db_access
 import hankslab_db.tonecatdelayresp_db as db
 import fp_analysis_helpers as fpah
 import numpy as np
 import matplotlib.pyplot as plt
-import peakutils
-from sklearn.linear_model import LinearRegression
-from scipy.optimize import curve_fit
 import pickle
 import copy
 
 # %% Load behavior data
 
-sess_ids = {179: [92562, 92600, 93412]} #92692, 92562, 92600, 93412
+# get all session ids for given protocol
+sess_ids = db_access.get_fp_protocol_subj_sess_ids('ToneCatDelayResp', 8)
 
-loc_db = db.LocalDB_ToneCatDelayResp()  
+loc_db = db.LocalDB_ToneCatDelayResp()
 sess_data = loc_db.get_behavior_data(utils.flatten(sess_ids)) # reload=True
+
+# old behavior didn't have cport on
+if not 'cport_on_time' in sess_data.columns:
+    sess_data['cport_on_time'] = 0.016
 
 sess_data['tone_info_str'] = sess_data['tone_info'].apply(lambda x: ', '.join(x) if utils.is_list(x) else x)
 sess_data['prev_tone_info_str'] = sess_data['prev_choice_tone_info'].apply(lambda x: ', '.join(x) if utils.is_list(x) else x)
 
-# %% Load fiber photometry data
+# get fiber photometry data
+fp_data = loc_db.get_sess_fp_data(utils.flatten(sess_ids), reload=True) # , reload=True
+# separate into different dictionaries
+implant_info = fp_data['implant_info']
+fp_data = fp_data['fp_data']
 
-data_path = path.join(utils.get_user_home(), 'fp_data')
-fp_data = {}
-for sess_id in utils.flatten(sess_ids):
-    load_path = path.join(data_path, 'Session_{}.pkl'.format(sess_id))
-    with open(load_path, 'rb') as f:
-        fp_data[sess_id] = pickle.load(f)
-        
-subject_region_sides = {179: {'DMS': 'right', 'PFC': 'left'}}
 
 # %% Process photometry data in different ways
 
-regions = ['DMS', 'PFC'] #
+isos = np.array(['420', '405'])
+ligs = np.array(['490', '465'])
 
-iso_pfc = 'PFC_405'
-iso_dms = 'DMS_405'
-# iso_pfc = 'PFC_420'
-# iso_dms = 'DMS_420'
-lig_pfc = 'PFC_490'
-lig_dms = 'DMS_490'
-# lig_pfc = 'PFC_465'
-# lig_dms = 'DMS_465'
+for subj_id in sess_ids.keys():
+    for sess_id in sess_ids[subj_id]:
+        raw_signals = fp_data[subj_id][sess_id]['raw_signals']
 
-signals_by_region = {region: {'iso': iso_pfc if region == 'PFC' else iso_dms,
-                              'lig': lig_pfc if region == 'PFC' else lig_dms}
-                     for region in regions}
+        fp_data[subj_id][sess_id]['processed_signals'] = {}
 
-for sess_id in utils.flatten(sess_ids):
-    signals = fp_data[sess_id]['signals']
+        for region in raw_signals.keys():
+            lig_sel = np.array([k in raw_signals[region].keys() for k in ligs])
+            iso_sel = np.array([k in raw_signals[region].keys() for k in isos])
+            if sum(lig_sel) > 1:
+                lig = ligs[0]
+            elif sum(lig_sel) == 1:
+                lig = ligs[lig_sel][0]
+            else:
+                raise Exception('No ligand wavelength found')
 
-    fp_data[sess_id]['processed_signals'] = {}
+            if sum(iso_sel) > 1:
+                iso = isos[0]
+            elif sum(iso_sel) == 1:
+                iso = isos[iso_sel][0]
+            else:
+                raise Exception('No isosbestic wavelength found')
 
-    for region, signal_names in signals_by_region.items():
-        raw_lig = signals[signal_names['lig']]
-        raw_iso = signals[signal_names['iso']]
+            raw_lig = raw_signals[region][lig]
+            raw_iso = raw_signals[region][iso]
 
-        fp_data[sess_id]['processed_signals'][region] = fpah.get_all_processed_signals(raw_lig, raw_iso)
-        
+            fp_data[subj_id][sess_id]['processed_signals'][region] = fpah.get_all_processed_signals(raw_lig, raw_iso)
+
 # %% Observe the full signals
 
-for sess_id in utils.flatten(sess_ids):
-    sess_fp = fp_data[sess_id]
-    
-    # get reward times to plot
-    trial_data = sess_data[sess_data['sessid'] == sess_id]
-    trial_start_ts = sess_fp['trial_start_ts'][:-1]
-    reward_sel = trial_data['hit'] == True
-    reward_times = trial_start_ts[reward_sel] + trial_data['response_time'][reward_sel]
-    
-    fpah.view_processed_signals(sess_fp['processed_signals'], sess_fp['time'], title='Full Signals - Session {}'.format(sess_id),
-                                filter_outliers=True, outlier_zthresh=7) #vert_marks=reward_times, #filter_outliers=True, dec=11
+sub_signal = [] # sub signal time limits in seconds
+filter_outliers = True
+
+for subj_id in sess_ids.keys():
+    for sess_id in sess_ids[subj_id]:
+        trial_data = sess_data[sess_data['sessid'] == sess_id]
+        sess_fp = fp_data[subj_id][sess_id]
+
+        if len(sub_signal) > 0:
+            fpah.view_processed_signals(sess_fp['processed_signals'], sess_fp['time'], title='Full Signals - Session {}'.format(sess_id),
+                                        filter_outliers=filter_outliers, outlier_zthresh=7,
+                                        t_min=sub_signal[0], t_max=sub_signal[1], dec=1)
+
+        else:
+            fpah.view_processed_signals(sess_fp['processed_signals'], sess_fp['time'], title='Full Signals - Session {}'.format(sess_id),
+                                        filter_outliers=filter_outliers, outlier_zthresh=7)
+
 
 # %% Construct aligned signal matrices grouped by various factors
 
 signal_types = ['z_dff_iso'] # 'baseline_corr_iso',  'dff_iso', 'z_dff_iso', 'dff_baseline', 'z_dff_baseline', 'df_baseline_iso', 'z_df_baseline_iso'
 
-# whether to nomarlize aligned signals on a trial-by-trial basis to the average of the signal in the window before poking in
-# trial_normalize = False
-# pre_poke_norm_window = np.array([-0.6, -0.1])
-
-# def create_mat(signal, ts, align_ts, pre, post, windows, sel=[]):
-#     if trial_normalize:
-#         return fp_utils.build_trial_dff_signal_matrix(signal, ts, align_ts, pre, post, windows, sel)
-#     else:
-#         return fp_utils.build_signal_matrix(signal, ts, align_ts, pre, post, sel)
-
-# whether to look at all alignments or only the main ones
-main_alignments = True
-
-title_suffix = ''
-
-outlier_thresh = 7 # z-score threshold
-
-data_dict = {sess_id: {signal: {region: {} for region in regions} for signal in signal_types} for sess_id in utils.flatten(sess_ids)}
+all_regions = np.unique([r for s in sess_ids.keys() for r in implant_info[s].keys()])
+data_dict = {sess_id: {signal: {region: {} for region in all_regions} for signal in signal_types} for sess_id in utils.flatten(sess_ids)}
 cport_on = copy.deepcopy(data_dict)
 cpoke_in = copy.deepcopy(data_dict)
 tones = copy.deepcopy(data_dict)
@@ -121,81 +113,80 @@ tone_types = sess_data['response_tone'].unique().tolist()
 sides = ['left', 'right']
 
 for subj_id in sess_ids.keys():
-    
     for sess_id in sess_ids[subj_id]:
-        trial_data = sess_data[sess_data['sessid'] == sess_id]    
-        sess_fp = fp_data[sess_id]
-           
+
+        trial_data = sess_data[sess_data['sessid'] == sess_id]
+        sess_fp = fp_data[subj_id][sess_id]
+
         # ignore trials that didn't start
         trial_start_sel = trial_data['trial_started']
         trial_data = trial_data[trial_start_sel]
-    
+
         # create various trial selection criteria
         hit_sel = trial_data['hit'] == True
         miss_sel = trial_data['hit'] == False
         bail_sel = trial_data['bail'] == True
-        
+
         prev_hit_sel = np.insert(hit_sel[:-1].to_numpy(), 0, False)
         prev_miss_sel = np.insert(miss_sel[:-1].to_numpy(), 0, False)
         prev_bail_sel = np.insert(bail_sel[:-1].to_numpy(), 0, False)
-        
+
         next_resp_sel = np.append(~bail_sel[1:].to_numpy(), False)
         next_bail_sel = np.append(bail_sel[1:].to_numpy(), False)
-        
+
         single_tone_sel = trial_data['n_tones'] == 1
         two_tone_sel = trial_data['n_tones'] == 2
-        
+
         choices = trial_data['choice'].to_numpy()
-        
+
         left_sel = choices == 'left'
         right_sel = choices == 'right'
         prev_left_sel = np.insert(left_sel[:-1], 0, False)
         prev_right_sel = np.insert(right_sel[:-1], 0, False)
-        
+
         prev_choice_same = (choices == trial_data['prev_choice_side']) & ~bail_sel
         prev_choice_diff = (choices != trial_data['prev_choice_side']) & ~bail_sel & ~trial_data['prev_choice_side'].isnull()
-        
+
         next_choice_same = np.append(choices[:-1] == choices[1:], False) & ~bail_sel
         next_choice_diff = np.append(choices[:-1] != choices[1:], False) & ~bail_sel & ~next_bail_sel
-        
+
         prev_trial_same = (trial_data['tone_info_str'] == trial_data['prev_tone_info_str']) & ~bail_sel
         prev_trial_diff = (trial_data['tone_info_str'] != trial_data['prev_tone_info_str']) & ~bail_sel & ~trial_data['prev_tone_info_str'].isnull()
 
         prev_correct_same = (trial_data['correct_port'] == trial_data['prev_choice_correct_port']) & ~bail_sel
         prev_correct_diff = (trial_data['correct_port'] != trial_data['prev_choice_correct_port']) & ~bail_sel & ~trial_data['prev_choice_correct_port'].isnull()
-    
+
         tone_infos = trial_data['tone_info']
         trial_stims = trial_data['tone_info_str']
         prev_trial_stims = trial_data['prev_tone_info_str']
         correct_sides = trial_data['correct_port']
-    
+
         # create the alignment points
         ts = sess_fp['time']
         trial_start_ts = sess_fp['trial_start_ts'][:-1][trial_start_sel]
-        cport_on_ts = trial_start_ts
+        cport_on_ts = trial_start_ts + trial_data['cport_on_time']
         cpoke_in_ts = trial_start_ts + trial_data['cpoke_in_time']
         response_cue_ts = trial_start_ts + trial_data['response_cue_time']
         cpoke_out_ts = trial_start_ts + trial_data['cpoke_out_time']
         response_ts = trial_start_ts + trial_data['response_time']
-        
-        # abs_pre_poke_windows = cpoke_in_ts.to_numpy()[:, None] + pre_poke_norm_window[None, :]        
+
+        # abs_pre_poke_windows = cpoke_in_ts.to_numpy()[:, None] + pre_poke_norm_window[None, :]
         # cpoke_in_windows = abs_pre_poke_windows - cpoke_in_ts.to_numpy()[:, None]
         # cpoke_out_windows = abs_pre_poke_windows - cpoke_out_ts.to_numpy()[:, None]
         # response_windows = abs_pre_poke_windows - response_ts.to_numpy()[:, None]
         # response_cue_windows = abs_pre_poke_windows - response_cue_ts.to_numpy()[:, None]
         # cport_on_windows = abs_pre_poke_windows - cport_on_ts[:, None]
-    
+
         for signal_type in signal_types:
-    
-            for region in regions:
+            for region in sess_fp['processed_signals'].keys():
                 signal = sess_fp['processed_signals'][region][signal_type]
-                region_side = subject_region_sides[subj_id][region]
-    
+                region_side = implant_info[subj_id][region]['side']
+
                 # Center port on
                 pre = 3
                 post = 3
                 mat, t = fp_utils.build_signal_matrix(signal, ts, cport_on_ts, pre, post)
-                
+
                 cport_on['t'] = t
                 cport_on[sess_id][signal_type][region]['prev_hit'] = mat[prev_hit_sel,:]
                 cport_on[sess_id][signal_type][region]['prev_miss'] = mat[prev_miss_sel,:]
@@ -210,12 +201,12 @@ for subj_id in sess_ids.keys():
                 cport_on[sess_id][signal_type][region]['switch_prev_hit'] = mat[prev_hit_sel & prev_choice_diff,:]
                 cport_on[sess_id][signal_type][region]['stay_prev_miss'] = mat[prev_miss_sel & prev_choice_same,:]
                 cport_on[sess_id][signal_type][region]['switch_prev_miss'] = mat[prev_miss_sel & prev_choice_diff,:]
-                
+
                 for side in sides:
                     side_type = 'ipsi' if region_side == side else 'contra'
                     side_sel = left_sel if side == 'left' else right_sel
                     prev_side_sel = prev_left_sel if side == 'left' else prev_right_sel
-                    
+
                     cport_on[sess_id][signal_type][region][side_type] = mat[side_sel,:]
                     cport_on[sess_id][signal_type][region][side_type+'_stay'] = mat[prev_choice_same & side_sel,:]
                     cport_on[sess_id][signal_type][region][side_type+'_switch'] = mat[prev_choice_diff & side_sel,:]
@@ -226,22 +217,22 @@ for subj_id in sess_ids.keys():
                     cport_on[sess_id][signal_type][region][side_type+'_switch_prev_hit'] = mat[prev_hit_sel & prev_choice_diff & side_sel,:]
                     cport_on[sess_id][signal_type][region][side_type+'_stay_prev_miss'] = mat[prev_miss_sel & prev_choice_same & side_sel,:]
                     cport_on[sess_id][signal_type][region][side_type+'_switch_prev_miss'] = mat[prev_miss_sel & prev_choice_diff & side_sel,:]
-                    
+
                     cport_on[sess_id][signal_type][region]['prev_'+side_type] = mat[prev_side_sel,:]
                     cport_on[sess_id][signal_type][region]['prev_'+side_type+'_prev_hit'] = mat[prev_hit_sel & prev_side_sel,:]
                     cport_on[sess_id][signal_type][region]['prev_'+side_type+'_prev_miss'] = mat[prev_miss_sel & prev_side_sel,:]
-                
+
                 for stim_type in stim_types:
                     prev_stim_sel = prev_trial_stims == stim_type
                     cport_on[sess_id][signal_type][region]['prev_stim_'+stim_type] = mat[prev_stim_sel & ~prev_bail_sel,:]
                     cport_on[sess_id][signal_type][region]['prev_stim_'+stim_type+'_prev_hit'] = mat[prev_stim_sel & prev_hit_sel,:]
                     cport_on[sess_id][signal_type][region]['prev_stim_'+stim_type+'_prev_miss'] = mat[prev_stim_sel & prev_miss_sel,:]
-                
+
                 # Center poke in
                 pre = 3
                 post = 3
                 mat, t = fp_utils.build_signal_matrix(signal, ts, cpoke_in_ts, pre, post)
-                
+
                 cpoke_in['t'] = t
                 cpoke_in[sess_id][signal_type][region]['prev_hit'] = mat[prev_hit_sel,:]
                 cpoke_in[sess_id][signal_type][region]['prev_miss'] = mat[prev_miss_sel,:]
@@ -256,7 +247,7 @@ for subj_id in sess_ids.keys():
                 cpoke_in[sess_id][signal_type][region]['switch_prev_hit'] = mat[prev_hit_sel & prev_choice_diff,:]
                 cpoke_in[sess_id][signal_type][region]['stay_prev_miss'] = mat[prev_miss_sel & prev_choice_same,:]
                 cpoke_in[sess_id][signal_type][region]['switch_prev_miss'] = mat[prev_miss_sel & prev_choice_diff,:]
-                
+
                 for side in sides:
                     side_type = 'ipsi' if region_side == side else 'contra'
                     side_sel = left_sel if side == 'left' else right_sel
@@ -272,28 +263,28 @@ for subj_id in sess_ids.keys():
                     cpoke_in[sess_id][signal_type][region][side_type+'_switch_prev_hit'] = mat[prev_hit_sel & prev_choice_diff & side_sel,:]
                     cpoke_in[sess_id][signal_type][region][side_type+'_stay_prev_miss'] = mat[prev_miss_sel & prev_choice_same & side_sel,:]
                     cpoke_in[sess_id][signal_type][region][side_type+'_switch_prev_miss'] = mat[prev_miss_sel & prev_choice_diff & side_sel,:]
-                    
+
                     cpoke_in[sess_id][signal_type][region]['prev_'+side_type] = mat[prev_side_sel,:]
                     cpoke_in[sess_id][signal_type][region]['prev_'+side_type+'_prev_hit'] = mat[prev_hit_sel & prev_side_sel,:]
                     cpoke_in[sess_id][signal_type][region]['prev_'+side_type+'_prev_miss'] = mat[prev_miss_sel & prev_side_sel,:]
-                    
-                    
+
+
                 for stim_type in stim_types:
                     prev_stim_sel = prev_trial_stims == stim_type
                     cpoke_in[sess_id][signal_type][region]['prev_stim_'+stim_type] = mat[prev_stim_sel & ~prev_bail_sel,:]
                     cpoke_in[sess_id][signal_type][region]['prev_stim_'+stim_type+'_prev_hit'] = mat[prev_stim_sel & prev_hit_sel,:]
                     cpoke_in[sess_id][signal_type][region]['prev_stim_'+stim_type+'_prev_miss'] = mat[prev_stim_sel & prev_miss_sel,:]
-                    
-                    
+
+
                 # Tones
                 pre = 1
                 post = 1
-                
+
                 first_tone_ts = trial_start_ts + trial_data['abs_tone_start_times'].apply(lambda x: x[0] if utils.is_list(x) else x)
                 second_tone_ts = trial_start_ts + trial_data['abs_tone_start_times'].apply(lambda x: x[1] if utils.is_list(x) else np.nan)
                 first_mat, t = fp_utils.build_signal_matrix(signal, ts, first_tone_ts, pre, post)
                 second_mat, t = fp_utils.build_signal_matrix(signal, ts, second_tone_ts, pre, post)
-                
+
                 tones['t'] = t
                 tones[sess_id][signal_type][region]['first_all'] = first_mat[~bail_sel, :]
                 tones[sess_id][signal_type][region]['first_hit_all'] = first_mat[hit_sel & ~bail_sel,:]
@@ -302,15 +293,15 @@ for subj_id in sess_ids.keys():
                 tones[sess_id][signal_type][region]['first_miss_one_tone'] = first_mat[miss_sel & single_tone_sel,:]
                 tones[sess_id][signal_type][region]['first_hit_two_tones'] = first_mat[hit_sel & two_tone_sel,:]
                 tones[sess_id][signal_type][region]['first_miss_two_tones'] = first_mat[miss_sel & two_tone_sel,:]
-                
+
                 tones[sess_id][signal_type][region]['second_all'] = second_mat[two_tone_sel & ~bail_sel,:]
                 tones[sess_id][signal_type][region]['second_hit'] = second_mat[hit_sel & two_tone_sel,:]
                 tones[sess_id][signal_type][region]['second_miss'] = second_mat[miss_sel & two_tone_sel,:]
-                
-                for tone_type in tone_types:                   
+
+                for tone_type in tone_types:
                     stim_sel_first = tone_infos.apply(lambda x: x[0] == tone_type if utils.is_list(x) else x == tone_type).to_numpy() & ~bail_sel
                     stim_sel_second = tone_infos.apply(lambda x: x[1] == tone_type if (utils.is_list(x) and len(x) > 1) else False).to_numpy() & ~bail_sel
-                    
+
                     tones[sess_id][signal_type][region]['first_'+tone_type+'_all'] = first_mat[stim_sel_first,:]
                     tones[sess_id][signal_type][region]['first_'+tone_type+'_hit_all'] = first_mat[stim_sel_first & hit_sel,:]
                     tones[sess_id][signal_type][region]['first_'+tone_type+'_miss_all'] = first_mat[stim_sel_first & miss_sel,:]
@@ -318,18 +309,18 @@ for subj_id in sess_ids.keys():
                     tones[sess_id][signal_type][region]['first_'+tone_type+'_miss_one_tone'] = first_mat[stim_sel_first & miss_sel & single_tone_sel,:]
                     tones[sess_id][signal_type][region]['first_'+tone_type+'_hit_two_tones'] = first_mat[stim_sel_first & hit_sel & two_tone_sel,:]
                     tones[sess_id][signal_type][region]['first_'+tone_type+'_miss_two_tones'] = first_mat[stim_sel_first & miss_sel & two_tone_sel,:]
-                    
+
                     tones[sess_id][signal_type][region]['second_'+tone_type+'_all'] = second_mat[stim_sel_second,:]
                     tones[sess_id][signal_type][region]['second_'+tone_type+'_hit'] = second_mat[stim_sel_second & hit_sel,:]
                     tones[sess_id][signal_type][region]['second_'+tone_type+'_miss'] = second_mat[stim_sel_second & miss_sel,:]
-                    
+
                     # TODO: Look at tone type by stimulus type
-                
+
                 # response cue
                 pre = 3
                 post = 3
                 mat, t = fp_utils.build_signal_matrix(signal, ts, response_cue_ts, pre, post)
-                
+
                 response_cue['t'] = t
                 response_cue[sess_id][signal_type][region]['prev_hit'] = mat[prev_hit_sel,:]
                 response_cue[sess_id][signal_type][region]['prev_miss'] = mat[prev_miss_sel,:]
@@ -338,17 +329,17 @@ for subj_id in sess_ids.keys():
                 response_cue[sess_id][signal_type][region]['miss'] = mat[miss_sel,:]
                 response_cue[sess_id][signal_type][region]['stay'] = mat[prev_choice_same,:]
                 response_cue[sess_id][signal_type][region]['switch'] = mat[prev_choice_diff,:]
-                
+
                 response_cue[sess_id][signal_type][region]['stay_prev_hit'] = mat[prev_hit_sel & prev_choice_same,:]
                 response_cue[sess_id][signal_type][region]['switch_prev_hit'] = mat[prev_hit_sel & prev_choice_diff,:]
                 response_cue[sess_id][signal_type][region]['stay_prev_miss'] = mat[prev_miss_sel & prev_choice_same,:]
                 response_cue[sess_id][signal_type][region]['switch_prev_miss'] = mat[prev_miss_sel & prev_choice_diff,:]
-                
+
                 response_cue[sess_id][signal_type][region]['stay_prev_same_correct'] = mat[prev_correct_same & prev_choice_same,:]
                 response_cue[sess_id][signal_type][region]['switch_prev_same_correct'] = mat[prev_correct_same & prev_choice_diff,:]
                 response_cue[sess_id][signal_type][region]['stay_prev_diff_correct'] = mat[prev_correct_diff & prev_choice_same,:]
                 response_cue[sess_id][signal_type][region]['switch_prev_diff_correct'] = mat[prev_correct_diff & prev_choice_diff,:]
-                
+
                 response_cue[sess_id][signal_type][region]['stay_prev_hit_same_correct'] = mat[prev_hit_sel & prev_choice_same & prev_correct_same,:]
                 response_cue[sess_id][signal_type][region]['switch_prev_hit_same_correct'] = mat[prev_hit_sel & prev_choice_diff & prev_correct_same,:]
                 response_cue[sess_id][signal_type][region]['stay_prev_miss_same_correct'] = mat[prev_miss_sel & prev_choice_same & prev_correct_same,:]
@@ -357,12 +348,12 @@ for subj_id in sess_ids.keys():
                 response_cue[sess_id][signal_type][region]['switch_prev_hit_diff_correct'] = mat[prev_hit_sel & prev_choice_diff & prev_correct_diff,:]
                 response_cue[sess_id][signal_type][region]['stay_prev_miss_diff_correct'] = mat[prev_miss_sel & prev_choice_same & prev_correct_diff,:]
                 response_cue[sess_id][signal_type][region]['switch_prev_miss_diff_correct'] = mat[prev_miss_sel & prev_choice_diff & prev_correct_diff,:]
-                
+
                 response_cue[sess_id][signal_type][region]['stay_prev_same_trial'] = mat[prev_trial_same & prev_choice_same,:]
                 response_cue[sess_id][signal_type][region]['switch_prev_same_trial'] = mat[prev_trial_same & prev_choice_diff,:]
                 response_cue[sess_id][signal_type][region]['stay_prev_diff_trial'] = mat[prev_trial_diff & prev_choice_same,:]
                 response_cue[sess_id][signal_type][region]['switch_prev_diff_trial'] = mat[prev_trial_diff & prev_choice_diff,:]
-                
+
                 response_cue[sess_id][signal_type][region]['rewarded_stay_prev_same_trial'] = mat[prev_trial_same & prev_choice_same & hit_sel,:]
                 response_cue[sess_id][signal_type][region]['rewarded_switch_prev_same_trial'] = mat[prev_trial_same & prev_choice_diff & hit_sel,:]
                 response_cue[sess_id][signal_type][region]['rewarded_stay_prev_diff_trial'] = mat[prev_trial_diff & prev_choice_same & hit_sel,:]
@@ -371,32 +362,32 @@ for subj_id in sess_ids.keys():
                 response_cue[sess_id][signal_type][region]['unrewarded_switch_prev_same_trial'] = mat[prev_trial_same & prev_choice_diff & miss_sel,:]
                 response_cue[sess_id][signal_type][region]['unrewarded_stay_prev_diff_trial'] = mat[prev_trial_diff & prev_choice_same & miss_sel,:]
                 response_cue[sess_id][signal_type][region]['unrewarded_switch_prev_diff_trial'] = mat[prev_trial_diff & prev_choice_diff & miss_sel,:]
-                
+
                 for side in sides:
                     side_type = 'ipsi' if region_side == side else 'contra'
                     side_sel = left_sel if side == 'left' else right_sel
                     prev_side_sel = prev_left_sel if side == 'left' else prev_right_sel
-                    
+
                     response_cue[sess_id][signal_type][region][side_type] = mat[side_sel,:]
                     response_cue[sess_id][signal_type][region][side_type+'_prev_hit'] = mat[prev_hit_sel & side_sel,:]
                     response_cue[sess_id][signal_type][region][side_type+'_prev_miss'] = mat[prev_miss_sel & side_sel,:]
                     response_cue[sess_id][signal_type][region][side_type+'_stay'] = mat[side_sel & prev_choice_same,:]
                     response_cue[sess_id][signal_type][region][side_type+'_switch'] = mat[side_sel & prev_choice_diff,:]
-                    
+
                     response_cue[sess_id][signal_type][region][side_type+'_stay_prev_hit'] = mat[prev_hit_sel & prev_choice_same & side_sel,:]
                     response_cue[sess_id][signal_type][region][side_type+'_switch_prev_hit'] = mat[prev_hit_sel & prev_choice_diff & side_sel,:]
                     response_cue[sess_id][signal_type][region][side_type+'_stay_prev_miss'] = mat[prev_miss_sel & prev_choice_same & side_sel,:]
                     response_cue[sess_id][signal_type][region][side_type+'_switch_prev_miss'] = mat[prev_miss_sel & prev_choice_diff & side_sel,:]
-                                    
+
                     response_cue[sess_id][signal_type][region]['prev_'+side_type] = mat[prev_side_sel,:]
                     response_cue[sess_id][signal_type][region]['prev_'+side_type+'_prev_hit'] = mat[prev_hit_sel & prev_side_sel,:]
                     response_cue[sess_id][signal_type][region]['prev_'+side_type+'_prev_miss'] = mat[prev_miss_sel & prev_side_sel,:]
-                    
+
                     correct_sel = correct_sides == side
                     response_cue[sess_id][signal_type][region][side_type+'_correct'] = mat[correct_sel,:]
                     response_cue[sess_id][signal_type][region][side_type+'_correct_hit'] = mat[hit_sel & correct_sel,:]
                     response_cue[sess_id][signal_type][region][side_type+'_correct_miss'] = mat[miss_sel & correct_sel,:]
-                    
+
                 for stim_type in stim_types:
                     stim_sel = trial_stims == stim_type
                     response_cue[sess_id][signal_type][region]['stim_'+stim_type] = mat[stim_sel,:]
@@ -410,7 +401,7 @@ for subj_id in sess_ids.keys():
                 pre = 3
                 post = 3
                 mat, t = fp_utils.build_signal_matrix(signal, ts, cpoke_out_ts, pre, post)
-                
+
                 cpoke_out['t'] = t
                 cpoke_out[sess_id][signal_type][region]['prev_hit'] = mat[prev_hit_sel & ~bail_sel,:]
                 cpoke_out[sess_id][signal_type][region]['prev_miss'] = mat[prev_miss_sel & ~bail_sel,:]
@@ -420,17 +411,17 @@ for subj_id in sess_ids.keys():
                 cpoke_out[sess_id][signal_type][region]['bail'] = mat[bail_sel,:]
                 cpoke_out[sess_id][signal_type][region]['stay'] = mat[prev_choice_same,:]
                 cpoke_out[sess_id][signal_type][region]['switch'] = mat[prev_choice_diff,:]
-                
+
                 cpoke_out[sess_id][signal_type][region]['stay_prev_hit'] = mat[prev_hit_sel & prev_choice_same,:]
                 cpoke_out[sess_id][signal_type][region]['switch_prev_hit'] = mat[prev_hit_sel & prev_choice_diff,:]
                 cpoke_out[sess_id][signal_type][region]['stay_prev_miss'] = mat[prev_miss_sel & prev_choice_same,:]
                 cpoke_out[sess_id][signal_type][region]['switch_prev_miss'] = mat[prev_miss_sel & prev_choice_diff,:]
-                
+
                 cpoke_out[sess_id][signal_type][region]['stay_prev_same_correct'] = mat[prev_correct_same & prev_choice_same,:]
                 cpoke_out[sess_id][signal_type][region]['switch_prev_same_correct'] = mat[prev_correct_same & prev_choice_diff,:]
                 cpoke_out[sess_id][signal_type][region]['stay_prev_diff_correct'] = mat[prev_correct_diff & prev_choice_same,:]
                 cpoke_out[sess_id][signal_type][region]['switch_prev_diff_correct'] = mat[prev_correct_diff & prev_choice_diff,:]
-                
+
                 cpoke_out[sess_id][signal_type][region]['stay_prev_hit_same_correct'] = mat[prev_hit_sel & prev_choice_same & prev_correct_same,:]
                 cpoke_out[sess_id][signal_type][region]['switch_prev_hit_same_correct'] = mat[prev_hit_sel & prev_choice_diff & prev_correct_same,:]
                 cpoke_out[sess_id][signal_type][region]['stay_prev_miss_same_correct'] = mat[prev_miss_sel & prev_choice_same & prev_correct_same,:]
@@ -439,17 +430,17 @@ for subj_id in sess_ids.keys():
                 cpoke_out[sess_id][signal_type][region]['switch_prev_hit_diff_correct'] = mat[prev_hit_sel & prev_choice_diff & prev_correct_diff,:]
                 cpoke_out[sess_id][signal_type][region]['stay_prev_miss_diff_correct'] = mat[prev_miss_sel & prev_choice_same & prev_correct_diff,:]
                 cpoke_out[sess_id][signal_type][region]['switch_prev_miss_diff_correct'] = mat[prev_miss_sel & prev_choice_diff & prev_correct_diff,:]
-                
+
                 cpoke_out[sess_id][signal_type][region]['stay_prev_same_trial'] = mat[prev_trial_same & prev_choice_same,:]
                 cpoke_out[sess_id][signal_type][region]['switch_prev_same_trial'] = mat[prev_trial_same & prev_choice_diff,:]
                 cpoke_out[sess_id][signal_type][region]['stay_prev_diff_trial'] = mat[prev_trial_diff & prev_choice_same,:]
                 cpoke_out[sess_id][signal_type][region]['switch_prev_diff_trial'] = mat[prev_trial_diff & prev_choice_diff,:]
-                
+
                 for side in sides:
                     side_type = 'ipsi' if region_side == side else 'contra'
                     side_sel = left_sel if side == 'left' else right_sel
                     prev_side_sel = (prev_left_sel if side == 'left' else prev_right_sel) & ~bail_sel
-                    
+
                     cpoke_out[sess_id][signal_type][region][side_type] = mat[side_sel,:]
                     cpoke_out[sess_id][signal_type][region][side_type+'_prev_hit'] = mat[prev_hit_sel & side_sel,:]
                     cpoke_out[sess_id][signal_type][region][side_type+'_prev_miss'] = mat[prev_miss_sel & side_sel,:]
@@ -460,16 +451,16 @@ for subj_id in sess_ids.keys():
                     cpoke_out[sess_id][signal_type][region][side_type+'_switch_prev_hit'] = mat[prev_hit_sel & prev_choice_diff & side_sel,:]
                     cpoke_out[sess_id][signal_type][region][side_type+'_stay_prev_miss'] = mat[prev_miss_sel & prev_choice_same & side_sel,:]
                     cpoke_out[sess_id][signal_type][region][side_type+'_switch_prev_miss'] = mat[prev_miss_sel & prev_choice_diff & side_sel,:]
-                  
+
                     cpoke_out[sess_id][signal_type][region]['prev_'+side_type] = mat[prev_side_sel,:]
                     cpoke_out[sess_id][signal_type][region]['prev_'+side_type+'_prev_hit'] = mat[prev_hit_sel & prev_side_sel,:]
                     cpoke_out[sess_id][signal_type][region]['prev_'+side_type+'_prev_miss'] = mat[prev_miss_sel & prev_side_sel,:]
-                    
+
                     correct_sel = (correct_sides == side) & ~bail_sel
                     cpoke_out[sess_id][signal_type][region][side_type+'_correct'] = mat[correct_sel,:]
                     cpoke_out[sess_id][signal_type][region][side_type+'_correct_hit'] = mat[hit_sel & correct_sel,:]
                     cpoke_out[sess_id][signal_type][region][side_type+'_correct_miss'] = mat[miss_sel & correct_sel,:]
- 
+
                 for stim_type in stim_types:
                     stim_sel = (trial_stims == stim_type) & ~bail_sel
                     cpoke_out[sess_id][signal_type][region]['stim_'+stim_type] = mat[stim_sel,:]
@@ -477,12 +468,12 @@ for subj_id in sess_ids.keys():
                     cpoke_out[sess_id][signal_type][region]['stim_'+stim_type+'_prev_miss'] = mat[stim_sel & prev_miss_sel,:]
                     cpoke_out[sess_id][signal_type][region]['stim_'+stim_type+'_hit'] = mat[stim_sel & hit_sel,:]
                     cpoke_out[sess_id][signal_type][region]['stim_'+stim_type+'_miss'] = mat[stim_sel & miss_sel,:]
-    
+
                 # response
                 pre = 3
                 post = 10
                 mat, t = fp_utils.build_signal_matrix(signal, ts, response_ts, pre, post)
-                
+
                 response['t'] = t
                 response[sess_id][signal_type][region]['prev_hit'] = mat[prev_hit_sel & ~bail_sel,:]
                 response[sess_id][signal_type][region]['prev_miss'] = mat[prev_miss_sel & ~bail_sel,:]
@@ -492,17 +483,17 @@ for subj_id in sess_ids.keys():
                 response[sess_id][signal_type][region]['bail'] = mat[bail_sel,:]
                 response[sess_id][signal_type][region]['stay'] = mat[prev_choice_same,:]
                 response[sess_id][signal_type][region]['switch'] = mat[prev_choice_diff,:]
-                
+
                 response[sess_id][signal_type][region]['rewarded_stay'] = mat[prev_choice_same & hit_sel,:]
                 response[sess_id][signal_type][region]['rewarded_switch'] = mat[prev_choice_diff & hit_sel,:]
                 response[sess_id][signal_type][region]['unrewarded_stay'] = mat[prev_choice_same & miss_sel,:]
                 response[sess_id][signal_type][region]['unrewarded_switch'] = mat[prev_choice_diff & miss_sel,:]
-                
+
                 response[sess_id][signal_type][region]['stay_prev_hit'] = mat[prev_hit_sel & prev_choice_same,:]
                 response[sess_id][signal_type][region]['switch_prev_hit'] = mat[prev_hit_sel & prev_choice_diff,:]
                 response[sess_id][signal_type][region]['stay_prev_miss'] = mat[prev_miss_sel & prev_choice_same,:]
                 response[sess_id][signal_type][region]['switch_prev_miss'] = mat[prev_miss_sel & prev_choice_diff,:]
-                
+
                 response[sess_id][signal_type][region]['rewarded_stay_prev_hit'] = mat[prev_hit_sel & prev_choice_same & hit_sel,:]
                 response[sess_id][signal_type][region]['rewarded_switch_prev_hit'] = mat[prev_hit_sel & prev_choice_diff & hit_sel,:]
                 response[sess_id][signal_type][region]['rewarded_stay_prev_miss'] = mat[prev_miss_sel & prev_choice_same & hit_sel,:]
@@ -511,12 +502,12 @@ for subj_id in sess_ids.keys():
                 response[sess_id][signal_type][region]['unrewarded_switch_prev_hit'] = mat[prev_hit_sel & prev_choice_diff & miss_sel,:]
                 response[sess_id][signal_type][region]['unrewarded_stay_prev_miss'] = mat[prev_miss_sel & prev_choice_same & miss_sel,:]
                 response[sess_id][signal_type][region]['unrewarded_switch_prev_miss'] = mat[prev_miss_sel & prev_choice_diff & miss_sel,:]
-                
+
                 response[sess_id][signal_type][region]['stay_prev_same_correct'] = mat[prev_correct_same & prev_choice_same,:]
                 response[sess_id][signal_type][region]['switch_prev_same_correct'] = mat[prev_correct_same & prev_choice_diff,:]
                 response[sess_id][signal_type][region]['stay_prev_diff_correct'] = mat[prev_correct_diff & prev_choice_same,:]
                 response[sess_id][signal_type][region]['switch_prev_diff_correct'] = mat[prev_correct_diff & prev_choice_diff,:]
-                
+
                 response[sess_id][signal_type][region]['stay_prev_hit_same_correct'] = mat[prev_hit_sel & prev_choice_same & prev_correct_same,:]
                 response[sess_id][signal_type][region]['switch_prev_hit_same_correct'] = mat[prev_hit_sel & prev_choice_diff & prev_correct_same,:]
                 response[sess_id][signal_type][region]['stay_prev_miss_same_correct'] = mat[prev_miss_sel & prev_choice_same & prev_correct_same,:]
@@ -530,7 +521,7 @@ for subj_id in sess_ids.keys():
                 response[sess_id][signal_type][region]['switch_prev_same_trial'] = mat[prev_trial_same & prev_choice_diff,:]
                 response[sess_id][signal_type][region]['stay_prev_diff_trial'] = mat[prev_trial_diff & prev_choice_same,:]
                 response[sess_id][signal_type][region]['switch_prev_diff_trial'] = mat[prev_trial_diff & prev_choice_diff,:]
-                
+
                 response[sess_id][signal_type][region]['rewarded_stay_prev_same_trial'] = mat[prev_trial_same & prev_choice_same & hit_sel,:]
                 response[sess_id][signal_type][region]['rewarded_switch_prev_same_trial'] = mat[prev_trial_same & prev_choice_diff & hit_sel,:]
                 response[sess_id][signal_type][region]['rewarded_stay_prev_diff_trial'] = mat[prev_trial_diff & prev_choice_same & hit_sel,:]
@@ -539,22 +530,22 @@ for subj_id in sess_ids.keys():
                 response[sess_id][signal_type][region]['unrewarded_switch_prev_same_trial'] = mat[prev_trial_same & prev_choice_diff & miss_sel,:]
                 response[sess_id][signal_type][region]['unrewarded_stay_prev_diff_trial'] = mat[prev_trial_diff & prev_choice_same & miss_sel,:]
                 response[sess_id][signal_type][region]['unrewarded_switch_prev_diff_trial'] = mat[prev_trial_diff & prev_choice_diff & miss_sel,:]
-                
+
                 response[sess_id][signal_type][region]['rewarded_future_resp'] = mat[next_resp_sel & hit_sel,:]
                 response[sess_id][signal_type][region]['rewarded_future_bail'] = mat[next_bail_sel & hit_sel,:]
                 response[sess_id][signal_type][region]['unrewarded_future_resp'] = mat[next_resp_sel & miss_sel,:]
                 response[sess_id][signal_type][region]['unrewarded_future_bail'] = mat[next_bail_sel & miss_sel,:]
-                
+
                 response[sess_id][signal_type][region]['rewarded_future_stay'] = mat[next_choice_same & hit_sel,:]
                 response[sess_id][signal_type][region]['rewarded_future_switch'] = mat[next_choice_diff & hit_sel,:]
                 response[sess_id][signal_type][region]['unrewarded_future_stay'] = mat[next_choice_same & miss_sel,:]
                 response[sess_id][signal_type][region]['unrewarded_future_switch'] = mat[next_choice_diff & miss_sel,:]
-                
+
                 for side in sides:
                     side_type = 'ipsi' if region_side == side else 'contra'
                     side_sel = left_sel if side == 'left' else right_sel
                     prev_side_sel = (prev_left_sel if side == 'left' else prev_right_sel) & ~bail_sel
-                    
+
                     response[sess_id][signal_type][region][side_type] = mat[side_sel,:]
                     response[sess_id][signal_type][region][side_type+'_rewarded'] = mat[side_sel & hit_sel,:]
                     response[sess_id][signal_type][region][side_type+'_unrewarded'] = mat[side_sel & miss_sel,:]
@@ -564,19 +555,19 @@ for subj_id in sess_ids.keys():
                     response[sess_id][signal_type][region][side_type+'_rewarded_prev_miss'] = mat[prev_miss_sel & side_sel & hit_sel,:]
                     response[sess_id][signal_type][region][side_type+'_unrewarded_prev_hit'] = mat[prev_hit_sel & side_sel & miss_sel,:]
                     response[sess_id][signal_type][region][side_type+'_unrewarded_prev_miss'] = mat[prev_miss_sel & side_sel & miss_sel,:]
-                    
+
                     response[sess_id][signal_type][region][side_type+'_stay'] = mat[side_sel & prev_choice_same,:]
                     response[sess_id][signal_type][region][side_type+'_switch'] = mat[side_sel & prev_choice_diff,:]
                     response[sess_id][signal_type][region][side_type+'_stay_rewarded'] = mat[side_sel & prev_choice_same & hit_sel,:]
                     response[sess_id][signal_type][region][side_type+'_switch_rewarded'] = mat[side_sel & prev_choice_diff & hit_sel,:]
                     response[sess_id][signal_type][region][side_type+'_stay_unrewarded'] = mat[side_sel & prev_choice_same & miss_sel,:]
                     response[sess_id][signal_type][region][side_type+'_switch_unrewarded'] = mat[side_sel & prev_choice_diff & miss_sel,:]
-                    
+
                     response[sess_id][signal_type][region][side_type+'_stay_prev_hit'] = mat[prev_hit_sel & prev_choice_same & side_sel,:]
                     response[sess_id][signal_type][region][side_type+'_switch_prev_hit'] = mat[prev_hit_sel & prev_choice_diff & side_sel,:]
                     response[sess_id][signal_type][region][side_type+'_stay_prev_miss'] = mat[prev_miss_sel & prev_choice_same & side_sel,:]
                     response[sess_id][signal_type][region][side_type+'_switch_prev_miss'] = mat[prev_miss_sel & prev_choice_diff & side_sel,:]
-                    
+
                     response[sess_id][signal_type][region][side_type+'_stay_rewarded_prev_hit'] = mat[prev_hit_sel & prev_choice_same & side_sel & hit_sel,:]
                     response[sess_id][signal_type][region][side_type+'_switch_rewarded_prev_hit'] = mat[prev_hit_sel & prev_choice_diff & side_sel & hit_sel,:]
                     response[sess_id][signal_type][region][side_type+'_stay_rewarded_prev_miss'] = mat[prev_miss_sel & prev_choice_same & side_sel & hit_sel,:]
@@ -585,12 +576,12 @@ for subj_id in sess_ids.keys():
                     response[sess_id][signal_type][region][side_type+'_switch_unrewarded_prev_hit'] = mat[prev_hit_sel & prev_choice_diff & side_sel & miss_sel,:]
                     response[sess_id][signal_type][region][side_type+'_stay_unrewarded_prev_miss'] = mat[prev_miss_sel & prev_choice_same & side_sel & miss_sel,:]
                     response[sess_id][signal_type][region][side_type+'_switch_unrewarded_prev_miss'] = mat[prev_miss_sel & prev_choice_diff & side_sel & miss_sel,:]
-                    
+
                     response[sess_id][signal_type][region][side_type+'_stay_prev_same_correct'] = mat[prev_correct_same & prev_choice_same & side_sel,:]
                     response[sess_id][signal_type][region][side_type+'_switch_prev_same_correct'] = mat[prev_correct_same & prev_choice_diff & side_sel,:]
                     response[sess_id][signal_type][region][side_type+'_stay_prev_diff_correct'] = mat[prev_correct_diff & prev_choice_same & side_sel,:]
                     response[sess_id][signal_type][region][side_type+'_switch_prev_diff_correct'] = mat[prev_correct_diff & prev_choice_diff & side_sel,:]
-                    
+
                     response[sess_id][signal_type][region][side_type+'_stay_prev_hit_same_correct'] = mat[prev_hit_sel & prev_choice_same & prev_correct_same & side_sel,:]
                     response[sess_id][signal_type][region][side_type+'_switch_prev_hit_same_correct'] = mat[prev_hit_sel & prev_choice_diff & prev_correct_same & side_sel,:]
                     response[sess_id][signal_type][region][side_type+'_stay_prev_miss_same_correct'] = mat[prev_miss_sel & prev_choice_same & prev_correct_same & side_sel,:]
@@ -599,22 +590,22 @@ for subj_id in sess_ids.keys():
                     response[sess_id][signal_type][region][side_type+'_switch_prev_hit_diff_correct'] = mat[prev_hit_sel & prev_choice_diff & prev_correct_diff & side_sel,:]
                     response[sess_id][signal_type][region][side_type+'_stay_prev_miss_diff_correct'] = mat[prev_miss_sel & prev_choice_same & prev_correct_diff & side_sel,:]
                     response[sess_id][signal_type][region][side_type+'_switch_prev_miss_diff_correct'] = mat[prev_miss_sel & prev_choice_diff & prev_correct_diff & side_sel,:]
-                    
+
                     response[sess_id][signal_type][region][side_type+'_rewarded_future_resp'] = mat[next_resp_sel & hit_sel & side_sel,:]
                     response[sess_id][signal_type][region][side_type+'_rewarded_future_bail'] = mat[next_bail_sel & hit_sel & side_sel,:]
                     response[sess_id][signal_type][region][side_type+'_unrewarded_future_resp'] = mat[next_resp_sel & miss_sel & side_sel,:]
                     response[sess_id][signal_type][region][side_type+'_unrewarded_future_bail'] = mat[next_bail_sel & miss_sel & side_sel,:]
-                    
+
                     response[sess_id][signal_type][region][side_type+'_rewarded_future_stay'] = mat[next_choice_same & hit_sel & side_sel,:]
                     response[sess_id][signal_type][region][side_type+'_rewarded_future_switch'] = mat[next_choice_diff & hit_sel & side_sel,:]
                     response[sess_id][signal_type][region][side_type+'_unrewarded_future_stay'] = mat[next_choice_same & miss_sel & side_sel,:]
                     response[sess_id][signal_type][region][side_type+'_unrewarded_future_switch'] = mat[next_choice_diff & miss_sel & side_sel,:]
-                    
+
                     correct_sel = (correct_sides == side) & ~bail_sel
                     response[sess_id][signal_type][region][side_type+'_correct'] = mat[correct_sel,:]
                     response[sess_id][signal_type][region][side_type+'_correct_hit'] = mat[hit_sel & correct_sel,:]
                     response[sess_id][signal_type][region][side_type+'_correct_miss'] = mat[miss_sel & correct_sel,:]
-                    
+
                 for stim_type in stim_types:
                     stim_sel = (trial_stims == stim_type) & ~bail_sel
                     response[sess_id][signal_type][region]['stim_'+stim_type] = mat[stim_sel,:]
@@ -626,11 +617,12 @@ for subj_id in sess_ids.keys():
 
 # %% plot alignment results
 
+# title_suffix = ''
 # outlier_thresh = 8 # z-score threshold
 
 # for sess_id in sess_ids:
 #     for signal_type in signal_types:
-        
+
 #         # get appropriate labels
 #         signal_type_title, signal_type_label = fpah.get_signal_type_labels(signal_type)
 
@@ -699,13 +691,17 @@ for subj_id in sess_ids.keys():
 # %% Plot Averaged Signals over multiple sessions
 
 signal_type = 'z_dff_iso'
-regions = ['DMS', 'PFC']
-region_names = {'DMS': 'DMS', 'PFC': 'PL'}
-subjects = [179]
+regions = ['DMS', 'PL']
+subjects = list(sess_ids.keys())
 filter_outliers = True
 outlier_thresh = 20
 use_se = True
+ph = 3.5;
+pw = 5;
+n_reg = len(regions)
+resp_reg_xlims = {'DMS': [-1.5,1.5], 'PL': [-2,10]}
 
+# make this wrapper to simplify the stack command by not having to include the options declared above
 def stack_mats(mat_dict, groups=None):
     return fpah.stack_fp_mats(mat_dict, regions, sess_ids, subjects, signal_type, filter_outliers, outlier_thresh, groups)
 
@@ -722,11 +718,6 @@ tone_mats = stack_mats(tones)
 cue_mats = stack_mats(response_cue)
 resp_mats = stack_mats(response)
 
-ph = 3.5;
-pw = 5;
-n_reg = len(regions)
-
-resp_reg_xlims = {'DMS': [-1.5,1.5], 'PFC': [-2,10]}
 
 # %% Choice, side, and prior reward groupings for multiple alignment points
 
@@ -745,20 +736,20 @@ x_labels = ['port on', 'poke in', 'response cue', 'poke out', 'response poke']
 n_cols = 3
 
 for mat, t, title, x_label in zip(mats, ts, titles, x_labels):
-    
+
     fig, axs = plt.subplots(n_reg, n_cols, figsize=(pw*n_cols, ph*n_reg), layout='constrained', sharey='row')
     fig.suptitle('Choice Side & Stay/Switch Groupings Aligned to ' + title)
-    
+
     legend_locs = ['upper right', 'upper right']
     for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
-        
+
         if title == 'Response':
             xlims = resp_reg_xlims[region]
         else:
             xlims = [-1.5,1.5]
 
         ax = axs[i,0]
-        ax.set_title('{} Stay/Switch - {}'.format(region_names[region], title))
+        ax.set_title('{} Stay/Switch - {}'.format(region, title))
         # if title == 'Response':
         #     plot_utils.plot_dashlines(0.5, ax=ax)
         for group in choice_groups:
@@ -768,9 +759,9 @@ for mat, t, title, x_label in zip(mats, ts, titles, x_labels):
         ax.set_xlabel('Time from {} (s)'.format(x_label))
         ax.set_xlim(xlims)
         ax.legend(loc=legend_loc)
-        
+
         ax = axs[i,1]
-        ax.set_title('{} Choice Side - {}'.format(region_names[region], title))
+        ax.set_title('{} Choice Side - {}'.format(region, title))
         # if title == 'Response':
         #     plot_utils.plot_dashlines(0.5, ax=ax)
         for group in side_groups:
@@ -780,15 +771,15 @@ for mat, t, title, x_label in zip(mats, ts, titles, x_labels):
         ax.set_xlabel('Time from {} (s)'.format(x_label))
         ax.set_xlim(xlims)
         ax.legend(loc=legend_loc)
-        
+
         ax = axs[i,2]
-        ax.set_title('{} Stay/Switch & Side - {}'.format(region_names[region], title))
+        ax.set_title('{} Stay/Switch & Side - {}'.format(region, title))
         # if title == 'Response':
         #     plot_utils.plot_dashlines(0.5, ax=ax)
         for group in choice_side_groups:
             act = mat[region][group]
             plot_utils.plot_psth(np.nanmean(act, axis=0), t, calc_error(act), ax, label=group_labels[group])
-        
+
         ax.yaxis.set_tick_params(which='both', labelleft=True)
         ax.set_xlabel('Time from {} (s)'.format(x_label))
         ax.set_xlim(xlims)
@@ -809,20 +800,20 @@ x_labels = ['port on', 'response cue', 'poke out', 'response poke']
 n_cols = 2
 
 for mat, t, title, x_label in zip(mats, ts, titles, x_labels):
-    
+
     fig, axs = plt.subplots(n_reg, n_cols, figsize=(pw*n_cols, ph*n_reg), layout='constrained', sharey='row')
     fig.suptitle('Prior Outcome by Stay/Switch & Side Groupings Aligned to ' + title)
-    
+
     legend_locs = ['upper left', 'upper right']
     for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
-        
+
         if title == 'Response':
             xlims = resp_reg_xlims[region]
         else:
             xlims = [-1.5,1.5]
 
         ax = axs[i,0]
-        ax.set_title('{} Prior Outcome - {}'.format(region_names[region], title))
+        ax.set_title('{} Prior Outcome - {}'.format(region, title))
         # if title == 'Response':
         #     plot_utils.plot_dashlines(0.5, ax=ax)
         for group in prev_outcome_groups:
@@ -832,9 +823,9 @@ for mat, t, title, x_label in zip(mats, ts, titles, x_labels):
         ax.set_xlabel('Time from {} (s)'.format(x_label))
         ax.set_xlim(xlims)
         ax.legend(loc=legend_loc)
-        
+
         ax = axs[i,1]
-        ax.set_title('{} Outcome - {}'.format(region_names[region], title))
+        ax.set_title('{} Outcome - {}'.format(region, title))
         # if title == 'Response':
         #     plot_utils.plot_dashlines(0.5, ax=ax)
         for group in outcome_groups:
@@ -846,7 +837,7 @@ for mat, t, title, x_label in zip(mats, ts, titles, x_labels):
         ax.set_xlabel('Time from {} (s)'.format(x_label))
         ax.set_xlim(xlims)
         ax.legend(loc=legend_loc)
-        
+
 
 # prior reward/choice/side
 choice_groups = ['stay_prev_hit', 'switch_prev_hit', 'stay_prev_miss', 'switch_prev_miss']
@@ -865,20 +856,20 @@ group_labels = {'stay_prev_hit': 'Stay | Hit', 'switch_prev_hit': 'Switch | Hit'
 n_cols = 4
 
 for mat, t, title, x_label in zip(mats, ts, titles, x_labels):
-    
+
     fig, axs = plt.subplots(n_reg, n_cols, figsize=(pw*n_cols, ph*n_reg), layout='constrained', sharey='row')
     fig.suptitle('Prior Outcome by Stay/Switch and Side Groupings Aligned to ' + title)
-    
+
     legend_locs = ['upper left', 'upper right']
     for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
-        
+
         if title == 'Response':
             xlims = resp_reg_xlims[region]
         else:
             xlims = [-1.5,1.5]
 
         ax = axs[i,0]
-        ax.set_title('{} Stay/Switch by Prior Outcome - {}'.format(region_names[region], title))
+        ax.set_title('{} Stay/Switch by Prior Outcome - {}'.format(region, title))
         # if title == 'Response':
         #     plot_utils.plot_dashlines(0.5, ax=ax)
         for group in choice_groups:
@@ -888,22 +879,22 @@ for mat, t, title, x_label in zip(mats, ts, titles, x_labels):
         ax.set_xlabel('Time from {} (s)'.format(x_label))
         ax.set_xlim(xlims)
         ax.legend(loc=legend_loc)
-        
+
         ax = axs[i,1]
-        ax.set_title('{} Choice Side by Prior Outcome - {}'.format(region_names[region], title))
+        ax.set_title('{} Choice Side by Prior Outcome - {}'.format(region, title))
         # if title == 'Response':
         #     plot_utils.plot_dashlines(0.5, ax=ax)
         for group in side_groups:
             act = mat[region][group]
             plot_utils.plot_psth(np.nanmean(act, axis=0), t, calc_error(act), ax, label=group_labels[group])
-        
+
         ax.yaxis.set_tick_params(which='both', labelleft=True)
         ax.set_xlabel('Time from {} (s)'.format(x_label))
         ax.set_xlim(xlims)
         ax.legend(loc=legend_loc)
 
         ax = axs[i,2]
-        ax.set_title('{} Prior Hit - {}'.format(region_names[region], title))
+        ax.set_title('{} Prior Hit - {}'.format(region, title))
         # if title == 'Response':
         #     plot_utils.plot_dashlines(0.5, ax=ax)
         for group in rew_groups:
@@ -913,9 +904,9 @@ for mat, t, title, x_label in zip(mats, ts, titles, x_labels):
         ax.set_xlabel('Time from {} (s)'.format(x_label))
         ax.set_xlim(xlims)
         ax.legend(loc=legend_loc)
-        
+
         ax = axs[i,3]
-        ax.set_title('{} Prior Miss - {}'.format(region_names[region], title))
+        ax.set_title('{} Prior Miss - {}'.format(region, title))
         # if title == 'Response':
         #     plot_utils.plot_dashlines(0.5, ax=ax)
         for group in unrew_groups:
@@ -937,20 +928,20 @@ x_labels = ['port on', 'poke in']
 n_cols = 3
 
 for mat, t, title, x_label in zip(mats, ts, titles, x_labels):
-    
+
     fig, axs = plt.subplots(n_reg, n_cols, figsize=(pw*n_cols, ph*n_reg), layout='constrained', sharey='row')
     fig.suptitle('Prior Stimulus and Outcome Groupings Aligned to ' + title)
-    
+
     legend_locs = ['upper left', 'upper right']
     for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
-        
+
         if title == 'Response':
             xlims = resp_reg_xlims[region]
         else:
             xlims = [-1.5,1.5]
 
         ax = axs[i,0]
-        ax.set_title('{} Prior Stimulus - {}'.format(region_names[region], title))
+        ax.set_title('{} Prior Stimulus - {}'.format(region, title))
         # if title == 'Response':
         #     plot_utils.plot_dashlines(0.5, ax=ax)
         for stim_type in stim_types:
@@ -960,9 +951,9 @@ for mat, t, title, x_label in zip(mats, ts, titles, x_labels):
         ax.set_xlabel('Time from {} (s)'.format(x_label))
         ax.set_xlim(xlims)
         ax.legend(loc=legend_loc)
-        
+
         ax = axs[i,1]
-        ax.set_title('{} Prior Stimulus & Hit - {}'.format(region_names[region], title))
+        ax.set_title('{} Prior Stimulus & Hit - {}'.format(region, title))
         # if title == 'Response':
         #     plot_utils.plot_dashlines(0.5, ax=ax)
         for stim_type in stim_types:
@@ -972,9 +963,9 @@ for mat, t, title, x_label in zip(mats, ts, titles, x_labels):
         ax.set_xlabel('Time from {} (s)'.format(x_label))
         ax.set_xlim(xlims)
         ax.legend(loc=legend_loc)
-        
+
         ax = axs[i,2]
-        ax.set_title('{} Prior Stimulus & Miss - {}'.format(region_names[region], title))
+        ax.set_title('{} Prior Stimulus & Miss - {}'.format(region, title))
         # if title == 'Response':
         #     plot_utils.plot_dashlines(0.5, ax=ax)
         for stim_type in stim_types:
@@ -984,7 +975,7 @@ for mat, t, title, x_label in zip(mats, ts, titles, x_labels):
         ax.set_xlabel('Time from {} (s)'.format(x_label))
         ax.set_xlim(xlims)
         ax.legend(loc=legend_loc)
-        
+
 
 # current stimuli/prior outcome
 mats = [cue_mats, cpoke_out_mats, resp_mats]
@@ -994,20 +985,20 @@ x_labels = ['response cue', 'poke out', 'response poke']
 n_cols = 3
 
 for mat, t, title, x_label in zip(mats, ts, titles, x_labels):
-    
+
     fig, axs = plt.subplots(n_reg, n_cols, figsize=(pw*n_cols, ph*n_reg), layout='constrained', sharey='row')
     fig.suptitle('Prior Outcome and Current Stimulus Groupings Aligned to ' + title)
-    
+
     legend_locs = ['upper left', 'upper right']
     for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
-        
+
         if title == 'Response':
             xlims = resp_reg_xlims[region]
         else:
             xlims = [-1.5,1.5]
 
         ax = axs[i,0]
-        ax.set_title('{} Current Stimulus - {}'.format(region_names[region], title))
+        ax.set_title('{} Current Stimulus - {}'.format(region, title))
         # if title == 'Response':
         #     plot_utils.plot_dashlines(0.5, ax=ax)
         for stim_type in stim_types:
@@ -1017,9 +1008,9 @@ for mat, t, title, x_label in zip(mats, ts, titles, x_labels):
         ax.set_xlabel('Time from {} (s)'.format(x_label))
         ax.set_xlim(xlims)
         ax.legend(loc=legend_loc)
-        
+
         ax = axs[i,1]
-        ax.set_title('{} Current Stimulus Hits - {}'.format(region_names[region], title))
+        ax.set_title('{} Current Stimulus Hits - {}'.format(region, title))
         # if title == 'Response':
         #     plot_utils.plot_dashlines(0.5, ax=ax)
         for stim_type in stim_types:
@@ -1029,9 +1020,9 @@ for mat, t, title, x_label in zip(mats, ts, titles, x_labels):
         ax.set_xlabel('Time from {} (s)'.format(x_label))
         ax.set_xlim(xlims)
         ax.legend(loc=legend_loc)
-        
+
         ax = axs[i,2]
-        ax.set_title('{} Current Stimulus Misses - {}'.format(region_names[region], title))
+        ax.set_title('{} Current Stimulus Misses - {}'.format(region, title))
         # if title == 'Response':
         #     plot_utils.plot_dashlines(0.5, ax=ax)
         for stim_type in stim_types:
@@ -1041,9 +1032,9 @@ for mat, t, title, x_label in zip(mats, ts, titles, x_labels):
         ax.set_xlabel('Time from {} (s)'.format(x_label))
         ax.set_xlim(xlims)
         ax.legend(loc=legend_loc)
-        
 
-# side of correct choice        
+
+# side of correct choice
 mats = [cue_mats, cpoke_out_mats, resp_mats]
 ts = [response_cue['t'], cpoke_out['t'], response['t']]
 titles = ['Response Cue', 'Center Poke Out', 'Response']
@@ -1057,20 +1048,20 @@ group_labels = {'contra_correct': 'Contra', 'ipsi_correct': 'Ipsi',
                 'contra_correct_miss': 'Contra Miss', 'ipsi_correct_miss': 'Ipsi Miss'}
 
 for mat, t, title, x_label in zip(mats, ts, titles, x_labels):
-    
+
     fig, axs = plt.subplots(n_reg, n_cols, figsize=(pw*n_cols, ph*n_reg), layout='constrained', sharey='row')
     fig.suptitle('Correct Side by Outcome Aligned to ' + title)
-    
+
     legend_locs = ['upper left', 'upper right']
     for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
-        
+
         if title == 'Response':
             xlims = resp_reg_xlims[region]
         else:
             xlims = [-1.5,1.5]
 
         ax = axs[i,0]
-        ax.set_title('{} Correct Side - {}'.format(region_names[region], title))
+        ax.set_title('{} Correct Side - {}'.format(region, title))
         # if title == 'Response':
         #     plot_utils.plot_dashlines(0.5, ax=ax)
         for group in side_groups:
@@ -1080,9 +1071,9 @@ for mat, t, title, x_label in zip(mats, ts, titles, x_labels):
         ax.set_xlabel('Time from {} (s)'.format(x_label))
         ax.set_xlim(xlims)
         ax.legend(loc=legend_loc)
-        
+
         ax = axs[i,1]
-        ax.set_title('{} Correct Side/Outcome - {}'.format(region_names[region], title))
+        ax.set_title('{} Correct Side/Outcome - {}'.format(region, title))
         # if title == 'Response':
         #     plot_utils.plot_dashlines(0.5, ax=ax)
         for group in side_outcome_groups:
@@ -1096,7 +1087,7 @@ for mat, t, title, x_label in zip(mats, ts, titles, x_labels):
 
 # %% Same/Different stimuli and stay/switch
 
-# side of correct choice        
+# side of correct choice
 mats = [cue_mats, resp_mats]
 ts = [response_cue['t'], response['t']]
 titles = ['Response Cue', 'Response']
@@ -1114,20 +1105,20 @@ group_labels = {'stay_prev_same_correct': 'Stay | Same', 'switch_prev_same_corre
                 'stay_prev_hit_diff_correct': 'Stay | Diff', 'switch_prev_miss_diff_correct': 'Switch | Diff'}
 
 for mat, t, title, x_label in zip(mats, ts, titles, x_labels):
-    
+
     fig, axs = plt.subplots(n_reg, n_cols, figsize=(pw*n_cols, ph*n_reg), layout='constrained', sharey='row')
     fig.suptitle('Correct Side Repeat by Outcome Aligned to ' + title)
-    
+
     legend_locs = ['upper left', 'upper right']
     for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
-        
+
         if title == 'Response':
             xlims = resp_reg_xlims[region]
         else:
             xlims = [-1.5,1.5]
 
         ax = axs[i,0]
-        ax.set_title('{} Correct Side Repeat and Choice - {}'.format(region_names[region], title))
+        ax.set_title('{} Correct Side Repeat and Choice - {}'.format(region, title))
         # if title == 'Response':
         #     plot_utils.plot_dashlines(0.5, ax=ax)
         for group in stim_groups:
@@ -1137,9 +1128,9 @@ for mat, t, title, x_label in zip(mats, ts, titles, x_labels):
         ax.set_xlabel('Time from {} (s)'.format(x_label))
         ax.set_xlim(xlims)
         ax.legend(loc=legend_loc)
-        
+
         ax = axs[i,1]
-        ax.set_title('{} Rewarded Correct Side Repeat and Choice - {}'.format(region_names[region], title))
+        ax.set_title('{} Rewarded Correct Side Repeat and Choice - {}'.format(region, title))
         # if title == 'Response':
         #     plot_utils.plot_dashlines(0.5, ax=ax)
         for group in stim_rew_groups:
@@ -1149,9 +1140,9 @@ for mat, t, title, x_label in zip(mats, ts, titles, x_labels):
         ax.set_xlabel('Time from {} (s)'.format(x_label))
         ax.set_xlim(xlims)
         ax.legend(loc=legend_loc)
-        
+
         ax = axs[i,2]
-        ax.set_title('{} Unrewarded Correct Side Repeat and Choice - {}'.format(region_names[region], title))
+        ax.set_title('{} Unrewarded Correct Side Repeat and Choice - {}'.format(region, title))
         # if title == 'Response':
         #     plot_utils.plot_dashlines(0.5, ax=ax)
         for group in stim_unrew_groups:
@@ -1161,9 +1152,9 @@ for mat, t, title, x_label in zip(mats, ts, titles, x_labels):
         ax.set_xlabel('Time from {} (s)'.format(x_label))
         ax.set_xlim(xlims)
         ax.legend(loc=legend_loc)
-        
 
-# trial repeat        
+
+# trial repeat
 stim_groups = ['stay_prev_same_trial', 'switch_prev_same_trial', 'stay_prev_diff_trial', 'switch_prev_diff_trial']
 stim_rew_groups = ['rewarded_stay_prev_same_trial', 'rewarded_switch_prev_same_trial', 'rewarded_stay_prev_diff_trial', 'rewarded_switch_prev_diff_trial']
 stim_unrew_groups = ['unrewarded_stay_prev_same_trial', 'unrewarded_switch_prev_same_trial', 'unrewarded_stay_prev_diff_trial', 'unrewarded_switch_prev_diff_trial']
@@ -1175,20 +1166,20 @@ group_labels = {'stay_prev_same_trial': 'Stay | Same', 'switch_prev_same_trial':
                 'unrewarded_stay_prev_diff_trial': 'Stay | Diff', 'unrewarded_switch_prev_diff_trial': 'Switch | Diff'}
 
 for mat, t, title, x_label in zip(mats, ts, titles, x_labels):
-    
+
     fig, axs = plt.subplots(n_reg, n_cols, figsize=(pw*n_cols, ph*n_reg), layout='constrained', sharey='row')
     fig.suptitle('Trial Repeat by Outcome Aligned to ' + title)
-    
+
     legend_locs = ['upper left', 'upper right']
     for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
-        
+
         if title == 'Response':
             xlims = resp_reg_xlims[region]
         else:
             xlims = [-1.5,1.5]
 
         ax = axs[i,0]
-        ax.set_title('{} Trial Repeat and Choice - {}'.format(region_names[region], title))
+        ax.set_title('{} Trial Repeat and Choice - {}'.format(region, title))
         # if title == 'Response':
         #     plot_utils.plot_dashlines(0.5, ax=ax)
         for group in stim_groups:
@@ -1198,9 +1189,9 @@ for mat, t, title, x_label in zip(mats, ts, titles, x_labels):
         ax.set_xlabel('Time from {} (s)'.format(x_label))
         ax.set_xlim(xlims)
         ax.legend(loc=legend_loc)
-        
+
         ax = axs[i,1]
-        ax.set_title('{} Rewarded Trial Repeat and Choice - {}'.format(region_names[region], title))
+        ax.set_title('{} Rewarded Trial Repeat and Choice - {}'.format(region, title))
         # if title == 'Response':
         #     plot_utils.plot_dashlines(0.5, ax=ax)
         for group in stim_rew_groups:
@@ -1210,9 +1201,9 @@ for mat, t, title, x_label in zip(mats, ts, titles, x_labels):
         ax.set_xlabel('Time from {} (s)'.format(x_label))
         ax.set_xlim(xlims)
         ax.legend(loc=legend_loc)
-        
+
         ax = axs[i,2]
-        ax.set_title('{} Unrewarded Trial Repeat and Choice - {}'.format(region_names[region], title))
+        ax.set_title('{} Unrewarded Trial Repeat and Choice - {}'.format(region, title))
         # if title == 'Response':
         #     plot_utils.plot_dashlines(0.5, ax=ax)
         for group in stim_unrew_groups:
@@ -1224,7 +1215,7 @@ for mat, t, title, x_label in zip(mats, ts, titles, x_labels):
         ax.legend(loc=legend_loc)
 
 
-# side of correct choice and choice side        
+# side of correct choice and choice side
 
 n_cols = 2
 
@@ -1244,14 +1235,14 @@ fig.suptitle('Correct Side Repeat by Choice Side Aligned to Response')
 
 legend_locs = ['upper left', 'upper right']
 for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
-    
+
     if title == 'Response':
         xlims = resp_reg_xlims[region]
     else:
         xlims = [-1.5,1.5]
 
     ax = axs[i,0]
-    ax.set_title('{} Contra Choice - {}'.format(region_names[region], title))
+    ax.set_title('{} Contra Choice - {}'.format(region, title))
     # if title == 'Response':
     #     plot_utils.plot_dashlines(0.5, ax=ax)
     for group in contra_stim_groups:
@@ -1261,9 +1252,9 @@ for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
     ax.set_xlabel('Time from {} (s)'.format(x_label))
     ax.set_xlim(xlims)
     ax.legend(loc=legend_loc)
-    
+
     ax = axs[i,1]
-    ax.set_title('{} Ipsi Choice - {}'.format(region_names[region], title))
+    ax.set_title('{} Ipsi Choice - {}'.format(region, title))
     # if title == 'Response':
     #     plot_utils.plot_dashlines(0.5, ax=ax)
     for group in ipsi_stim_groups:
@@ -1273,8 +1264,8 @@ for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
     ax.set_xlabel('Time from {} (s)'.format(x_label))
     ax.set_xlim(xlims)
     ax.legend(loc=legend_loc)
-    
-    
+
+
 n_cols = 4
 
 contra_rew_groups = ['contra_stay_prev_hit_same_correct', 'contra_switch_prev_miss_same_correct', 'contra_stay_prev_miss_diff_correct', 'contra_switch_prev_hit_diff_correct']
@@ -1299,14 +1290,14 @@ fig.suptitle('Correct Side Repeat by Choice Side Aligned to Response')
 
 legend_locs = ['upper left', 'upper right']
 for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
-    
+
     if title == 'Response':
         xlims = resp_reg_xlims[region]
     else:
         xlims = [-1.5,1.5]
 
     ax = axs[i,0]
-    ax.set_title('{} Rewarded Contra Choice - {}'.format(region_names[region], title))
+    ax.set_title('{} Rewarded Contra Choice - {}'.format(region, title))
     # if title == 'Response':
     #     plot_utils.plot_dashlines(0.5, ax=ax)
     for group in contra_rew_groups:
@@ -1316,9 +1307,9 @@ for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
     ax.set_xlabel('Time from {} (s)'.format(x_label))
     ax.set_xlim(xlims)
     ax.legend(loc=legend_loc)
-    
+
     ax = axs[i,1]
-    ax.set_title('{} Rewarded Ipsi Choice - {}'.format(region_names[region], title))
+    ax.set_title('{} Rewarded Ipsi Choice - {}'.format(region, title))
     # if title == 'Response':
     #     plot_utils.plot_dashlines(0.5, ax=ax)
     for group in ipsi_rew_groups:
@@ -1328,9 +1319,9 @@ for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
     ax.set_xlabel('Time from {} (s)'.format(x_label))
     ax.set_xlim(xlims)
     ax.legend(loc=legend_loc)
-    
+
     ax = axs[i,2]
-    ax.set_title('{} Unrewarded Contra Choice - {}'.format(region_names[region], title))
+    ax.set_title('{} Unrewarded Contra Choice - {}'.format(region, title))
     # if title == 'Response':
     #     plot_utils.plot_dashlines(0.5, ax=ax)
     for group in contra_unrew_groups:
@@ -1340,9 +1331,9 @@ for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
     ax.set_xlabel('Time from {} (s)'.format(x_label))
     ax.set_xlim(xlims)
     ax.legend(loc=legend_loc)
-    
+
     ax = axs[i,3]
-    ax.set_title('{} Unrewarded Ipsi Choice - {}'.format(region_names[region], title))
+    ax.set_title('{} Unrewarded Ipsi Choice - {}'.format(region, title))
     # if title == 'Response':
     #     plot_utils.plot_dashlines(0.5, ax=ax)
     for group in ipsi_unrew_groups:
@@ -1352,7 +1343,7 @@ for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
     ax.set_xlabel('Time from {} (s)'.format(x_label))
     ax.set_xlim(xlims)
     ax.legend(loc=legend_loc)
-    
+
 # %% Various Response Outcome groupings
 
 # stay/switch by prior & current outcome
@@ -1377,14 +1368,14 @@ fig.suptitle('Stay/Switch By Current and Prior Outcome Aligned to Response')
 
 legend_locs = ['upper left', 'upper right']
 for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
-    
+
     if title == 'Response':
         xlims = resp_reg_xlims[region]
     else:
         xlims = [-1.5,1.5]
 
     ax = axs[i,0]
-    ax.set_title('{} Stay/Switch by Outcome - {}'.format(region_names[region], title))
+    ax.set_title('{} Stay/Switch by Outcome - {}'.format(region, title))
     # if title == 'Response':
     #     plot_utils.plot_dashlines(0.5, ax=ax)
     for group in choice_groups:
@@ -1394,9 +1385,9 @@ for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
     ax.set_xlabel('Time from {} (s)'.format(x_label))
     ax.set_xlim(xlims)
     ax.legend(loc=legend_loc)
-    
+
     ax = axs[i,1]
-    ax.set_title('{} Rewarded Stay/Switch by Prior Outcome - {}'.format(region_names[region], title))
+    ax.set_title('{} Rewarded Stay/Switch by Prior Outcome - {}'.format(region, title))
     # if title == 'Response':
     #     plot_utils.plot_dashlines(0.5, ax=ax)
     for group in rew_groups:
@@ -1406,9 +1397,9 @@ for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
     ax.set_xlabel('Time from {} (s)'.format(x_label))
     ax.set_xlim(xlims)
     ax.legend(loc=legend_loc)
-    
+
     ax = axs[i,2]
-    ax.set_title('{} Unrewarded Stay/Switch by Prior Outcome - {}'.format(region_names[region], title))
+    ax.set_title('{} Unrewarded Stay/Switch by Prior Outcome - {}'.format(region, title))
     # if title == 'Response':
     #     plot_utils.plot_dashlines(0.5, ax=ax)
     for group in unrew_groups:
@@ -1440,14 +1431,14 @@ fig.suptitle('Choice Side & Stay/Switch By Outcome Aligned to Response')
 
 legend_locs = ['upper left', 'upper right']
 for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
-    
+
     if title == 'Response':
         xlims = resp_reg_xlims[region]
     else:
         xlims = [-1.5,1.5]
 
     ax = axs[i,0]
-    ax.set_title('{} Side/Outcome - {}'.format(region_names[region], title))
+    ax.set_title('{} Side/Outcome - {}'.format(region, title))
     # if title == 'Response':
     #     plot_utils.plot_dashlines(0.5, ax=ax)
     for group in outcome_groups:
@@ -1457,9 +1448,9 @@ for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
     ax.set_xlabel('Time from {} (s)'.format(x_label))
     ax.set_xlim(xlims)
     ax.legend(loc=legend_loc)
-    
+
     ax = axs[i,1]
-    ax.set_title('{} Side & Stay/Switch Hits - {}'.format(region_names[region], title))
+    ax.set_title('{} Side & Stay/Switch Hits - {}'.format(region, title))
     # if title == 'Response':
     #     plot_utils.plot_dashlines(0.5, ax=ax)
     for group in rew_groups:
@@ -1469,9 +1460,9 @@ for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
     ax.set_xlabel('Time from {} (s)'.format(x_label))
     ax.set_xlim(xlims)
     ax.legend(loc=legend_loc)
-    
+
     ax = axs[i,2]
-    ax.set_title('{} Side & Stay/Switch Misses - {}'.format(region_names[region], title))
+    ax.set_title('{} Side & Stay/Switch Misses - {}'.format(region, title))
     # if title == 'Response':
     #     plot_utils.plot_dashlines(0.5, ax=ax)
     for group in unrew_groups:
@@ -1501,14 +1492,14 @@ fig.suptitle('Choice Side By Current & Prior Outcome Aligned to Response')
 
 legend_locs = ['upper left', 'upper right']
 for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
-    
+
     if title == 'Response':
         xlims = resp_reg_xlims[region]
     else:
         xlims = [-1.5,1.5]
 
     ax = axs[i,0]
-    ax.set_title('{} Contra Choice - {}'.format(region_names[region], title))
+    ax.set_title('{} Contra Choice - {}'.format(region, title))
     # if title == 'Response':
     #     plot_utils.plot_dashlines(0.5, ax=ax)
     for group in contra_groups:
@@ -1518,9 +1509,9 @@ for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
     ax.set_xlabel('Time from {} (s)'.format(x_label))
     ax.set_xlim(xlims)
     ax.legend(loc=legend_loc)
-    
+
     ax = axs[i,1]
-    ax.set_title('{} Ipsi Choice - {}'.format(region_names[region], title))
+    ax.set_title('{} Ipsi Choice - {}'.format(region, title))
     # if title == 'Response':
     #     plot_utils.plot_dashlines(0.5, ax=ax)
     for group in ipsi_groups:
@@ -1530,7 +1521,7 @@ for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
     ax.set_xlabel('Time from {} (s)'.format(x_label))
     ax.set_xlim(xlims)
     ax.legend(loc=legend_loc)
-    
+
 
 n_cols = 4
 
@@ -1556,14 +1547,14 @@ fig.suptitle('Choice Side & Stay/Switch By Current & Prior Outcome Aligned to Re
 
 legend_locs = ['upper left', 'upper right']
 for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
-    
+
     if title == 'Response':
         xlims = resp_reg_xlims[region]
     else:
         xlims = [-1.5,1.5]
 
     ax = axs[i,0]
-    ax.set_title('{} Hit | Hit - {}'.format(region_names[region], title))
+    ax.set_title('{} Hit | Hit - {}'.format(region, title))
     # if title == 'Response':
     #     plot_utils.plot_dashlines(0.5, ax=ax)
     for group in rew_rew_groups:
@@ -1573,9 +1564,9 @@ for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
     ax.set_xlabel('Time from {} (s)'.format(x_label))
     ax.set_xlim(xlims)
     ax.legend(loc=legend_loc)
-    
+
     ax = axs[i,1]
-    ax.set_title('{} Hit | Miss - {}'.format(region_names[region], title))
+    ax.set_title('{} Hit | Miss - {}'.format(region, title))
     # if title == 'Response':
     #     plot_utils.plot_dashlines(0.5, ax=ax)
     for group in rew_unrew_groups:
@@ -1585,9 +1576,9 @@ for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
     ax.set_xlabel('Time from {} (s)'.format(x_label))
     ax.set_xlim(xlims)
     ax.legend(loc=legend_loc)
-    
+
     ax = axs[i,2]
-    ax.set_title('{} Miss | Hit - {}'.format(region_names[region], title))
+    ax.set_title('{} Miss | Hit - {}'.format(region, title))
     # if title == 'Response':
     #     plot_utils.plot_dashlines(0.5, ax=ax)
     for group in unrew_rew_groups:
@@ -1597,9 +1588,9 @@ for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
     ax.set_xlabel('Time from {} (s)'.format(x_label))
     ax.set_xlim(xlims)
     ax.legend(loc=legend_loc)
-    
+
     ax = axs[i,3]
-    ax.set_title('{} Miss | Miss - {}'.format(region_names[region], title))
+    ax.set_title('{} Miss | Miss - {}'.format(region, title))
     # if title == 'Response':
     #     plot_utils.plot_dashlines(0.5, ax=ax)
     for group in unrew_unrew_groups:
@@ -1609,7 +1600,7 @@ for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
     ax.set_xlabel('Time from {} (s)'.format(x_label))
     ax.set_xlim(xlims)
     ax.legend(loc=legend_loc)
-    
+
 
 # %% Tone Alignments
 
@@ -1635,7 +1626,7 @@ legend_locs = ['upper left', 'upper right']
 for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
 
     ax = axs[i,0]
-    ax.set_title('{} Tone Start'.format(region_names[region]))
+    ax.set_title('{} Tone Start'.format(region))
     plot_utils.plot_dashlines(0.25, ax=ax)
     for group in all_groups:
         act = mat[region][group]
@@ -1645,9 +1636,9 @@ for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
     ax.set_xlim(xlims)
     #ax.set_ylim(ylims)
     ax.legend(loc=legend_loc)
-    
+
     ax = axs[i,1]
-    ax.set_title('{} Tone Start By Outcome'.format(region_names[region]))
+    ax.set_title('{} Tone Start By Outcome'.format(region))
     plot_utils.plot_dashlines(0.25, ax=ax)
     for group in outcome_groups:
         act = mat[region][group]
@@ -1688,7 +1679,7 @@ legend_locs = ['upper left', 'upper left']
 for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
 
     ax = axs[i,0]
-    ax.set_title('{} All Trials - {}'.format(region_names[region], title))
+    ax.set_title('{} All Trials - {}'.format(region, title))
     plot_utils.plot_dashlines(0.25, ax=ax)
     for group in all_groups:
         act = mat[region][group]
@@ -1697,9 +1688,9 @@ for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
     ax.set_xlabel('Time from {} (s)'.format(x_label))
     ax.set_xlim(xlims)
     ax.legend(loc=legend_loc)
-    
+
     ax = axs[i,1]
-    ax.set_title('{} Hits - {}'.format(region_names[region], title))
+    ax.set_title('{} Hits - {}'.format(region, title))
     plot_utils.plot_dashlines(0.25, ax=ax)
     for group in hit_groups:
         act = mat[region][group]
@@ -1708,9 +1699,9 @@ for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
     ax.set_xlabel('Time from {} (s)'.format(x_label))
     ax.set_xlim(xlims)
     ax.legend(loc=legend_loc)
-    
+
     ax = axs[i,2]
-    ax.set_title('{} Misses - {}'.format(region_names[region], title))
+    ax.set_title('{} Misses - {}'.format(region, title))
     plot_utils.plot_dashlines(0.25, ax=ax)
     for group in miss_groups:
         act = mat[region][group]
@@ -1778,4 +1769,3 @@ for sess_id in sess_ids:
 
     sess_metrics[sess_id]['p(miss|prev hit & no bail)'] = np.sum(miss_sel & prev_hit_sel & ~bail_sel)/np.sum(prev_hit_sel & ~bail_sel)
     sess_metrics[sess_id]['p(miss|prev miss & no bail)'] = np.sum(miss_sel & prev_miss_sel & ~bail_sel)/np.sum(prev_miss_sel & ~bail_sel)
-

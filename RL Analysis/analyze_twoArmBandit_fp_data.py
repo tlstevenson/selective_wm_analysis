@@ -8,22 +8,22 @@ Created on Sun Nov 26 22:33:24 2023
 # %% imports
 
 import init
-import os.path as path
 import pandas as pd
 from pyutils import utils
 from sys_neuro_tools import plot_utils, fp_utils
+from hankslab_db import db_access
 import hankslab_db.basicRLtasks_db as db
 import fp_analysis_helpers as fpah
 import numpy as np
 import matplotlib.pyplot as plt
-import pickle
 import copy
 
-# %% Load behavior data
+# %% Load fiber photometry and behavior data
 
-sess_ids = {179: [95201, 95312, 95347]}
+# get all session ids for given protocol
+sess_ids = db_access.get_fp_protocol_subj_sess_ids('ClassicRLTasks', 2)
 
-loc_db = db.LocalDB_BasicRLTasks('twoArmBandit') # 
+loc_db = db.LocalDB_BasicRLTasks('twoArmBandit')
 sess_data = loc_db.get_behavior_data(utils.flatten(sess_ids)) # reload=True
 
 # set any missing cpoke outs to nans
@@ -31,75 +31,60 @@ sess_data['cpoke_out_time'] = sess_data['cpoke_out_time'].apply(lambda x: x if u
 # add in missing center port on time
 sess_data['cport_on_time'] = sess_data['parsed_events'].apply(lambda x: x['States']['WaitForCenterPoke'][0])
 
-# %% Load fiber photometry data
-
-data_path = path.join(utils.get_user_home(), 'fp_data')
-fp_data = {}
-for sess_id in utils.flatten(sess_ids):
-    load_path = path.join(data_path, 'Session_{}.pkl'.format(sess_id))
-    with open(load_path, 'rb') as f:
-        fp_data[sess_id] = pickle.load(f)
-
-        
-subject_region_sides = {179: {'DMS': 'right', 'PFC': 'left'}}
+# get fiber photometry data
+fp_data = loc_db.get_sess_fp_data(utils.flatten(sess_ids), reload=True) # , reload=True
+# separate into different dictionaries
+implant_info = fp_data['implant_info']
+fp_data = fp_data['fp_data']
 
 # %% Process photometry data in different ways
 
-regions = ['DMS', 'PFC'] #
+iso = '420'
+lig = '490'
 
-#iso_pfc = 'PFC_405'
-#iso_dms = 'DMS_405'
-iso_pfc = 'PFC_420'
-iso_dms = 'DMS_420'
-lig_pfc = 'PFC_490'
-lig_dms = 'DMS_490'
+for subj_id in sess_ids.keys():
+    for sess_id in sess_ids[subj_id]:
+        raw_signals = fp_data[subj_id][sess_id]['raw_signals']
 
-signals_by_region = {region: {'iso': iso_pfc if region == 'PFC' else iso_dms,
-                              'lig': lig_pfc if region == 'PFC' else lig_dms}
-                     for region in regions}
+        fp_data[subj_id][sess_id]['processed_signals'] = {}
 
-for sess_id in utils.flatten(sess_ids):
-    signals = fp_data[sess_id]['signals']
+        for region in raw_signals.keys():
+            raw_lig = raw_signals[region][lig]
+            raw_iso = raw_signals[region][iso]
 
-    fp_data[sess_id]['processed_signals'] = {}
-
-    for region, signal_names in signals_by_region.items():
-        raw_lig = signals[signal_names['lig']]
-        raw_iso = signals[signal_names['iso']]
-
-        fp_data[sess_id]['processed_signals'][region] = fpah.get_all_processed_signals(raw_lig, raw_iso)
+            fp_data[subj_id][sess_id]['processed_signals'][region] = fpah.get_all_processed_signals(raw_lig, raw_iso)
 
 # %% Observe the full signals
 
 sub_signal = [] # sub signal time limits in seconds
 filter_outliers = True
 
-for sess_id in utils.flatten(sess_ids):
-    trial_data = sess_data[sess_data['sessid'] == sess_id]
-    sess_fp = fp_data[sess_id]
-    
-    # Get the block transition trial start times
-    trial_start_ts = sess_fp['trial_start_ts'][:-1]
-    block_start_times = trial_start_ts[trial_data['block_trial'] == 1]
-    #block_rewards = trial_data['reward_volume'][trial_data['block_trial'] == 1]
-    
-    if len(sub_signal) > 0:
-        fpah.view_processed_signals(sess_fp['processed_signals'], sess_fp['time'], 
-                                    title='Full Signals - Session {}'.format(sess_id), 
-                                    vert_marks=block_start_times, filter_outliers=filter_outliers,
-                                    t_min=sub_signal[0], t_max=sub_signal[1], dec=1)
-    else:
-        fpah.view_processed_signals(sess_fp['processed_signals'], sess_fp['time'], 
-                                    title='Full Signals - Session {}'.format(sess_id), #. Block Rewards: {}'.format(sess_id, ', '.join([str(r) for r in block_rewards]
-                                    vert_marks=block_start_times, filter_outliers=filter_outliers)
+for subj_id in sess_ids.keysS():
+    for sess_id in sess_ids[subj_id]:
+        trial_data = sess_data[sess_data['sessid'] == sess_id]
+        sess_fp = fp_data[subj_id][sess_id]
+
+        # Get the block transition trial start times
+        trial_start_ts = sess_fp['trial_start_ts'][:-1]
+        block_start_times = trial_start_ts[trial_data['block_trial'] == 1]
+        #block_rewards = trial_data['reward_volume'][trial_data['block_trial'] == 1]
+
+        if len(sub_signal) > 0:
+            fpah.view_processed_signals(sess_fp['processed_signals'], sess_fp['time'],
+                                        title='Full Signals - Session {}'.format(sess_id),
+                                        vert_marks=block_start_times, filter_outliers=filter_outliers,
+                                        t_min=sub_signal[0], t_max=sub_signal[1], dec=1)
+        else:
+            fpah.view_processed_signals(sess_fp['processed_signals'], sess_fp['time'],
+                                        title='Full Signals - Session {}'.format(sess_id), #. Block Rewards: {}'.format(sess_id, ', '.join([str(r) for r in block_rewards]
+                                        vert_marks=block_start_times, filter_outliers=filter_outliers)
 
 # %% Get all aligned/sorted stacked signals
 
 signal_types = ['z_dff_iso'] # 'baseline_corr_lig','baseline_corr_iso',  'dff_iso', 'z_dff_iso', 'dff_baseline', 'z_dff_baseline', 'df_baseline_iso', 'z_df_baseline_iso'
 
-title_suffix = '' #'420 Iso'
-
-data_dict = {sess_id: {signal: {region: {} for region in regions} for signal in signal_types} for sess_id in utils.flatten(sess_ids)}
+all_regions = np.unique([r for s in sess_ids.keys() for r in implant_info[s].keys()])
+data_dict = {sess_id: {signal: {region: {} for region in all_regions} for signal in signal_types} for sess_id in utils.flatten(sess_ids)}
 cport_on = copy.deepcopy(data_dict)
 cpoke_in = copy.deepcopy(data_dict)
 cpoke_out = copy.deepcopy(data_dict)
@@ -117,15 +102,14 @@ choice_probs = choice_probs[~np.isnan(choice_probs)]
 sides = ['left', 'right']
 
 for subj_id in sess_ids.keys():
-    
     for sess_id in sess_ids[subj_id]:
-        
+
         trial_data = sess_data[sess_data['sessid'] == sess_id]
         resp_sel = (trial_data['hit'] == True)
         # remove no responses
         trial_data = trial_data[resp_sel]
-        sess_fp = fp_data[sess_id]
-    
+        sess_fp = fp_data[subj_id][sess_id]
+
         # get alignment trial filters
         choices = trial_data['choice'].to_numpy()
         stays = choices[:-1] == choices[1:]
@@ -140,12 +124,12 @@ for subj_id in sess_ids.keys():
         high_choice = trial_data['chose_high'].to_numpy()
         right_choice = trial_data['chose_right'].to_numpy()
         left_choice = trial_data['chose_left'].to_numpy()
-        
+
         prev_right_choice = np.insert(right_choice[:-1], 0, False)
         prev_left_choice = np.insert(left_choice[:-1], 0, False)
         prev_rewarded = np.insert(rewarded[:-1], 0, False)
         prev_unrewarded = np.insert(~rewarded[:-1], 0, False)
-    
+
         # get alignment times
         ts = sess_fp['time']
         trial_start_ts = sess_fp['trial_start_ts'][:-1][resp_sel]
@@ -154,18 +138,17 @@ for subj_id in sess_ids.keys():
         abs_cpoke_out_ts = trial_start_ts + trial_data['cpoke_out_time']
         abs_cue_ts = trial_start_ts + trial_data['response_cue_time']
         abs_resp_ts = trial_start_ts + trial_data['response_time']
-    
+
         for signal_type in signal_types:
-    
-            for region in regions:
+            for region in sess_fp['processed_signals'].keys():
                 signal = sess_fp['processed_signals'][region][signal_type]
-                region_side = subject_region_sides[subj_id][region]
-    
+                region_side = implant_info[subj_id][region]['side']
+
                 # aligned to center port on
                 pre = 3
                 post = 3
                 mat, t = fp_utils.build_signal_matrix(signal, ts, abs_cport_on_ts, pre, post)
-                                
+
                 cport_on['t'] = t
                 cport_on[sess_id][signal_type][region]['prev_rewarded'] = mat[prev_rewarded,:]
                 cport_on[sess_id][signal_type][region]['prev_unrewarded'] = mat[prev_unrewarded,:]
@@ -175,12 +158,12 @@ for subj_id in sess_ids.keys():
                 cport_on[sess_id][signal_type][region]['switch_prev_rewarded'] = mat[prev_rewarded & switches,:]
                 cport_on[sess_id][signal_type][region]['stay_prev_unrewarded'] = mat[prev_unrewarded & stays,:]
                 cport_on[sess_id][signal_type][region]['switch_prev_unrewarded'] = mat[prev_unrewarded & switches,:]
-                
+
                 for side in sides:
                     side_type = 'ipsi' if region_side == side else 'contra'
                     side_sel = left_choice if side == 'left' else right_choice
                     prev_side_sel = prev_left_choice if side == 'left' else prev_right_choice
-                    
+
                     cport_on[sess_id][signal_type][region][side_type] = mat[side_sel,:]
                     cport_on[sess_id][signal_type][region][side_type+'_stay'] = mat[side_sel & stays,:]
                     cport_on[sess_id][signal_type][region][side_type+'_switch'] = mat[side_sel & switches,:]
@@ -190,17 +173,17 @@ for subj_id in sess_ids.keys():
                     cport_on[sess_id][signal_type][region][side_type+'_switch_prev_rewarded'] = mat[prev_rewarded & switches & side_sel,:]
                     cport_on[sess_id][signal_type][region][side_type+'_stay_prev_unrewarded'] = mat[prev_unrewarded & stays & side_sel,:]
                     cport_on[sess_id][signal_type][region][side_type+'_switch_prev_unrewarded'] = mat[prev_unrewarded & switches & side_sel,:]
-                    
+
                     cport_on[sess_id][signal_type][region]['prev_'+side_type] = mat[prev_side_sel,:]
                     cport_on[sess_id][signal_type][region]['prev_'+side_type+'_prev_rewarded'] = mat[prev_rewarded & prev_side_sel,:]
                     cport_on[sess_id][signal_type][region]['prev_'+side_type+'_prev_unrewarded'] = mat[prev_unrewarded & prev_side_sel,:]
 
-                
+
                 # aligned to center poke in
                 pre = 3
                 post = 3
                 mat, t = fp_utils.build_signal_matrix(signal, ts, abs_cpoke_in_ts, pre, post)
-                                
+
                 cpoke_in['t'] = t
                 cpoke_in[sess_id][signal_type][region]['prev_rewarded'] = mat[prev_rewarded,:]
                 cpoke_in[sess_id][signal_type][region]['prev_unrewarded'] = mat[prev_unrewarded,:]
@@ -210,11 +193,11 @@ for subj_id in sess_ids.keys():
                 cpoke_in[sess_id][signal_type][region]['switch_prev_rewarded'] = mat[prev_rewarded & switches,:]
                 cpoke_in[sess_id][signal_type][region]['stay_prev_unrewarded'] = mat[prev_unrewarded & stays,:]
                 cpoke_in[sess_id][signal_type][region]['switch_prev_unrewarded'] = mat[prev_unrewarded & switches,:]
-                
+
                 for side in sides:
                     side_type = 'ipsi' if region_side == side else 'contra'
                     side_sel = left_choice if side == 'left' else right_choice
-                    
+
                     cpoke_in[sess_id][signal_type][region][side_type] = mat[side_sel,:]
                     cpoke_in[sess_id][signal_type][region][side_type+'_prev_rewarded'] = mat[prev_rewarded & side_sel,:]
                     cpoke_in[sess_id][signal_type][region][side_type+'_prev_unrewarded'] = mat[prev_unrewarded & side_sel,:]
@@ -240,12 +223,12 @@ for subj_id in sess_ids.keys():
                 cue[sess_id][signal_type][region]['switch_prev_rewarded'] = mat[prev_rewarded & switches,:]
                 cue[sess_id][signal_type][region]['stay_prev_unrewarded'] = mat[prev_unrewarded & stays,:]
                 cue[sess_id][signal_type][region]['switch_prev_unrewarded'] = mat[prev_unrewarded & switches,:]
-                
+
                 for side in sides:
                     side_type = 'ipsi' if region_side == side else 'contra'
                     side_sel = left_choice if side == 'left' else right_choice
                     prev_side_sel = prev_left_choice if side == 'left' else prev_right_choice
-                    
+
                     cue[sess_id][signal_type][region][side_type] = mat[side_sel,:]
                     cue[sess_id][signal_type][region][side_type+'_stay'] = mat[stays & side_sel,:]
                     cue[sess_id][signal_type][region][side_type+'_switch'] = mat[switches & side_sel,:]
@@ -258,13 +241,13 @@ for subj_id in sess_ids.keys():
                     cue[sess_id][signal_type][region]['prev_'+side_type] = mat[prev_side_sel,:]
                     cue[sess_id][signal_type][region]['prev_'+side_type+'_prev_rewarded'] = mat[prev_side_sel & prev_rewarded,:]
                     cue[sess_id][signal_type][region]['prev_'+side_type+'_prev_unrewarded'] = mat[prev_side_sel & prev_unrewarded,:]
-                
-                
+
+
                 # aligned to center poke out
                 pre = 3
                 post = 3
                 mat, t = fp_utils.build_signal_matrix(signal, ts, abs_cpoke_out_ts, pre, post)
-                
+
                 cpoke_out['t'] = t
                 cpoke_out[sess_id][signal_type][region]['prev_rewarded'] = mat[prev_rewarded,:]
                 cpoke_out[sess_id][signal_type][region]['prev_unrewarded'] = mat[prev_unrewarded,:]
@@ -274,11 +257,11 @@ for subj_id in sess_ids.keys():
                 cpoke_out[sess_id][signal_type][region]['switch_prev_rewarded'] = mat[prev_rewarded & switches,:]
                 cpoke_out[sess_id][signal_type][region]['stay_prev_unrewarded'] = mat[prev_unrewarded & stays,:]
                 cpoke_out[sess_id][signal_type][region]['switch_prev_unrewarded'] = mat[prev_unrewarded & switches,:]
-                
+
                 for side in sides:
                     side_type = 'ipsi' if region_side == side else 'contra'
                     side_sel = left_choice if side == 'left' else right_choice
-                    
+
                     cpoke_out[sess_id][signal_type][region][side_type] = mat[side_sel,:]
                     cpoke_out[sess_id][signal_type][region][side_type+'_stay'] = mat[stays & side_sel,:]
                     cpoke_out[sess_id][signal_type][region][side_type+'_switch'] = mat[switches & side_sel,:]
@@ -294,7 +277,7 @@ for subj_id in sess_ids.keys():
                 pre = 3
                 post = 10
                 mat, t = fp_utils.build_signal_matrix(signal, ts, abs_resp_ts, pre, post)
-                
+
                 resp['t'] = t
                 resp[sess_id][signal_type][region]['prev_rewarded'] = mat[prev_rewarded,:]
                 resp[sess_id][signal_type][region]['prev_unrewarded'] = mat[prev_unrewarded,:]
@@ -322,37 +305,37 @@ for subj_id in sess_ids.keys():
                 resp[sess_id][signal_type][region]['switch_rewarded_prev_unrewarded'] = mat[rewarded & switches & prev_unrewarded,:]
                 resp[sess_id][signal_type][region]['switch_unrewarded_prev_rewarded'] = mat[~rewarded & switches & prev_rewarded,:]
                 resp[sess_id][signal_type][region]['switch_unrewarded_prev_unrewarded'] = mat[~rewarded & switches & prev_unrewarded,:]
-                
+
                 resp[sess_id][signal_type][region]['rewarded_future_stay'] = mat[rewarded & future_stays,:]
                 resp[sess_id][signal_type][region]['rewarded_future_switch'] = mat[rewarded & future_switches,:]
                 resp[sess_id][signal_type][region]['unrewarded_future_stay'] = mat[~rewarded & future_stays,:]
                 resp[sess_id][signal_type][region]['unrewarded_future_switch'] = mat[~rewarded & future_switches,:]
-                
+
                 for side in sides:
                     side_type = 'ipsi' if region_side == side else 'contra'
                     side_sel = left_choice if side == 'left' else right_choice
                     prev_side_sel = prev_left_choice if side == 'left' else prev_right_choice
-                    
+
                     resp[sess_id][signal_type][region][side_type] = mat[side_sel,:]
                     resp[sess_id][signal_type][region][side_type+'_stay'] = mat[stays & side_sel,:]
                     resp[sess_id][signal_type][region][side_type+'_switch'] = mat[switches & side_sel,:]
-                    
+
                     resp[sess_id][signal_type][region][side_type+'_rewarded'] = mat[side_sel & rewarded,:]
                     resp[sess_id][signal_type][region][side_type+'_unrewarded'] = mat[side_sel & ~rewarded,:]
 
                     resp[sess_id][signal_type][region][side_type+'_prev_rewarded'] = mat[prev_rewarded & side_sel,:]
                     resp[sess_id][signal_type][region][side_type+'_prev_unrewarded'] = mat[prev_unrewarded & side_sel,:]
-                    
+
                     resp[sess_id][signal_type][region][side_type+'_rewarded_prev_rewarded'] = mat[side_sel & prev_rewarded & rewarded,:]
                     resp[sess_id][signal_type][region][side_type+'_rewarded_prev_unrewarded'] = mat[side_sel & prev_unrewarded & rewarded,:]
                     resp[sess_id][signal_type][region][side_type+'_unrewarded_prev_rewarded'] = mat[side_sel & prev_rewarded & ~rewarded,:]
                     resp[sess_id][signal_type][region][side_type+'_unrewarded_prev_unrewarded'] = mat[side_sel & prev_unrewarded & ~rewarded,:]
-                    
+
                     resp[sess_id][signal_type][region][side_type+'_stay_rewarded'] = mat[side_sel & stays & rewarded,:]
                     resp[sess_id][signal_type][region][side_type+'_switch_rewarded'] = mat[side_sel & switches & rewarded,:]
                     resp[sess_id][signal_type][region][side_type+'_stay_unrewarded'] = mat[side_sel & stays & ~rewarded,:]
                     resp[sess_id][signal_type][region][side_type+'_switch_unrewarded'] = mat[side_sel & switches & ~rewarded,:]
-                    
+
                     resp[sess_id][signal_type][region][side_type+'_stay_prev_rewarded'] = mat[prev_rewarded & stays & side_sel,:]
                     resp[sess_id][signal_type][region][side_type+'_switch_prev_rewarded'] = mat[prev_rewarded & switches & side_sel,:]
                     resp[sess_id][signal_type][region][side_type+'_stay_prev_unrewarded'] = mat[prev_unrewarded & stays & side_sel,:]
@@ -366,58 +349,58 @@ for subj_id in sess_ids.keys():
                     resp[sess_id][signal_type][region][side_type+'_switch_rewarded_prev_unrewarded'] = mat[side_sel & switches & rewarded & prev_unrewarded,:]
                     resp[sess_id][signal_type][region][side_type+'_switch_unrewarded_prev_rewarded'] = mat[side_sel & switches & ~rewarded & prev_rewarded,:]
                     resp[sess_id][signal_type][region][side_type+'_switch_unrewarded_prev_unrewarded'] = mat[side_sel & switches & ~rewarded & prev_unrewarded,:]
-                    
+
                     resp[sess_id][signal_type][region]['prev_'+side_type+'_prev_rewarded'] = mat[prev_side_sel & prev_rewarded,:]
                     resp[sess_id][signal_type][region]['prev_'+side_type+'_prev_unrewarded'] = mat[prev_side_sel & prev_unrewarded,:]
                     resp[sess_id][signal_type][region]['prev_'+side_type+'_rewarded_prev_rewarded'] = mat[prev_side_sel & prev_rewarded & rewarded,:]
                     resp[sess_id][signal_type][region]['prev_'+side_type+'_rewarded_prev_unrewarded'] = mat[prev_side_sel & prev_unrewarded & rewarded,:]
                     resp[sess_id][signal_type][region]['prev_'+side_type+'_unrewarded_prev_rewarded'] = mat[prev_side_sel & prev_rewarded & ~rewarded,:]
                     resp[sess_id][signal_type][region]['prev_'+side_type+'_unrewarded_prev_unrewarded'] = mat[prev_side_sel & prev_unrewarded & ~rewarded,:]
-                    
+
                     resp[sess_id][signal_type][region][side_type+'_rewarded_future_stay'] = mat[side_sel & rewarded & future_stays,:]
                     resp[sess_id][signal_type][region][side_type+'_rewarded_future_switch'] = mat[side_sel & rewarded & future_switches,:]
                     resp[sess_id][signal_type][region][side_type+'_unrewarded_future_stay'] = mat[side_sel & ~rewarded & future_stays,:]
                     resp[sess_id][signal_type][region][side_type+'_unrewarded_future_switch'] = mat[side_sel & ~rewarded & future_switches,:]
-                    
-    
+
+
                 # aligned to response and reward by trial outcome and perceived port reward probability (p reward for port from prior trial)
                 pre = 2
                 post = 10
                 mat, t = fp_utils.build_signal_matrix(signal, ts, abs_resp_ts, pre, post)
-                
+
                 resp_pchoice_rewarded['t'] = t
                 resp_pchoice_unrewarded['t'] = t
-                
+
                 for p in choice_probs:
                     p_sel = choice_prev_prob == p
                     resp_pchoice_rewarded[sess_id][signal_type][region][p] = mat[rewarded & p_sel,:]
                     resp_pchoice_unrewarded[sess_id][signal_type][region][p] = mat[~rewarded & p_sel,:]
-                
-    
+
+
                 # aligned to cue/response sorted by block reward probability
                 cue_mat, cue_t = fp_utils.build_signal_matrix(signal, ts, abs_cue_ts, 3, 3)
                 resp_mat, resp_t = fp_utils.build_signal_matrix(signal, ts, abs_resp_ts, 2, 10)
-                
+
                 cue_br['t'] = cue_t
                 resp_br_rewarded['t'] = resp_t
                 resp_br_unrewarded['t'] = resp_t
-    
+
                 for br in block_rates:
                     br_sel = block_rate == br
                     cue_br[sess_id][signal_type][region][br] = cue_mat[br_sel,:]
                     resp_br_rewarded[sess_id][signal_type][region][br] = resp_mat[br_sel & rewarded,:]
                     resp_br_unrewarded[sess_id][signal_type][region][br] = resp_mat[br_sel & ~rewarded,:]
-                    
-                
+
+
 
 #%% Plot Alignment Results for single sessions
 
-
+# title_suffix = '' #'420 Iso'
 # outlier_thresh = 8 # z-score threshold
 
 # for sess_id in sess_ids:
 #     for signal_type in signal_types:
-        
+
 #         # get appropriate labels
 #         signal_type_title, signal_type_label = fpah.get_signal_type_labels(signal_type)
 
@@ -429,15 +412,15 @@ for subj_id in sess_ids.keys():
 #                           'stay_rewarded': 'Rewarded Stay', 'stay_unrewarded': 'Unrewarded Stay',
 #                           'switch_rewarded': 'Rewarded Switch', 'switch_unrewarded': 'Unrewarded Switch',
 #                           'left': 'Left Choice', 'right': 'Right Choice', 'left_stay': 'Left Stay', 'left_switch': 'Left Switch',
-#                           'right_stay': 'Right Stay', 'right_switch': 'Right Switch', 
+#                           'right_stay': 'Right Stay', 'right_switch': 'Right Switch',
 #                           'left_stay_rewarded': 'Rewarded Left Stay', 'left_stay_unrewarded': 'Unrewarded Left Stay',
 #                           'left_switch_rewarded': 'Rewarded Left Switch', 'left_switch_unrewarded': 'Unrewarded Left Switch',
 #                           'right_stay_rewarded': 'Rewarded Right Stay', 'right_stay_unrewarded': 'Unrewarded Right Stay',
 #                           'right_switch_rewarded': 'Rewarded Right Switch', 'right_switch_unrewarded': 'Unrewarded Right Switch'}
-        
+
 #         for p in choice_probs:
 #             all_sub_titles.update({p: '{:.0f}% Choice'.format(p)})
-                                   
+
 #         for br in block_rates:
 #             all_sub_titles.update({br: 'Block Reward Rate: {}%'.format(br)})
 
@@ -452,11 +435,11 @@ for subj_id in sess_ids.keys():
 #         fpah.plot_aligned_signals(resp_reward_pchoice[sess_id][signal_type], resp_reward_pchoice['t'], 'Rewarded Response by Choice Reward Probability - {} (session {})'.format(signal_type_title, sess_id),
 #                               all_sub_titles, 'Time from reponse poke (s)', signal_type_label, outlier_thresh=outlier_thresh,
 #                               trial_markers=block_trans_idxs)
-        
+
 #         fpah.plot_aligned_signals(resp_noreward_pchoice[sess_id][signal_type], resp_noreward_pchoice['t'], 'Unrewarded Response by Choice Reward Probability - {} (session {})'.format(signal_type_title, sess_id),
 #                               all_sub_titles, 'Time from reponse poke (s)', signal_type_label, outlier_thresh=outlier_thresh,
 #                               trial_markers=block_trans_idxs)
-        
+
 #         fpah.plot_aligned_signals(cpoke_in_br[sess_id][signal_type], cpoke_in_br['t'], 'Center Poke In by Block Rate - {} (session {})'.format(signal_type_title, sess_id),
 #                               all_sub_titles, 'Time from poke in (s)', signal_type_label, outlier_thresh=outlier_thresh,
 #                               trial_markers=block_trans_idxs)
@@ -464,55 +447,55 @@ for subj_id in sess_ids.keys():
 #         fpah.plot_aligned_signals(cpoke_out_br[sess_id][signal_type], cpoke_out_br['t'], 'Center Poke Out by Block Rate - {} (session {})'.format(signal_type_title, sess_id),
 #                               all_sub_titles, 'Time from poke out (s)', signal_type_label, outlier_thresh=outlier_thresh,
 #                               trial_markers=block_trans_idxs)
-        
+
 #         fpah.plot_aligned_signals(cue_br[sess_id][signal_type], cue_br['t'], 'Response Cue by Block Rate - {} (session {})'.format(signal_type_title, sess_id),
 #                               all_sub_titles, 'Time from response cue (s)', signal_type_label, outlier_thresh=outlier_thresh,
 #                               trial_markers=block_trans_idxs)
-        
+
 #         fpah.plot_aligned_signals(resp_choice_prev_outcome[sess_id][signal_type], resp_choice_prev_outcome['t'], 'Response by Choice after Outcome - {} (session {})'.format(signal_type_title, sess_id),
 #                               all_sub_titles, 'Time from response (s)', signal_type_label, outlier_thresh=outlier_thresh,
 #                               trial_markers=block_trans_idxs)
-        
+
 #         fpah.plot_aligned_signals(cpoke_in_choice_prev_outcome[sess_id][signal_type], cpoke_in_choice_prev_outcome['t'], 'Center Poke In by Future Choice after Outcome - {} (session {})'.format(signal_type_title, sess_id),
 #                               all_sub_titles, 'Time from poke in (s)', signal_type_label, outlier_thresh=outlier_thresh,
 #                               trial_markers=block_trans_idxs)
-        
+
 #         fpah.plot_aligned_signals(cpoke_out_choice_prev_outcome[sess_id][signal_type], cpoke_out_choice_prev_outcome['t'], 'Center Poke Out by Future Choice after Outcome - {} (session {})'.format(signal_type_title, sess_id),
 #                               all_sub_titles, 'Time from poke out (s)', signal_type_label, outlier_thresh=outlier_thresh,
 #                               trial_markers=block_trans_idxs)
-        
+
 #         fpah.plot_aligned_signals(cue_choice[sess_id][signal_type], cue_choice['t'], 'Response Cue by Choice - {} (session {})'.format(signal_type_title, sess_id),
 #                               all_sub_titles, 'Time from response cue (s)', signal_type_label, outlier_thresh=outlier_thresh,
 #                               trial_markers=block_trans_idxs)
-        
+
 #         fpah.plot_aligned_signals(resp_choice[sess_id][signal_type], resp_choice['t'], 'Response by Choice - {} (session {})'.format(signal_type_title, sess_id),
 #                               all_sub_titles, 'Time from response (s)', signal_type_label, outlier_thresh=outlier_thresh,
 #                               trial_markers=block_trans_idxs)
-        
+
 #         fpah.plot_aligned_signals(resp_choice_curr_outcome[sess_id][signal_type], resp_choice_curr_outcome['t'], 'Response by Choice and Outcome - {} (session {})'.format(signal_type_title, sess_id),
 #                               all_sub_titles, 'Time from response (s)', signal_type_label, outlier_thresh=outlier_thresh,
 #                               trial_markers=block_trans_idxs)
-        
+
 #         fpah.plot_aligned_signals(cue_side[sess_id][signal_type], cue_side['t'], 'Response Cue by Side - {} (session {})'.format(signal_type_title, sess_id),
 #                               all_sub_titles, 'Time from cue (s)', signal_type_label, outlier_thresh=outlier_thresh,
 #                               trial_markers=block_trans_idxs)
-        
+
 #         fpah.plot_aligned_signals(resp_side[sess_id][signal_type], resp_side['t'], 'Response by Side - {} (session {})'.format(signal_type_title, sess_id),
 #                               all_sub_titles, 'Time from response (s)', signal_type_label, outlier_thresh=outlier_thresh,
 #                               trial_markers=block_trans_idxs)
-        
+
 #         fpah.plot_aligned_signals(cue_side_choice[sess_id][signal_type], cue_side_choice['t'], 'Response Cue by Side & Choice - {} (session {})'.format(signal_type_title, sess_id),
 #                               all_sub_titles, 'Time from cue (s)', signal_type_label, outlier_thresh=outlier_thresh,
 #                               trial_markers=block_trans_idxs)
-        
+
 #         fpah.plot_aligned_signals(resp_side_choice[sess_id][signal_type], resp_side_choice['t'], 'Response by Side & Choice - {} (session {})'.format(signal_type_title, sess_id),
 #                               all_sub_titles, 'Time from response (s)', signal_type_label, outlier_thresh=outlier_thresh,
 #                               trial_markers=block_trans_idxs)
-        
+
 #         fpah.plot_aligned_signals(cue_side_choice_outcome[sess_id][signal_type], cue_side_choice_outcome['t'], 'Response Cue by Side, Choice & Outcome - {} (session {})'.format(signal_type_title, sess_id),
 #                               all_sub_titles, 'Time from cue (s)', signal_type_label, outlier_thresh=outlier_thresh,
 #                               trial_markers=block_trans_idxs)
-        
+
 #         fpah.plot_aligned_signals(resp_side_choice_outcome[sess_id][signal_type], resp_side_choice_outcome['t'], 'Response by Side, Choice & Outcome - {} (session {})'.format(signal_type_title, sess_id),
 #                               all_sub_titles, 'Time from response (s)', signal_type_label, outlier_thresh=outlier_thresh,
 #                               trial_markers=block_trans_idxs)
@@ -520,14 +503,19 @@ for subj_id in sess_ids.keys():
 
 # %% Plot average signals from multiple sessions on the same axes
 
+# modify these options to change what will be used in the average signal plots
 signal_type = 'z_dff_iso' # 'dff_iso', 'df_baseline_iso', 'raw_lig'
-regions = ['DMS', 'PFC']
-region_names = {'DMS': 'DMS', 'PFC': 'PL'}
-subjects = [179]
+regions = ['DMS', 'PL']
+subjects = list(sess_ids.keys())
 filter_outliers = False
 outlier_thresh = 20
 use_se = True
+ph = 3.5;
+pw = 5;
+n_reg = len(regions)
+resp_reg_xlims = {'DMS': [-1.5,2], 'PL': [-2,10]}
 
+# make this wrapper to simplify the stack command by not having to include the options declared above
 def stack_mats(mat_dict, groups=None):
     return fpah.stack_fp_mats(mat_dict, regions, sess_ids, subjects, signal_type, filter_outliers, outlier_thresh, groups)
 
@@ -549,12 +537,6 @@ cue_br_mats = stack_mats(cue_br)
 resp_br_rewarded_mats = stack_mats(resp_br_rewarded)
 resp_br_unrewarded_mats = stack_mats(resp_br_unrewarded)
 
-ph = 3.5;
-pw = 5;
-n_reg = len(regions)
-
-resp_reg_xlims = {'DMS': [-1.5,2], 'PFC': [-2,10]}
-
 # %% Choice, side, and prior reward groupings for multiple alignment points
 
 # choice, side, & side/choice
@@ -574,20 +556,20 @@ x_labels = ['port on', 'poke in', 'response cue', 'poke out', 'response poke']
 n_cols = 3
 
 for mat, t, title, x_label in zip(mats, ts, titles, x_labels):
-    
+
     fig, axs = plt.subplots(n_reg, n_cols, figsize=(pw*n_cols, ph*n_reg), layout='constrained', sharey='row')
     fig.suptitle('Choice/Side Groupings Aligned to ' + title)
-    
+
     legend_locs = ['upper right', 'upper right']
     for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
-        
+
         if title == 'Response':
             xlims = resp_reg_xlims[region]
         else:
             xlims = [-1.5,1.5]
 
         ax = axs[i,0]
-        ax.set_title('{} Choice - {}'.format(region_names[region], title))
+        ax.set_title('{} Choice - {}'.format(region, title))
         if title == 'Response':
             plot_utils.plot_dashlines(0.5, ax=ax)
         for group in choice_groups:
@@ -597,9 +579,9 @@ for mat, t, title, x_label in zip(mats, ts, titles, x_labels):
         ax.set_xlabel('Time from {} (s)'.format(x_label))
         ax.set_xlim(xlims)
         ax.legend(loc=legend_loc)
-        
+
         ax = axs[i,1]
-        ax.set_title('{} Side - {}'.format(region_names[region], title))
+        ax.set_title('{} Side - {}'.format(region, title))
         if title == 'Response':
             plot_utils.plot_dashlines(0.5, ax=ax)
         for group in side_groups:
@@ -609,15 +591,15 @@ for mat, t, title, x_label in zip(mats, ts, titles, x_labels):
         ax.set_xlabel('Time from {} (s)'.format(x_label))
         ax.set_xlim(xlims)
         ax.legend(loc=legend_loc)
-        
+
         ax = axs[i,2]
-        ax.set_title('{} Choice/Side - {}'.format(region_names[region], title))
+        ax.set_title('{} Choice/Side - {}'.format(region, title))
         if title == 'Response':
             plot_utils.plot_dashlines(0.5, ax=ax)
         for group in choice_side_groups:
             act = mat[region][group]
             plot_utils.plot_psth(np.nanmean(act, axis=0), t, calc_error(act), ax, label=group_labels[group])
-        
+
         ax.yaxis.set_tick_params(which='both', labelleft=True)
         ax.set_xlabel('Time from {} (s)'.format(x_label))
         ax.set_xlim(xlims)
@@ -642,20 +624,20 @@ x_labels = ['port on', 'response cue', 'poke out', 'response poke']
 n_cols = 3
 
 for mat, t, title, x_label in zip(mats, ts, titles, x_labels):
-    
+
     fig, axs = plt.subplots(n_reg, n_cols, figsize=(pw*n_cols, ph*n_reg), layout='constrained', sharey='row')
     fig.suptitle('Prior Outcome by Choice/Side Groupings Aligned to ' + title)
-    
+
     legend_locs = ['upper left', 'upper right']
     for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
-        
+
         if title == 'Response':
             xlims = resp_reg_xlims[region]
         else:
             xlims = [-1.5,1.5]
 
         ax = axs[i,0]
-        ax.set_title('{} Prior Outcome - {}'.format(region_names[region], title))
+        ax.set_title('{} Prior Outcome - {}'.format(region, title))
         if title == 'Response':
             plot_utils.plot_dashlines(0.5, ax=ax)
         for group in rew_groups:
@@ -665,9 +647,9 @@ for mat, t, title, x_label in zip(mats, ts, titles, x_labels):
         ax.set_xlabel('Time from {} (s)'.format(x_label))
         ax.set_xlim(xlims)
         ax.legend(loc=legend_loc)
-        
+
         ax = axs[i,1]
-        ax.set_title('{} Prior Outcome/Choice - {}'.format(region_names[region], title))
+        ax.set_title('{} Prior Outcome/Choice - {}'.format(region, title))
         if title == 'Response':
             plot_utils.plot_dashlines(0.5, ax=ax)
         for group in choice_rew_groups:
@@ -677,20 +659,20 @@ for mat, t, title, x_label in zip(mats, ts, titles, x_labels):
         ax.set_xlabel('Time from {} (s)'.format(x_label))
         ax.set_xlim(xlims)
         ax.legend(loc=legend_loc)
-        
+
         ax = axs[i,2]
-        ax.set_title('{} Prior Outcome/Side - {}'.format(region_names[region], title))
+        ax.set_title('{} Prior Outcome/Side - {}'.format(region, title))
         if title == 'Response':
             plot_utils.plot_dashlines(0.5, ax=ax)
         for group in side_rew_groups:
             act = mat[region][group]
             plot_utils.plot_psth(np.nanmean(act, axis=0), t, calc_error(act), ax, label=group_labels[group])
-        
+
         ax.yaxis.set_tick_params(which='both', labelleft=True)
         ax.set_xlabel('Time from {} (s)'.format(x_label))
         ax.set_xlim(xlims)
         ax.legend(loc=legend_loc)
-        
+
 
 # prior reward/choice/side
 rew_groups = ['contra_stay_prev_rewarded', 'contra_switch_prev_rewarded', 'ipsi_stay_prev_rewarded', 'ipsi_switch_prev_rewarded']
@@ -712,20 +694,20 @@ x_labels = ['port on', 'response cue', 'poke out', 'response poke']
 n_cols = 2
 
 for mat, t, title, x_label in zip(mats, ts, titles, x_labels):
-    
+
     fig, axs = plt.subplots(n_reg, n_cols, figsize=(pw*n_cols, ph*n_reg), layout='constrained', sharey='row')
     fig.suptitle('Prior Outcome by Choice/Side Groupings Aligned to ' + title)
-    
+
     legend_locs = ['upper left', 'upper right']
     for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
-        
+
         if title == 'Response':
             xlims = resp_reg_xlims[region]
         else:
             xlims = [-1.5,1.5]
 
         ax = axs[i,0]
-        ax.set_title('{} Prior Reward - {}'.format(region_names[region], title))
+        ax.set_title('{} Prior Reward - {}'.format(region, title))
         if title == 'Response':
             plot_utils.plot_dashlines(0.5, ax=ax)
         for group in rew_groups:
@@ -735,9 +717,9 @@ for mat, t, title, x_label in zip(mats, ts, titles, x_labels):
         ax.set_xlabel('Time from {} (s)'.format(x_label))
         ax.set_xlim(xlims)
         ax.legend(loc=legend_loc)
-        
+
         ax = axs[i,1]
-        ax.set_title('{} No Prior Reward - {}'.format(region_names[region], title))
+        ax.set_title('{} No Prior Reward - {}'.format(region, title))
         if title == 'Response':
             plot_utils.plot_dashlines(0.5, ax=ax)
         for group in unrew_groups:
@@ -774,7 +756,7 @@ legend_locs = ['upper left', 'upper right']
 for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
 
     ax = axs[i,0]
-    ax.set_title(region_names[region]+' Previous Choice')
+    ax.set_title(region+' Previous Choice')
     for group in prev_side_groups:
         act = cport_on_mats[region][group]
         plot_utils.plot_psth(np.nanmean(act, axis=0), t, calc_error(act), ax, label=group_labels[group])
@@ -782,9 +764,9 @@ for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
     ax.set_xlabel('Time from center port on (s)')
     ax.set_xlim(xlims)
     ax.legend(loc=legend_loc)
-    
+
     ax = axs[i,1]
-    ax.set_title(region_names[region]+' Future Choice')
+    ax.set_title(region+' Future Choice')
     for group in side_groups:
         act = cport_on_mats[region][group]
         plot_utils.plot_psth(np.nanmean(act, axis=0), t, calc_error(act), ax, label=group_labels[group])
@@ -792,9 +774,9 @@ for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
     ax.set_xlabel('Time from center port on (s)')
     ax.set_xlim(xlims)
     ax.legend(loc=legend_loc)
-    
+
     ax = axs[i,2]
-    ax.set_title(region_names[region]+' Prev Outcome and Previous Choice')
+    ax.set_title(region+' Prev Outcome and Previous Choice')
     for group in prev_side_rew_groups:
         act = cport_on_mats[region][group]
         plot_utils.plot_psth(np.nanmean(act, axis=0), t, calc_error(act), ax, label=group_labels[group])
@@ -802,9 +784,9 @@ for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
     ax.set_xlabel('Time from center port on (s)')
     ax.set_xlim(xlims)
     ax.legend(loc=legend_loc)
-      
+
     ax = axs[i,3]
-    ax.set_title(region_names[region]+' Prev Outcome and Future Choice')
+    ax.set_title(region+' Prev Outcome and Future Choice')
     for group in side_rew_groups:
         act = cport_on_mats[region][group]
         plot_utils.plot_psth(np.nanmean(act, axis=0), t, calc_error(act), ax, label=group_labels[group])
@@ -836,7 +818,7 @@ legend_locs = ['upper left', 'upper right']
 for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
 
     ax = axs[i,0]
-    ax.set_title(region_names[region]+' Previous Choice')
+    ax.set_title(region+' Previous Choice')
     for group in prev_side_groups:
         act = cue_mats[region][group]
         plot_utils.plot_psth(np.nanmean(act, axis=0), t, calc_error(act), ax, label=group_labels[group])
@@ -844,9 +826,9 @@ for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
     ax.set_xlabel('Time from response cue (s)')
     ax.set_xlim(xlims)
     ax.legend(loc=legend_loc)
-    
+
     ax = axs[i,1]
-    ax.set_title(region_names[region]+' Future Choice')
+    ax.set_title(region+' Future Choice')
     for group in side_groups:
         act = cue_mats[region][group]
         plot_utils.plot_psth(np.nanmean(act, axis=0), t, calc_error(act), ax, label=group_labels[group])
@@ -854,9 +836,9 @@ for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
     ax.set_xlabel('Time from response cue (s)')
     ax.set_xlim(xlims)
     ax.legend(loc=legend_loc)
-    
+
     ax = axs[i,2]
-    ax.set_title(region_names[region]+' Prev Outcome and Previous Choice')
+    ax.set_title(region+' Prev Outcome and Previous Choice')
     for group in prev_side_rew_groups:
         act = cue_mats[region][group]
         plot_utils.plot_psth(np.nanmean(act, axis=0), t, calc_error(act), ax, label=group_labels[group])
@@ -864,9 +846,9 @@ for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
     ax.set_xlabel('Time from response cue (s)')
     ax.set_xlim(xlims)
     ax.legend(loc=legend_loc)
-      
+
     ax = axs[i,3]
-    ax.set_title(region_names[region]+' Prev Outcome and Future Choice')
+    ax.set_title(region+' Prev Outcome and Future Choice')
     for group in side_rew_groups:
         act = cue_mats[region][group]
         plot_utils.plot_psth(np.nanmean(act, axis=0), t, calc_error(act), ax, label=group_labels[group])
@@ -874,7 +856,7 @@ for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
     ax.set_xlabel('Time from response cue (s)')
     ax.set_xlim(xlims)
     ax.legend(loc=legend_loc)
-    
+
 
 # response, prior outcome and prior/current choice
 n_cols = 2
@@ -892,11 +874,11 @@ group_labels = {'contra_prev_rewarded': 'Contra | Reward', 'ipsi_prev_rewarded':
 
 legend_locs = ['upper left', 'upper right']
 for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
-    
+
     xlims = resp_reg_xlims[region]
 
     ax = axs[i,0]
-    ax.set_title(region_names[region]+' Prev Outcome and Previous Choice')
+    ax.set_title(region+' Prev Outcome and Previous Choice')
     plot_utils.plot_dashlines(0.5, ax=ax)
     for group in prev_side_rew_groups:
         act = resp_mats[region][group]
@@ -905,9 +887,9 @@ for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
     ax.set_xlabel('Time from response poke (s)')
     ax.set_xlim(xlims)
     ax.legend(loc=legend_loc)
-      
+
     ax = axs[i,1]
-    ax.set_title(region_names[region]+' Prev Outcome and Current Choice')
+    ax.set_title(region+' Prev Outcome and Current Choice')
     plot_utils.plot_dashlines(0.5, ax=ax)
     for group in side_rew_groups:
         act = resp_mats[region][group]
@@ -940,11 +922,11 @@ group_labels = {'contra_rewarded_prev_rewarded': 'Contra | Reward', 'ipsi_reward
 
 legend_locs = ['upper left', 'upper right']
 for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
-    
+
     xlims = resp_reg_xlims[region]
 
     ax = axs[i,0]
-    ax.set_title(region_names[region]+' Rewarded by Previous Outcome & Choice')
+    ax.set_title(region+' Rewarded by Previous Outcome & Choice')
     plot_utils.plot_dashlines(0.5, ax=ax)
     for group in prev_side_rew_groups:
         act = resp_mats[region][group]
@@ -953,9 +935,9 @@ for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
     ax.set_xlabel('Time from response poke (s)')
     ax.set_xlim(xlims)
     ax.legend(loc=legend_loc)
-      
+
     ax = axs[i,1]
-    ax.set_title(region_names[region]+' Unrewarded by Previous Outcome & Choice')
+    ax.set_title(region+' Unrewarded by Previous Outcome & Choice')
     plot_utils.plot_dashlines(0.5, ax=ax)
     for group in prev_side_unrew_groups:
         act = resp_mats[region][group]
@@ -964,9 +946,9 @@ for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
     ax.set_xlabel('Time from response poke (s)')
     ax.set_xlim(xlims)
     ax.legend(loc=legend_loc)
-    
+
     ax = axs[i,2]
-    ax.set_title(region_names[region]+' Rewarded Choice by Previous Outcome')
+    ax.set_title(region+' Rewarded Choice by Previous Outcome')
     plot_utils.plot_dashlines(0.5, ax=ax)
     for group in side_rew_groups:
         act = resp_mats[region][group]
@@ -975,9 +957,9 @@ for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
     ax.set_xlabel('Time from response poke (s)')
     ax.set_xlim(xlims)
     ax.legend(loc=legend_loc)
-      
+
     ax = axs[i,3]
-    ax.set_title(region_names[region]+' Unrewarded Choice by Previous Outcome')
+    ax.set_title(region+' Unrewarded Choice by Previous Outcome')
     plot_utils.plot_dashlines(0.5, ax=ax)
     for group in side_unrew_groups:
         act = resp_mats[region][group]
@@ -986,8 +968,8 @@ for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
     ax.set_xlabel('Time from response poke (s)')
     ax.set_xlim(xlims)
     ax.legend(loc=legend_loc)
-    
-    
+
+
 # %% Current outcome at time of response, for multiple different groupings
 
 # response outcome
@@ -1004,11 +986,11 @@ group_labels = {'rewarded': 'Rewarded', 'unrewarded': 'Unrewarded',
 
 legend_locs = ['upper left', 'upper right']
 for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
-    
+
     xlims = resp_reg_xlims[region]
 
     ax = axs[i,0]
-    ax.set_title(region_names[region]+' Current Outcome')
+    ax.set_title(region+' Current Outcome')
     plot_utils.plot_dashlines(0.5, ax=ax)
     for group in rew_groups:
         act = resp_mats[region][group]
@@ -1017,9 +999,9 @@ for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
     ax.set_xlabel('Time from response poke (s)')
     ax.set_xlim(xlims)
     ax.legend(loc=legend_loc)
-      
+
     ax = axs[i,1]
-    ax.set_title(region_names[region]+' Current & Prior Outcome')
+    ax.set_title(region+' Current & Prior Outcome')
     plot_utils.plot_dashlines(0.5, ax=ax)
     for group in prev_rew_groups:
         act = resp_mats[region][group]
@@ -1028,7 +1010,7 @@ for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
     ax.set_xlabel('Time from response poke (s)')
     ax.set_xlim(xlims)
     ax.legend(loc=legend_loc)
-    
+
 
 # response side/outcome
 n_cols = 3
@@ -1047,11 +1029,11 @@ group_labels = {'contra_rewarded': 'Rewarded Contra', 'ipsi_rewarded': 'Rewarded
 
 legend_locs = ['upper left', 'upper right']
 for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
-    
+
     xlims = resp_reg_xlims[region]
 
     ax = axs[i,0]
-    ax.set_title(region_names[region]+' Side/Outcome')
+    ax.set_title(region+' Side/Outcome')
     plot_utils.plot_dashlines(0.5, ax=ax)
     for group in side_groups:
         act = resp_mats[region][group]
@@ -1060,9 +1042,9 @@ for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
     ax.set_xlabel('Time from response poke (s)')
     ax.set_xlim(xlims)
     ax.legend(loc=legend_loc)
-      
+
     ax = axs[i,1]
-    ax.set_title(region_names[region]+' Rewarded Side by Prior Outcome')
+    ax.set_title(region+' Rewarded Side by Prior Outcome')
     plot_utils.plot_dashlines(0.5, ax=ax)
     for group in side_rew_groups:
         act = resp_mats[region][group]
@@ -1071,9 +1053,9 @@ for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
     ax.set_xlabel('Time from response poke (s)')
     ax.set_xlim(xlims)
     ax.legend(loc=legend_loc)
-    
+
     ax = axs[i,2]
-    ax.set_title(region_names[region]+' Unrewarded Side by Prior Outcome')
+    ax.set_title(region+' Unrewarded Side by Prior Outcome')
     plot_utils.plot_dashlines(0.5, ax=ax)
     for group in side_unrew_groups:
         act = resp_mats[region][group]
@@ -1100,11 +1082,11 @@ group_labels = {'stay_rewarded': 'Rewarded Stay', 'switch_rewarded': 'Rewarded S
 
 legend_locs = ['upper left', 'upper right']
 for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
-    
+
     xlims = resp_reg_xlims[region]
 
     ax = axs[i,0]
-    ax.set_title(region_names[region]+' Choice/Outcome')
+    ax.set_title(region+' Choice/Outcome')
     plot_utils.plot_dashlines(0.5, ax=ax)
     for group in choice_groups:
         act = resp_mats[region][group]
@@ -1113,9 +1095,9 @@ for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
     ax.set_xlabel('Time from response poke (s)')
     ax.set_xlim(xlims)
     ax.legend(loc=legend_loc)
-      
+
     ax = axs[i,1]
-    ax.set_title(region_names[region]+' Rewarded Choice by Prior Outcome')
+    ax.set_title(region+' Rewarded Choice by Prior Outcome')
     plot_utils.plot_dashlines(0.5, ax=ax)
     for group in choice_rew_groups:
         act = resp_mats[region][group]
@@ -1124,9 +1106,9 @@ for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
     ax.set_xlabel('Time from response poke (s)')
     ax.set_xlim(xlims)
     ax.legend(loc=legend_loc)
-    
+
     ax = axs[i,2]
-    ax.set_title(region_names[region]+' Unrewarded Choice by Prior Outcome')
+    ax.set_title(region+' Unrewarded Choice by Prior Outcome')
     plot_utils.plot_dashlines(0.5, ax=ax)
     for group in choice_unrew_groups:
         act = resp_mats[region][group]
@@ -1156,11 +1138,11 @@ group_labels = {'contra_rewarded': 'Rewarded Contra', 'ipsi_rewarded': 'Rewarded
 
 legend_locs = ['upper left', 'upper right']
 for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
-    
+
     xlims = resp_reg_xlims[region]
-    
+
     ax = axs[i,0]
-    ax.set_title(region_names[region]+' Side/Outcome')
+    ax.set_title(region+' Side/Outcome')
     plot_utils.plot_dashlines(0.5, ax=ax)
     for group in side_groups:
         act = resp_mats[region][group]
@@ -1169,9 +1151,9 @@ for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
     ax.set_xlabel('Time from response poke (s)')
     ax.set_xlim(xlims)
     ax.legend(loc=legend_loc)
-    
+
     ax = axs[i,1]
-    ax.set_title(region_names[region]+' Choice/Outcome')
+    ax.set_title(region+' Choice/Outcome')
     plot_utils.plot_dashlines(0.5, ax=ax)
     for group in choice_groups:
         act = resp_mats[region][group]
@@ -1180,9 +1162,9 @@ for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
     ax.set_xlabel('Time from response poke (s)')
     ax.set_xlim(xlims)
     ax.legend(loc=legend_loc)
-    
+
     ax = axs[i,2]
-    ax.set_title(region_names[region]+' Rewarded Side/Choice')
+    ax.set_title(region+' Rewarded Side/Choice')
     plot_utils.plot_dashlines(0.5, ax=ax)
     for group in rew_groups:
         act = resp_mats[region][group]
@@ -1191,9 +1173,9 @@ for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
     ax.set_xlabel('Time from response poke (s)')
     ax.set_xlim(xlims)
     ax.legend(loc=legend_loc)
-    
+
     ax = axs[i,3]
-    ax.set_title(region_names[region]+' Unrewarded Side/Choice')
+    ax.set_title(region+' Unrewarded Side/Choice')
     plot_utils.plot_dashlines(0.5, ax=ax)
     for group in unrew_groups:
         act = resp_mats[region][group]
@@ -1224,11 +1206,11 @@ group_labels = {'contra_stay_rewarded_prev_rewarded': 'Contra Stay', 'contra_swi
 
 legend_locs = ['upper left', 'upper right']
 for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
-    
+
     xlims = resp_reg_xlims[region]
 
     ax = axs[i,0]
-    ax.set_title(region_names[region]+' Rewarded | Reward')
+    ax.set_title(region+' Rewarded | Reward')
     plot_utils.plot_dashlines(0.5, ax=ax)
     for group in rew_prev_rew_groups:
         act = resp_mats[region][group]
@@ -1237,9 +1219,9 @@ for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
     ax.set_xlabel('Time from response poke (s)')
     ax.set_xlim(xlims)
     ax.legend(loc=legend_loc)
-    
+
     ax = axs[i,1]
-    ax.set_title(region_names[region]+' Rewarded | No Reward')
+    ax.set_title(region+' Rewarded | No Reward')
     plot_utils.plot_dashlines(0.5, ax=ax)
     for group in rew_prev_unrew_groups:
         act = resp_mats[region][group]
@@ -1248,9 +1230,9 @@ for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
     ax.set_xlabel('Time from response poke (s)')
     ax.set_xlim(xlims)
     ax.legend(loc=legend_loc)
-    
+
     ax = axs[i,2]
-    ax.set_title(region_names[region]+' Unrewarded | Reward')
+    ax.set_title(region+' Unrewarded | Reward')
     plot_utils.plot_dashlines(0.5, ax=ax)
     for group in unrew_prev_rew_groups:
         act = resp_mats[region][group]
@@ -1259,9 +1241,9 @@ for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
     ax.set_xlabel('Time from response poke (s)')
     ax.set_xlim(xlims)
     ax.legend(loc=legend_loc)
-    
+
     ax = axs[i,3]
-    ax.set_title(region_names[region]+' Unrewarded | No Reward')
+    ax.set_title(region+' Unrewarded | No Reward')
     plot_utils.plot_dashlines(0.5, ax=ax)
     for group in unrew_prev_unrew_groups:
         act = resp_mats[region][group]
@@ -1270,7 +1252,7 @@ for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
     ax.set_xlabel('Time from response poke (s)')
     ax.set_xlim(xlims)
     ax.legend(loc=legend_loc)
-    
+
 # %% Response aligned grouped by side/reward/future response
 
 t = resp['t']
@@ -1291,11 +1273,11 @@ group_labels = {'rewarded_future_stay': 'Stay | Reward', 'rewarded_future_switch
 
 legend_locs = ['upper left', 'upper right']
 for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
-    
+
     xlims = resp_reg_xlims[region]
 
     ax = axs[i,0]
-    ax.set_title(region_names[region]+' Outcome/Future Choice')
+    ax.set_title(region+' Outcome/Future Choice')
     plot_utils.plot_dashlines(0.5, ax=ax)
     for group in choice_groups:
         act = resp_mats[region][group]
@@ -1304,9 +1286,9 @@ for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
     ax.set_xlabel('Time from response poke (s)')
     ax.set_xlim(xlims)
     ax.legend(loc=legend_loc)
-      
+
     ax = axs[i,1]
-    ax.set_title(region_names[region]+' Rewarded Side by Future Choice')
+    ax.set_title(region+' Rewarded Side by Future Choice')
     plot_utils.plot_dashlines(0.5, ax=ax)
     for group in side_rew_groups:
         act = resp_mats[region][group]
@@ -1315,9 +1297,9 @@ for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
     ax.set_xlabel('Time from response poke (s)')
     ax.set_xlim(xlims)
     ax.legend(loc=legend_loc)
-    
+
     ax = axs[i,2]
-    ax.set_title(region_names[region]+' Unrewarded Side by Future Choice')
+    ax.set_title(region+' Unrewarded Side by Future Choice')
     plot_utils.plot_dashlines(0.5, ax=ax)
     for group in side_unrew_groups:
         act = resp_mats[region][group]
@@ -1340,7 +1322,7 @@ legend_locs = ['upper left', 'upper right']
 for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
 
     ax = axs[i,0]
-    ax.set_title(region_names[region]+' Response Cue')
+    ax.set_title(region+' Response Cue')
     for br in block_rates:
         act = cue_br_mats[region][br]
         plot_utils.plot_psth(np.nanmean(act, axis=0), cue_br['t'], calc_error(act), ax, label='{}%'.format(br))
@@ -1348,9 +1330,9 @@ for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
     ax.set_xlabel('Time from response cue (s)')
     ax.set_xlim([-1.5, 1.5])
     ax.legend(loc=legend_loc)
-    
+
     ax = axs[i,1]
-    ax.set_title(region_names[region]+' Rewarded Response')
+    ax.set_title(region+' Rewarded Response')
     plot_utils.plot_dashlines(0.5, ax=ax)
     for br in block_rates:
         act = resp_br_rewarded_mats[region][br]
@@ -1359,9 +1341,9 @@ for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
     ax.set_xlabel('Time from response poke (s)')
     ax.set_xlim(resp_reg_xlims[region])
     ax.legend(loc=legend_loc)
-    
+
     ax = axs[i,2]
-    ax.set_title(region_names[region]+' Unrewarded Response')
+    ax.set_title(region+' Unrewarded Response')
     plot_utils.plot_dashlines(0.5, ax=ax)
     for br in block_rates:
         act = resp_br_unrewarded_mats[region][br]
@@ -1370,7 +1352,7 @@ for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
     ax.set_xlabel('Time from response poke (s)')
     ax.set_xlim(resp_reg_xlims[region])
     ax.legend(loc=legend_loc)
-    
+
 # choice reward probability at response
 n_cols = 2
 fig, axs = plt.subplots(n_reg, n_cols, figsize=(pw*n_cols, ph*n_reg), layout='constrained', sharey='row')
@@ -1379,9 +1361,9 @@ t = resp_pchoice_rewarded['t']
 
 legend_locs = ['upper left', 'upper right']
 for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
-    
+
     ax = axs[i,0]
-    ax.set_title(region_names[region]+' Rewarded')
+    ax.set_title(region+' Rewarded')
     plot_utils.plot_dashlines(0.5, ax=ax)
     for p in choice_probs:
         act = resp_pchoice_rewarded_mats[region][p]
@@ -1390,9 +1372,9 @@ for i, (region, legend_loc) in enumerate(zip(regions, legend_locs)):
     ax.set_xlabel('Time from response poke (s)')
     ax.set_xlim(resp_reg_xlims[region])
     ax.legend(loc=legend_loc, ncols=2)
-    
+
     ax = axs[i,1]
-    ax.set_title(region_names[region]+' Unrewarded')
+    ax.set_title(region+' Unrewarded')
     plot_utils.plot_dashlines(0.5, ax=ax)
     for p in choice_probs:
         act = resp_pchoice_unrewarded_mats[region][p]
@@ -1417,8 +1399,3 @@ ax.set_ylabel('Shifted Z-scored ΔF/F')
 ax.set_xlabel('Time from response poke (s)')
 ax.set_xlim(resp_reg_xlims[region])
 ax.legend(loc=legend_loc, ncols=2)
-
-
-
-
-
