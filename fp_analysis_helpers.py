@@ -9,8 +9,15 @@ import init
 import pyutils.utils as utils
 from sys_neuro_tools import plot_utils, fp_utils
 import numpy as np
+from enum import Enum
 import matplotlib.pyplot as plt
 import scipy.signal as sig
+import os.path as path
+import os
+from glob import glob
+from pptx import Presentation
+from pptx.enum.text import PP_ALIGN
+from pptx.util import Inches, Pt
 
 
 def get_all_processed_signals(raw_lig, raw_iso):
@@ -27,22 +34,33 @@ def get_all_processed_signals(raw_lig, raw_iso):
     # dff_baseline = ((raw_lig - baseline)/baseline)*100
 
     # use ligand-signal baseline with linear & exponential decay function to approximate photobleaching
-    baseline_lig = fp_utils.fit_baseline(raw_lig)
-    dff_baseline = ((raw_lig - baseline_lig)/baseline_lig)*100
+    try:
+        baseline_lig = fp_utils.fit_baseline(raw_lig)
+        dff_baseline = ((raw_lig - baseline_lig)/baseline_lig)*100
 
-    # use baseline and iso together to calculate fluorescence residual (dF instead of dF/F)
+        # use baseline and iso together to calculate fluorescence residual (dF instead of dF/F)
 
-    # first subtract the baseline fit to each signal to correct for photobleaching
-    baseline_corr_lig = raw_lig - baseline_lig
+        # first subtract the baseline fit to each signal to correct for photobleaching
+        baseline_corr_lig = raw_lig - baseline_lig
 
-    baseline_iso = fp_utils.fit_baseline(raw_iso)
-    baseline_corr_iso = raw_iso - baseline_iso
+        baseline_iso = fp_utils.fit_baseline(raw_iso)
+        baseline_corr_iso = raw_iso - baseline_iso
 
-    # scale the isosbestic signal to best fit the ligand-dependent signal
-    fitted_baseline_iso = fp_utils.fit_signal(baseline_corr_iso, baseline_corr_lig)
+        # scale the isosbestic signal to best fit the ligand-dependent signal
+        fitted_baseline_iso = fp_utils.fit_signal(baseline_corr_iso, baseline_corr_lig)
 
-    # then use the baseline corrected signals to calculate dF, which is a residual fluorescence
-    df_baseline_iso = baseline_corr_lig - fitted_baseline_iso
+        # then use the baseline corrected signals to calculate dF, which is a residual fluorescence
+        df_baseline_iso = baseline_corr_lig - fitted_baseline_iso
+    except RuntimeError as error:
+        print(str(error))
+        empty_signal = np.full(raw_lig.shape, np.nan)
+        baseline_lig = empty_signal
+        dff_baseline = empty_signal
+        baseline_corr_lig = empty_signal
+        baseline_iso = empty_signal
+        baseline_corr_iso = empty_signal
+        fitted_baseline_iso = empty_signal
+        df_baseline_iso = empty_signal
 
     return {'raw_lig': raw_lig,
             'raw_iso': raw_iso,
@@ -60,7 +78,7 @@ def get_all_processed_signals(raw_lig, raw_iso):
 
 
 def view_processed_signals(processed_signals, t, dec=10, title='Full Signals', vert_marks=[],
-                           filter_outliers=False, outlier_zthresh=10, t_min=0, t_max=np.inf):
+                           filter_outliers=False, pos_outlier_zthresh=15, neg_outlier_zthresh=-4, t_min=0, t_max=np.inf):
 
     if utils.is_dict(list(processed_signals.values())[0]):
         n_panel_stacks = len(processed_signals.values())
@@ -84,13 +102,10 @@ def view_processed_signals(processed_signals, t, dec=10, title='Full Signals', v
     for i, (sub_key, sub_signals) in enumerate(processed_signals.items()):
 
         # remove outliers in z-score space
-        filt_sel = np.full(t.shape, True)
         if filter_outliers:
-            # filter based on raw signals
-            z_lig = utils.z_score(sub_signals['raw_lig'][::dec])
-            z_iso = utils.z_score(sub_signals['raw_iso'][::dec])
-            filt_sel = filt_sel & (np.abs(z_lig) < outlier_zthresh)
-            filt_sel = filt_sel & (np.abs(z_iso) < outlier_zthresh)
+            filt_sel = (sub_signals['z_dff_iso'][::dec] > neg_outlier_zthresh) & (sub_signals['z_dff_iso'][::dec] < pos_outlier_zthresh)
+        else:
+            filt_sel = np.full(t.shape, True)
 
         # repurpose outlier filter for time filter as well
         filt_sel[:t_min_idx] = False
@@ -133,7 +148,7 @@ def view_processed_signals(processed_signals, t, dec=10, title='Full Signals', v
         l2 = ax.plot(filt_t, sub_signals['fitted_iso'][::dec][filt_sel], label='Fitted Iso', color=color2, alpha=0.5)
         l1 = ax.plot(filt_t, sub_signals['raw_lig'][::dec][filt_sel], label='Raw Lig', color=color1, alpha=0.5)
         plot_utils.plot_dashlines(vert_marks, ax=ax)
-        ax.set_title(gen_sub_title.format('Iso dF/F Signals'))
+        ax.set_title(gen_sub_title.format('Iso ΔF/F Signals'))
         ax.set_xlabel('Time (s)')
         ax.set_ylabel('Fluorescent Signal (V)')
         ls = [l1[0], l2[0]]
@@ -143,8 +158,8 @@ def view_processed_signals(processed_signals, t, dec=10, title='Full Signals', v
         # plot iso dFF and baseline corrected dF
         ax = axs[n_panel_stacks+i,1]
         ax2 = ax.twinx()
-        l2 = ax2.plot(filt_t, sub_signals['df_baseline_iso'][::dec][filt_sel], label='Baseline Corrected dF', color=color2, alpha=0.5)
-        l1 = ax.plot(filt_t, sub_signals['dff_iso'][::dec][filt_sel], label='Iso dF/F', color=color1, alpha=0.5)
+        l2 = ax2.plot(filt_t, sub_signals['df_baseline_iso'][::dec][filt_sel], label='Baseline Corrected ΔF', color=color2, alpha=0.5)
+        l1 = ax.plot(filt_t, sub_signals['dff_iso'][::dec][filt_sel], label='Iso ΔF/F', color=color1, alpha=0.5)
         plot_utils.plot_dashlines(vert_marks, ax=ax)
         ax.set_title(gen_sub_title.format('Iso Corrected Ligand Signals'))
         ax.set_xlabel('Time (s)')
@@ -159,6 +174,8 @@ def view_processed_signals(processed_signals, t, dec=10, title='Full Signals', v
         ls = [l1[0], l2[0]]
         labs = [l.get_label() for l in ls]
         ax.legend(ls, labs)
+
+    return fig
 
 
 def view_signal(processed_signals, t, signal_type, title=None, dec=10, vert_marks=[],
@@ -270,41 +287,98 @@ def plot_aligned_signals(signal_dict, t, title, sub_titles_dict, x_label, y_labe
         fig.colorbar(hm, ax=axs[i*2,:].ravel().tolist(), label=y_label)
 
 
+def plot_avg_signals(plot_groups, group_labels, data_mat_dict, regions, t, title, plot_titles, x_label, y_label,
+                     xlims_dict=None, dashlines=None, legend_params=None, use_se=True, group_colors=None, ph=3.5, pw=5):
+
+    def calc_error(mat):
+        if use_se:
+            return utils.stderr(mat, axis=0)
+        else:
+            return np.std(mat, axis=0)
+
+    n_rows = len(regions)
+    n_cols = len(plot_groups)
+    fig, axs = plt.subplots(n_rows, n_cols, figsize=(pw*n_cols, ph*n_rows), layout='constrained', sharey='row')
+
+    if n_rows == 1:
+        axs = axs[None,:]
+    if n_cols == 1:
+        axs = axs[:,None]
+
+    fig.suptitle(title)
+
+    for i, region in enumerate(regions):
+        for j, (plot_group, plot_title) in enumerate(zip(plot_groups, plot_titles)):
+            ax = axs[i,j]
+            ax.set_title(region + ' ' + plot_title)
+            if not dashlines is None:
+                plot_utils.plot_dashlines(dashlines, ax=ax)
+
+            for k, group in enumerate(plot_group):
+                if group in data_mat_dict[region]:
+                    act = data_mat_dict[region][group]
+                    if not group_colors is None:
+                        plot_utils.plot_psth(np.nanmean(act, axis=0), t, calc_error(act), ax, label=group_labels[group], color=group_colors[k])
+                    else:
+                        plot_utils.plot_psth(np.nanmean(act, axis=0), t, calc_error(act), ax, label=group_labels[group])
+
+            if j == 0:
+                ax.set_ylabel(y_label)
+            else:
+                ax.yaxis.set_tick_params(which='both', labelleft=True)
+            ax.set_xlabel(x_label)
+
+            if not xlims_dict is None:
+                ax.set_xlim(xlims_dict[region])
+
+            if not legend_params is None:
+                if not legend_params[region] is None:
+                    ax.legend(**legend_params[region])
+            else:
+                ax.legend(loc='best')
+
+    return fig
+
+
 def get_signal_type_labels(signal_type):
     ''' Get signal titles and labels based on the type of signal '''
     match signal_type:
         case 'dff_iso':
             title = 'Isosbestic Normalized'
-            ax_label = 'dF/F'
+            ax_label = 'ΔF/F'
         case 'z_dff_iso':
             title = 'Isosbestic Normalized'
-            ax_label = 'z-scored dF/F'
+            ax_label = 'Z-scored ΔF/F'
         case 'dff_baseline':
             title = 'Baseline Normalized'
-            ax_label = 'dF/F'
+            ax_label = 'ΔF/F'
         case 'z_dff_baseline':
             title = 'Baseline Normalized'
-            ax_label = 'z-scored dF/F'
+            ax_label = 'Z-scored ΔF/F'
         case 'df_baseline_iso':
             title = 'Baseline-Subtracted Isosbestic Residuals'
-            ax_label = 'dF residuals'
+            ax_label = 'ΔF residuals'
         case 'z_df_baseline_iso':
             title = 'Baseline-Subtracted Isosbestic Residuals'
-            ax_label = 'z-scored dF residuals'
+            ax_label = 'Z-scored ΔF residuals'
         case 'baseline_corr_lig':
             title = 'Baseline-Subtracted Ligand Signal'
-            ax_label = 'dF'
+            ax_label = 'ΔF'
         case 'baseline_corr_iso':
             title = 'Baseline-Subtracted Isosbestic Signal'
-            ax_label = 'dF'
+            ax_label = 'ΔF'
         case 'raw_lig':
             title = 'Raw Ligand Signal'
-            ax_label = 'dF/F' if trial_normalize else 'V'
+            ax_label = 'ΔF/F' if trial_normalize else 'V'
         case 'raw_iso':
             title = 'Raw Isosbestic Signal'
-            ax_label = 'dF/F' if trial_normalize else 'V'
+            ax_label = 'ΔF/F' if trial_normalize else 'V'
 
     return title, ax_label
+
+
+def get_implant_side_type(side, implant_side):
+    return 'ipsi' if implant_side == side else 'contra'
 
 
 def plot_power_spectra(signal, dt, f_max=40, title=''):
@@ -358,3 +432,326 @@ def stack_fp_mats(mat_dict, regions, sess_ids, subjects, signal_type, filter_out
 #             data_dict[region][name] = np.vstack([data_dict[region][group] for group in groups])
 
 #     return data_dict
+
+
+# %% Alignment Helpers
+
+class Alignment(str, Enum):
+    cport_on = 'cport_on'
+    cpoke_in = 'cpoke_in'
+    early_cpoke_in = 'early_cpoke_in'
+    tone = 'tone'
+    cue = 'cue'
+    cpoke_out = 'cpoke_out'
+    early_cpoke_out = 'early_cpoke_out'
+    resp = 'resp'
+    reward = 'reward'
+    cue_poke_resp = 'norm_cue_poke_resp'
+    poke_cue_resp = 'norm_poke_cue_resp'
+    resp_reward = 'norm_resp_reward'
+    cue_resp = 'norm_cue_resp'
+
+def get_align_title(align):
+    match align:
+        case Alignment.cport_on:
+            return 'Center Port On'
+        case Alignment.cpoke_in:
+            return 'Center Poke In'
+        case Alignment.early_cpoke_in:
+            return 'Early Center Poke In'
+        case Alignment.tone:
+            return 'Tone Start'
+        case Alignment.cue:
+            return 'Response Cue'
+        case Alignment.cpoke_out:
+            return 'Center Poke Out'
+        case Alignment.early_cpoke_out:
+            return 'Early Center Poke Out'
+        case Alignment.resp:
+            return 'Response Poke'
+        case Alignment.reward:
+            return 'Reward Delivery'
+        case Alignment.cue_poke_resp:
+            return 'Normalized Cue, Poke Out, & Response'
+        case Alignment.poke_cue_resp:
+            return 'Normalized Poke Out, Cue, & Response'
+        case Alignment.resp_reward:
+            return 'Normalized Response to Reward'
+        case Alignment.cue_resp:
+            return 'Normalized Cue to Response'
+        case _:
+            return align
+
+def get_align_xlabel(align):
+    gen_x_label = 'Time from {} (s)'
+    gen_norm_x_label = 'Normalized Time from {}'
+    match align:
+        case Alignment.cport_on:
+            return gen_x_label.format('port on')
+        case Alignment.cpoke_in:
+            return gen_x_label.format('poke in')
+        case Alignment.early_cpoke_in:
+            return gen_x_label.format('poke in')
+        case Alignment.tone:
+            return gen_x_label.format('tone onset')
+        case Alignment.cue:
+            return gen_x_label.format('response cue')
+        case Alignment.cpoke_out:
+            return gen_x_label.format('poke out')
+        case Alignment.early_cpoke_out:
+            return gen_x_label.format('poke out')
+        case Alignment.resp:
+            return gen_x_label.format('response poke')
+        case Alignment.reward:
+            return gen_x_label.format('reward')
+        case Alignment.cue_poke_resp:
+            return gen_norm_x_label.format('response cue to response')
+        case Alignment.poke_cue_resp:
+            return gen_norm_x_label.format('poke out to response')
+        case Alignment.resp_reward:
+            return gen_norm_x_label.format('response to reward')
+        case Alignment.cue_resp:
+            return gen_norm_x_label.format('cue to response')
+
+
+# %% Plot Image Saving/Loading Methods
+
+def save_fig(fig, save_path, format='png', **kwargs):
+
+    utils.check_make_dir(save_path)
+
+    if not format in save_path:
+        save_path += '.' + format
+
+    fig.savefig(save_path, **kwargs)
+
+
+def get_base_figure_save_path():
+    # make sure subject id is a string
+    return path.join(utils.get_user_home(), 'FP Images')
+
+
+def get_figure_save_path(behavior, subj_ids, filename=''):
+    # make sure subject id is a string
+    subj_ids = str(subj_ids) if not utils.is_list(subj_ids) else '_'.join([str(i) for i in sorted(subj_ids)])
+    return path.join(get_base_figure_save_path(), behavior, subj_ids, filename)
+
+
+def generate_figure_ppt(save_path, group_by=None, behaviors=None, subj_ids=None, alignments=None, filenames=None):
+    '''
+    Generate a power point from saved figures for the specified behaviors, subjects, and alignments grouped by the provided ordering
+
+    Parameters
+    ----------
+    save_path : The path to the saved powerpoint
+    group_by : The grouping order for the images. The default is ['behavior', 'subject', 'alignment', 'filename'].
+        This determines the order in which images are placed in the powerpoint
+    behaviors : The behaviors to include in the powerpoint. The default is all behaviors.
+    subj_ids : The subject ids to include in the powerpoint. The default is all subjects.
+    alignments : The alignment points to include in the powerpoint. The default is all alignments.
+
+    Returns
+    -------
+    None.
+
+    '''
+
+    base_path = get_base_figure_save_path()
+    def_group_by = ['behavior', 'subject', 'alignment', 'filename']
+    if group_by is None:
+        group_by = def_group_by
+    elif not utils.is_list(group_by):
+        group_by = [group_by]
+
+    if len(group_by) < len(def_group_by):
+        group_by.extend([g for g in def_group_by if g not in group_by])
+
+    if behaviors is None:
+        behaviors = [f.name for f in os.scandir(base_path) if f.is_dir()]
+    elif not utils.is_list(behaviors):
+        # make sure a single behavior is in list form
+        behaviors = [behaviors]
+
+    if subj_ids is None:
+        subj_id_paths = utils.flatten([glob(path.join(base_path, beh, '*')) for beh in behaviors])
+        subj_ids = np.unique([path.basename(p) for p in subj_id_paths]).tolist()
+    elif not utils.is_list(subj_ids):
+        subj_ids = [subj_ids]
+
+    # make sure subject ids are strings and collapse multiple ids into
+    subj_ids = [str(i) if not utils.is_list(i) else '_'.join([str(j) for j in sorted(i)]) for i in subj_ids]
+
+    if alignments is None:
+        alignments = [a for a in Alignment]
+    elif not utils.is_list(alignments):
+        # make sure a single alignment is in list form
+        alignments = [alignments]
+
+    if filenames is None:
+        # get all possible filenames of figures
+        all_filenames = utils.flatten([glob(path.join(base_path, b, s, a+'*')) for b in behaviors for s in subj_ids for a in alignments])
+        # remove path and extension
+        filenames = np.unique([path.basename(f).replace('.png', '') for f in all_filenames])
+        # remove alignment
+        filenames = np.unique([f.replace(a+'_', '') for a in alignments for f in filenames if a in f])
+    elif not utils.is_list(filenames):
+        # make sure a single filename is in list form
+        filenames = [filenames]
+
+    prs = Presentation()
+    prs.slide_width = Inches(16)
+    prs.slide_height = Inches(9)
+
+    __add_ppt_slides_recursive(prs, group_by, behaviors, subj_ids, alignments, filenames, 0)
+
+    if not '.pptx' in save_path:
+        save_path += '.pptx'
+    prs.save(save_path)
+
+
+def __add_ppt_slides_recursive(prs, group_by, behaviors, subj_ids, alignments, filenames, level, level_titles=[]):
+
+    group = group_by[level]
+    title_font_size = Pt(60 - 10*level)
+
+    match group:
+        case 'behavior':
+            level_groups = behaviors
+            level_group_labels = behaviors
+        case 'subject':
+            level_groups = subj_ids
+            level_group_labels = [s.replace('_', ', ') for s in subj_ids]
+        case 'alignment':
+            level_groups = alignments
+            level_group_labels = [get_align_title(a) for a in alignments]
+        case 'filename':
+            level_groups = filenames
+            level_group_labels = filenames
+
+    # if we haven't reached the lowest level make a title slide for each level group and recurse
+    if level < len(group_by)-1:
+        for i, level_group in enumerate(level_groups):
+
+            match group:
+                case 'behavior':
+                    images_exist = __check_images_exist(level_group, subj_ids, alignments, filenames)
+                case 'subject':
+                    images_exist = __check_images_exist(behaviors, level_group, alignments, filenames)
+                case 'alignment':
+                    images_exist = __check_images_exist(behaviors, subj_ids, level_group, filenames)
+                case 'filename':
+                    images_exist = __check_images_exist(behaviors, subj_ids, alignments, level_group)
+
+            if images_exist:
+                layout = prs.slide_layouts[0] # title slide
+                slide = prs.slides.add_slide(layout)
+                title = slide.shapes.title
+                level_titles_copy = level_titles.copy()
+                level_titles_copy.append(level_group_labels[i])
+                title.text = '\n'.join(level_titles_copy)
+                for line in title.text_frame.paragraphs:
+                    line.font.size = title_font_size
+                    if level == 0:
+                        line.font.bold = True
+
+                # need to reset the height and top after changing width and left
+                title_height = title.height
+                title_top = title.top
+                title.width = prs.slide_width
+                title.left = 0
+                title.height = title_height
+                title.top = title_top
+
+                match group:
+                    case 'behavior':
+                        __add_ppt_slides_recursive(prs, group_by, level_group, subj_ids, alignments, filenames, level+1, level_titles_copy)
+                    case 'subject':
+                        __add_ppt_slides_recursive(prs, group_by, behaviors, level_group, alignments, filenames, level+1, level_titles_copy)
+                    case 'alignment':
+                        __add_ppt_slides_recursive(prs, group_by, behaviors, subj_ids, level_group, filenames, level+1, level_titles_copy)
+                    case 'filename':
+                        __add_ppt_slides_recursive(prs, group_by, behaviors, subj_ids, alignments, level_group, level+1, level_titles_copy)
+
+    else:
+        # we are at the lowest level so we need to start adding slides
+        for i, level_group in enumerate(level_groups):
+            # get all images the for the given groups
+            # Note: at the lowest level there will be one element for each of the grouping arguments
+            match group:
+                case 'behavior':
+                    image_files = glob(get_figure_save_path(level_group, subj_ids, alignments+'_'+filenames+'.*'))
+                case 'subject':
+                    image_files = glob(get_figure_save_path(behaviors, level_group, alignments+'_'+filenames+'.*'))
+                case 'alignment':
+                    image_files = glob(get_figure_save_path(behaviors, subj_ids, level_group+'_'+filenames+'.*'))
+                case 'filename':
+                    image_files = glob(get_figure_save_path(behaviors, subj_ids, alignments+'_'+level_group+'.*'))
+
+            image_files = sorted(image_files)
+            level_titles_copy = level_titles.copy()
+            level_titles_copy.append(level_group_labels[i])
+
+            if len(image_files) > 1:
+                layout = prs.slide_layouts[0] # title slide
+                slide = prs.slides.add_slide(layout)
+                title = slide.shapes.title
+                title.text = '\n'.join(level_titles_copy)
+                for line in title.text_frame.paragraphs:
+                    line.font.size = title_font_size
+
+                # need to reset the height and top after changing width and left
+                title_height = title.height
+                title_top = title.top
+                title.width = prs.slide_width
+                title.left = 0
+                title.height = title_height
+                title.top = title_top
+
+            for image_file in image_files:
+
+                layout = prs.slide_layouts[5] # title only
+                slide = prs.slides.add_slide(layout)
+                title = slide.shapes.title
+                title.text = ', '.join(level_titles_copy)
+                title.text_frame.paragraphs[0].font.size = title_font_size
+                # need to reset the height and top after changing width and left
+                title_height = title.height
+                title.width = prs.slide_width
+                title.height = title_height
+                title.left = 0
+                title.top = 0
+
+                image = slide.shapes.add_picture(image_file, 0, 0, width=prs.slide_width - Inches(0.1))
+
+                # rescale image if too tall
+                if image.height > prs.slide_height - title.height:
+                    aspect = image.height/image.width
+                    image.height = prs.slide_height - title.height - Inches(0.1)
+                    image.width = int(image.height/aspect)
+
+                image.left = int((prs.slide_width - image.width) / 2)
+                image.top = int((prs.slide_height - image.height - title.height) / 2) + title.height
+
+def __check_images_exist(behaviors, subj_ids, alignments, filenames):
+
+    if not utils.is_list(behaviors):
+        behaviors = [behaviors]
+
+    if not utils.is_list(subj_ids):
+        subj_ids = [subj_ids]
+
+    if not utils.is_list(alignments):
+        alignments = [alignments]
+
+    if not utils.is_list(filenames):
+        filenames = [filenames]
+
+    for b in behaviors:
+        for s in subj_ids:
+            for a in alignments:
+                for f in filenames:
+                    files = glob(path.join(get_base_figure_save_path(), b, s, a+'_'+f+'.*'))
+                    if len(files) > 0:
+                        return True
+
+    return False

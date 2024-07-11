@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 
 
-def limit_sess_ids(sess_id_dict, n_back, last_idx=0):
+def limit_sess_ids(sess_id_dict, n_back=np.inf, last_idx=0):
     if last_idx == 0:
         sess_ids = {k: ids[-n_back:]
                     if len(ids) >= n_back
@@ -38,6 +38,32 @@ def get_count_dict(data, groupby_col, count_cols, normalize=False):
     return count_dict
 
 
+def get_avg_value_dict(data, value_col, groupby_cols):
+    avg_dict = {}
+
+    for col in groupby_cols:
+        if type(col) is list:
+            # first get individual column rates
+            for ind_col in col:
+                if not ind_col in avg_dict:
+                    avg_dict[ind_col] = calc_avg_info(data, value_col, ind_col)
+
+            # then get joined rates
+            key = ' x '.join(col)
+            avg_dict[key] = calc_avg_info(data, value_col, col)
+
+        else:
+            avg_dict[col] = calc_avg_info(data, value_col, col)
+
+    return avg_dict
+
+
+def calc_avg_info(data, value_col, groupby_col):
+
+    return data.groupby(groupby_col).agg(avg=(value_col, 'mean'),
+           std=(value_col, np.std), se=(value_col, utils.stderr)).infer_objects().reset_index()
+
+
 def get_rate_dict(data, rate_col, groupby_cols, ci_level=0.95):
     rate_dict = {}
 
@@ -47,11 +73,11 @@ def get_rate_dict(data, rate_col, groupby_cols, ci_level=0.95):
             for ind_col in col:
                 if not ind_col in rate_dict:
                     rate_dict[ind_col] = calc_rate_info(data, rate_col, ind_col, ci_level)
-                
+
             # then get joined rates
             key = ' x '.join(col)
             rate_dict[key] = calc_rate_info(data, rate_col, col, ci_level)
-            
+
         else:
             rate_dict[col] = calc_rate_info(data, rate_col, col, ci_level)
 
@@ -61,19 +87,19 @@ def get_rate_dict(data, rate_col, groupby_cols, ci_level=0.95):
 def calc_rate_info(data, rate_col, groupby_col, ci_level=0.95):
 
     rate_info = data.groupby(groupby_col).agg(
-        n=(rate_col, 'count'), sum=(rate_col, 'sum'), rate=(rate_col, 'mean')).infer_objects()
-    
+        n=(rate_col, 'count'), sum=(rate_col, 'sum'), rate=(rate_col, 'mean')).infer_objects().reset_index()
+
     # compute confidence intervals
     rate_info['ci'] = rate_info.apply(
         lambda r: utils.binom_cis(r['sum'], r['n'], ci_level), axis=1)
-    
+
     # convert cis to lower + upper error bounds
     rate_info['err'] = rate_info.apply(lambda r: abs(r['ci'] - r['rate']), axis=1)
-    
-    return rate_info
-    
 
-def convert_rate_err_to_mat(rate_data): 
+    return rate_info
+
+
+def convert_rate_err_to_mat(rate_data):
     return np.asarray(rate_data['err'].to_list()).T
 
 
@@ -81,7 +107,7 @@ def get_rate_avg_err(bin_mat):
 
     avg = np.nanmean(bin_mat, axis=0)
     err = np.asarray([abs(utils.binom_cis(np.nansum(bin_mat[:,i]), np.sum(~np.isnan(bin_mat[:,i]))) - avg[i]) for i in range(bin_mat.shape[1])]).T
-    
+
     return avg, err
 
 
@@ -98,10 +124,10 @@ def plot_counts(counts, ax, title, y_label, stack):
 def plot_rate_heatmap(rate_dict, column_key, column_name, row_key, row_name, ax=None,
                       fmt='.3f', row_summary=True, col_summary=True, cbar=False,
                       x_rot=0, y_rot=0):
-    
+
     if ax is None:
         ax = plot_utils.get_axes()
-        
+
     keys = list(rate_dict.keys())
     key = keys[np.where([column_key in key and row_key in key for key in keys])[0][0]]
     values = rate_dict[key].reset_index().rename(
@@ -111,7 +137,7 @@ def plot_rate_heatmap(rate_dict, column_key, column_name, row_key, row_name, ax=
     # Remove any rows and columns that are all nans
     cols_to_remove = [col_name for col_name, col_values in values.items() if col_values.isnull().values.all()]
     rows_to_remove = [row_name for row_name, row_values in values.iterrows() if row_values.isnull().values.all()]
-        
+
     values = values.drop(columns=cols_to_remove, index=rows_to_remove)
 
     # Add in summary statistics for each row and column
@@ -130,3 +156,102 @@ def plot_rate_heatmap(rate_dict, column_key, column_name, row_key, row_name, ax=
         ax.axhline(len(values)-1, linewidth=4, color='w')
 
 
+def get_rew_rate_hist(sess_data, n_back=5, kernel='uniform'):
+
+    hist_cols = ['rew_rate_hist_all', 'rew_rate_hist_left_all', 'rew_rate_hist_right_all',
+                   'rew_rate_hist_left_only', 'rew_rate_hist_right_only']
+
+    for col in hist_cols:
+        sess_data[col] = None
+
+    sess_ids = np.unique(sess_data['sessid'])
+
+    for sess_id in sess_ids:
+        sess_sel = sess_data['sessid'] == sess_id
+        ind_sess_data = sess_data[sess_sel]
+        resp_sel = ind_sess_data['choice'] != 'none'
+        chose_left_sel = ind_sess_data['chose_left']
+        chose_right_sel = ind_sess_data['chose_right']
+
+        all_rewards = ind_sess_data['rewarded'].to_numpy()
+        right_rewards = all_rewards.copy()
+        left_rewards = all_rewards.copy()
+        right_rewards[chose_left_sel] = False
+        left_rewards[chose_right_sel] = False
+
+        left_only_rewards = left_rewards[chose_left_sel]
+        right_only_rewards = right_rewards[chose_right_sel]
+
+        # limit all side reward rates to responses
+        all_rewards = all_rewards[resp_sel]
+        right_rewards = right_rewards[resp_sel]
+        left_rewards = left_rewards[resp_sel]
+
+        all_rew_rate = np.zeros(len(all_rewards))
+        left_rew_rate_all = all_rew_rate.copy()
+        right_rew_rate_all = all_rew_rate.copy()
+        left_only_rew_rate = np.zeros(np.sum(chose_left_sel))
+        right_only_rew_rate = np.zeros(np.sum(chose_right_sel))
+
+        # build weighting kernel
+        x = np.arange(n_back, 0, -1)-1
+        match kernel:
+            case 'uniform':
+                weights = np.ones_like(x)
+            case 'exp':
+                weights = np.exp(-x*4/n_back)
+        weights = weights/np.sum(weights)
+
+        for i in np.arange(1, len(all_rewards)+1):
+            if i >= n_back:
+                all_rew_rate[i-1] = np.sum(all_rewards[i-n_back:i]*weights)
+                left_rew_rate_all[i-1] = np.sum(left_rewards[i-n_back:i]*weights)
+                right_rew_rate_all[i-1] = np.sum(right_rewards[i-n_back:i]*weights)
+            else:
+                sub_weights = weights[n_back-i:]
+                sub_weights = sub_weights/np.sum(sub_weights)
+                all_rew_rate[i-1] = np.sum(all_rewards[:i]*sub_weights)
+                left_rew_rate_all[i-1] = np.sum(left_rewards[:i]*sub_weights)
+                right_rew_rate_all[i-1] = np.sum(right_rewards[:i]*sub_weights)
+
+        for i in np.arange(1, len(left_only_rewards)+1):
+            if i >= n_back:
+                left_only_rew_rate[i-1] = np.sum(left_only_rewards[i-n_back:i]*weights)
+            else:
+                sub_weights = weights[n_back-i:]
+                sub_weights = sub_weights/np.sum(sub_weights)
+                left_only_rew_rate[i-1] = np.sum(left_only_rewards[:i]*sub_weights)
+
+        for i in np.arange(1, len(right_only_rewards)+1):
+            if i >= n_back:
+                right_only_rew_rate[i-1] = np.sum(right_only_rewards[i-n_back:i]*weights)
+            else:
+                sub_weights = weights[n_back-i:]
+                sub_weights = sub_weights/np.sum(sub_weights)
+                right_only_rew_rate[i-1] = np.sum(right_only_rewards[:i]*sub_weights)
+
+        # to fill in the missing values, first fill in a dataframe copy then use ffill
+        hist_data = ind_sess_data[hist_cols].copy()
+        hist_data.loc[resp_sel, 'rew_rate_hist_all'] = all_rew_rate
+        hist_data.loc[resp_sel, 'rew_rate_hist_left_all'] = left_rew_rate_all
+        hist_data.loc[resp_sel, 'rew_rate_hist_right_all'] = right_rew_rate_all
+
+        hist_data.loc[chose_left_sel, 'rew_rate_hist_left_only'] = left_only_rew_rate
+        hist_data.loc[chose_right_sel, 'rew_rate_hist_right_only'] = right_only_rew_rate
+
+        # fill missing values with the value before it
+        hist_data.ffill(inplace=True)
+        # fill any remaining nans at the beginning with 0s
+        hist_data.fillna(0, inplace=True)
+
+        # shift the rows by one so that current rate is from previous n trials and doesn't include the current outcome
+        # this order of operations necessary to correctly propogate missing values for side-only reward rates
+        hist_data.iloc[1:,:] = hist_data.iloc[:-1,:]
+        hist_data.iloc[0,:] = 0
+
+        # update the original table
+        sess_data.loc[sess_sel, hist_cols] = hist_data
+
+    # calculate differences between side rew histories
+    sess_data['rew_rate_hist_diff_all'] = sess_data['rew_rate_hist_left_all'] - sess_data['rew_rate_hist_right_all']
+    sess_data['rew_rate_hist_diff_only'] = sess_data['rew_rate_hist_left_only'] - sess_data['rew_rate_hist_right_only']

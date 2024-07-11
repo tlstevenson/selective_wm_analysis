@@ -14,4 +14,5 @@ dependencies:
   - spyder-kernels
   - seaborn
   - statsmodels
+  - python-pptx
 prefix: C:\Users\tanne\miniconda3\envs\neuropy

@@ -27,7 +27,7 @@ plot_bail = False
 
 # %% LOAD DATA
 
-stage = 9
+stage = 10
 n_back = 10
 active_subjects_only = True
 
@@ -38,7 +38,7 @@ else:
     subject_info = subject_info[subject_info['stage'] >= stage]
 
 subj_ids = subject_info['subjid']
-#subj_ids = [179]
+subj_ids = [180]
 
 # get session ids
 sess_ids = db_access.get_subj_sess_ids(subj_ids, stage_num=stage)
@@ -72,22 +72,22 @@ pos_bin_labels = ['{:.0f}-{:.0f}s'.format(pos_bins[i], pos_bins[i+1]) for i in r
 def get_tone_pos_bin_str(tone_starts):
     if utils.is_scalar(tone_starts):
         tone_starts = np.array([tone_starts])
-        
+
     tone_bins = [pos_bin_labels[np.where(ts >= pos_bins)[0][-1]] for ts in tone_starts]
     return ', '.join(tone_bins)
-        
+
 all_sess['tone_start_bins_str'] = all_sess['rel_tone_start_times'].apply(lambda x: get_tone_pos_bin_str(x))
 
 # reformat tone info arrays into strings to be hashable for value counting and for display
 all_sess['tone_info_str'] = all_sess['tone_info'].apply(
     lambda x: x if utils.is_scalar(x) else ', '.join(x)).apply(
     lambda x: x.replace('low ', 'Lo/').replace('high ', 'Hi/').replace('left', 'L').replace('right', 'R'))
-        
+
 # flatten different tone/side combos for ease of comparing across subjects
 def get_tone_side_pitch(tone_info, info_type):
     if utils.is_scalar(tone_info):
         tone_info = np.array([tone_info])
-    
+
     match info_type:
         case 'side':
             tone_side_pitch = ['L' if 'left' in ti else 'R' if 'right' in ti else '' for ti in tone_info]
@@ -319,7 +319,7 @@ for subj_id in subj_ids:
         def comp_p(n_dict): return n_dict['num']/n_dict['denom']
         prob_labels = ['p(wrong high|any high)', 'p(wrong low|any low)', 'p(wrong left|any left)', 'p(wrong right|any right)', 'p(right|prev right)',
                        'p(right|prev left)', 'p(repeat choice)', 'p(stay|correct)', 'p(switch|incorrect)', 'p(bail|bail)', 'p(bail|incorrect)', 'p(bail|correct)']
-        prob_values = [comp_p(n_high_any_high), comp_p(n_low_any_low), comp_p(n_left_any_left), comp_p(n_right_any_right), comp_p(n_right_prev_right), 
+        prob_values = [comp_p(n_high_any_high), comp_p(n_low_any_low), comp_p(n_left_any_left), comp_p(n_right_any_right), comp_p(n_right_prev_right),
                        comp_p(n_right_prev_left), comp_p(n_repeat_choice), comp_p(n_win_stay), comp_p(n_lose_switch), comp_p(n_bail_prev_bail),
                        comp_p(n_bail_prev_incorrect), comp_p(n_bail_prev_correct)]
 
@@ -467,4 +467,3 @@ plt.show(block=False)
 
 # plt.rcParams["svg.fonttype"] = 'none'
 # fig.savefig(path.join(utils.get_user_home(), 'downloads', 'beh_performance.svg'), format='svg', dpi=1200)
-
