@@ -293,12 +293,12 @@ def view_processed_signals(processed_signals, t, dec=10, title='Full Signals', v
 
         # plot raw signals and baseline
         ax = axs[i,0]
-        color1 = next(ax._get_lines.prop_cycler)['color']
-        color2 = next(ax._get_lines.prop_cycler)['color']
-        l3 = ax.plot(t, sub_signals['raw_iso'][::dec], label='Raw Iso', color=color2, alpha=0.5)
-        l4 = ax.plot(t, sub_signals['baseline_iso'][::dec], '--', label='Iso Baseline', color=color2)
-        l1 = ax.plot(t, sub_signals['raw_lig'][::dec], label='Raw Lig', color=color1, alpha=0.5)
-        l2 = ax.plot(t, sub_signals['baseline_lig'][::dec], '--', label='Lig Baseline', color=color1)
+        prop_cycle = plt.rcParams['axes.prop_cycle']
+        colors = prop_cycle.by_key()['color']
+        l3 = ax.plot(t, sub_signals['raw_iso'][::dec], label='Raw Iso', color=colors[1], alpha=0.5)
+        l4 = ax.plot(t, sub_signals['baseline_iso'][::dec], '--', label='Iso Baseline', color=colors[1])
+        l1 = ax.plot(t, sub_signals['raw_lig'][::dec], label='Raw Lig', color=colors[0], alpha=0.5)
+        l2 = ax.plot(t, sub_signals['baseline_lig'][::dec], '--', label='Lig Baseline', color=colors[0])
         plot_utils.plot_dashlines(vert_marks, ax=ax)
         ax.set_title(gen_sub_title.format('Raw Signals'))
         ax.set_xlabel('Time (s)')
@@ -333,8 +333,8 @@ def view_processed_signals(processed_signals, t, dec=10, title='Full Signals', v
 
         # plot iso dFF and baseline corrected dFF
         ax = axs[n_panel_stacks+i,1]
-        l2 = ax.plot(filt_t, sub_signals['dff_iso_baseline'][::dec][filt_sel], label='Baseline Corrected ΔF/F', color=color2, alpha=0.5)
-        l1 = ax.plot(filt_t, sub_signals['dff_iso'][::dec][filt_sel], label='Iso ΔF/F', color=color1, alpha=0.5)
+        l2 = ax.plot(filt_t, sub_signals['dff_iso_baseline'][::dec][filt_sel], label='Baseline Corrected ΔF/F', color=colors[1], alpha=0.5)
+        l1 = ax.plot(filt_t, sub_signals['dff_iso'][::dec][filt_sel], label='Iso ΔF/F', color=colors[0], alpha=0.5)
         plot_utils.plot_dashlines(vert_marks, ax=ax)
         ax.set_title(gen_sub_title.format('Iso Corrected Ligand Signals'))
         ax.set_xlabel('Time (s)')
