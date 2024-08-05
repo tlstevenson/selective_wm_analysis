@@ -29,7 +29,7 @@ behavior_name = 'Foraging'
 sess_ids = db_access.get_fp_protocol_subj_sess_ids('ClassicRLTasks', 4)
 
 # optionally limit sessions based on subject ids
-subj_ids = [179]
+subj_ids = [191]
 sess_ids = {k: v for k, v in sess_ids.items() if k in subj_ids}
 
 loc_db = db.LocalDB_BasicRLTasks('foraging')
@@ -41,29 +41,11 @@ sess_data.loc[~sess_data['hit'], ['response_time', 'reward_time']] = np.nan
 # %% Get and process photometry data
 
 # get fiber photometry data
-fp_data = loc_db.get_sess_fp_data(utils.flatten(sess_ids)) # , reload=True
-# separate into different dictionaries
-implant_info = fp_data['implant_info']
-fp_data = fp_data['fp_data']
-
-iso = '420'
-lig = '490'
-
-for subj_id in sess_ids.keys():
-    for sess_id in sess_ids[subj_id]:
-        raw_signals = fp_data[subj_id][sess_id]['raw_signals']
-
-        fp_data[subj_id][sess_id]['processed_signals'] = {}
-
-        for region in raw_signals.keys():
-            raw_lig = raw_signals[region][lig]
-            raw_iso = raw_signals[region][iso]
-
-            fp_data[subj_id][sess_id]['processed_signals'][region] = fpah.get_all_processed_signals(raw_lig, raw_iso)
+reload = False
+fp_data, implant_info = fpah.load_fp_data(loc_db, sess_ids, reload=reload)
 
 # %% Observe the full signals
 
-sub_signal = [] # sub signal time limits in seconds
 filter_outliers = True
 save_plots = True
 show_plots = True
@@ -76,23 +58,34 @@ for subj_id in sess_ids.keys():
         # Get the block transition trial start times
         trial_start_ts = sess_fp['trial_start_ts'][:-1]
         block_start_times = trial_start_ts[trial_data['block_trial'] == 1]
-        block_rewards = trial_data['initial_reward'][trial_data['block_trial'] == 1]
+        #block_rewards = trial_data['initial_reward'][trial_data['block_trial'] == 1]
 
-        if len(sub_signal) > 0:
-            fig = fpah.view_processed_signals(sess_fp['processed_signals'], sess_fp['time'],
-                                        title='Full Signals - Session {}'.format(sess_id),
-                                        vert_marks=block_start_times, filter_outliers=filter_outliers,
-                                        t_min=sub_signal[0], t_max=sub_signal[1], dec=1)
-        else:
-            fig = fpah.view_processed_signals(sess_fp['processed_signals'], sess_fp['time'],
-                                        title='Full Signals - Session {}. Initial Rewards: {}'.format(sess_id, ', '.join([str(r) for r in block_rewards])),
-                                        vert_marks=block_start_times, filter_outliers=filter_outliers)
+        fig = fpah.view_processed_signals(sess_fp['processed_signals'], sess_fp['time'],
+                                    title='Full Signals - Subject {}, Session {}'.format(subj_id, sess_id),
+                                    vert_marks=block_start_times, filter_outliers=filter_outliers)
 
         if save_plots:
             fpah.save_fig(fig, fpah.get_figure_save_path(behavior_name, subj_id, 'sess_{}'.format(sess_id)))
 
         if not show_plots:
             plt.close(fig)
+
+
+# %% Observe any sub-signals
+
+# tmp_sess_id = {191: [102620]}
+# tmp_fp_data, tmp_implant_info = fpah.load_fp_data(loc_db, tmp_sess_id)
+# sub_signal = [0, np.inf] # [2200, 2600] #
+# filter_outliers = True
+
+# subj_id = list(tmp_sess_id.keys())[0]
+# sess_id = tmp_sess_id[subj_id][0]
+# #sess_fp = fp_data[subj_id][sess_id]
+# sess_fp = tmp_fp_data[subj_id][sess_id]
+# _ = fpah.view_processed_signals(sess_fp['processed_signals'], sess_fp['time'],
+#                             title='Sub Signal - Subject {}, Session {}'.format(subj_id, sess_id),
+#                             filter_outliers=filter_outliers,
+#                             t_min=sub_signal[0], t_max=sub_signal[1], dec=1)
 
 # %% Get all aligned/sorted stacked signals
 
@@ -463,7 +456,7 @@ for subj_id in sess_ids.keys():
 signal_type = 'z_dff_iso' # 'dff_iso', 'df_baseline_iso', 'raw_lig'
 signal_label = 'Z-scored ΔF/F'
 regions = ['DMS', 'PL']
-subjects = list(sess_ids.keys())
+subjects = [191] #list(sess_ids.keys())
 filter_outliers = True
 outlier_thresh = 20
 use_se = True
@@ -523,11 +516,14 @@ def plot_avg_signals(align, plot_groups, group_labels, plot_titles, gen_title, x
     if legend_params is None:
         legend_params = all_legend_params[align]
 
-    fig = fpah.plot_avg_signals(plot_groups, group_labels, mat, regions, t, gen_title.format(align_title), plot_titles, x_label, signal_label, xlims_dict,
+    fig, plotted = fpah.plot_avg_signals(plot_groups, group_labels, mat, regions, t, gen_title.format(align_title), plot_titles, x_label, signal_label, xlims_dict,
                                 dashlines=dashlines, legend_params=legend_params, group_colors=group_colors, use_se=use_se, ph=ph, pw=pw)
 
-    if not gen_plot_name is None:
+    if plotted and not gen_plot_name is None:
         save_plot(fig, gen_plot_name.format(align))
+
+    if not plotted:
+        plt.close(fig)
 
 # %% Choice, prior choice and side groupings
 

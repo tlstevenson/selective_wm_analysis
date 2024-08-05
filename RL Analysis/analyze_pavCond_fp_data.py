@@ -8,612 +8,1058 @@ Created on Sun Nov 26 22:33:24 2023
 # %% imports
 
 import init
-import os.path as path
 import pandas as pd
 from pyutils import utils
 from sys_neuro_tools import plot_utils, fp_utils
+from hankslab_db import db_access
 import hankslab_db.basicRLtasks_db as db
 import fp_analysis_helpers as fpah
+from fp_analysis_helpers import Alignment as Align
+import beh_analysis_helpers as bah
 import numpy as np
 import matplotlib.pyplot as plt
-import peakutils
-from sklearn.linear_model import LinearRegression
-from scipy.optimize import curve_fit
-import pickle
 import copy
 
 # %% Load behavior data
 
-sess_ids = [94104] #93580, 94072, 94104, 95035
+# used for saving plots
+behavior_name = 'Operant Pavlovian Conditioning'
 
-loc_db = db.LocalDB_BasicRLTasks('pavlovCond') # 
-sess_data = loc_db.get_behavior_data(sess_ids) # reload=True
+# get all session ids for given protocol
+sess_ids = db_access.get_fp_protocol_subj_sess_ids('ClassicRLTasks', 1)
 
-# %% Load fiber photometry data
+# optionally limit sessions based on subject ids
+subj_ids = [202]
+sess_ids = {k: v for k, v in sess_ids.items() if k in subj_ids}
 
-data_path = path.join(utils.get_user_home(), 'fp_data')
-fp_data = {}
-for sess_id in sess_ids:
-    load_path = path.join(data_path, 'Session_{}.pkl'.format(sess_id))
-    with open(load_path, 'rb') as f:
-        fp_data[sess_id] = pickle.load(f)
+reload = False
+loc_db = db.LocalDB_BasicRLTasks('pavlovCond')
+sess_data = loc_db.get_behavior_data(utils.flatten(sess_ids), reload=reload)
 
-# %% Process photometry data in different ways
 
-regions = ['DMS', 'PFC'] #
+# %% Get and process photometry data
 
-#iso_pfc = 'PFC_405'
-#iso_dms = 'DMS_405'
-iso_pfc = 'PFC_420'
-iso_dms = 'DMS_420'
-lig_pfc = 'PFC_490'
-lig_dms = 'DMS_490'
-
-signals_by_region = {region: {'iso': iso_pfc if region == 'PFC' else iso_dms,
-                              'lig': lig_pfc if region == 'PFC' else lig_dms}
-                     for region in regions}
-
-for sess_id in sess_ids:
-    signals = fp_data[sess_id]['signals']
-
-    fp_data[sess_id]['processed_signals'] = {}
-
-    for region, signal_names in signals_by_region.items():
-        raw_lig = signals[signal_names['lig']]
-        raw_iso = signals[signal_names['iso']]
-
-        fp_data[sess_id]['processed_signals'][region] = fpah.get_all_processed_signals(raw_lig, raw_iso)
+# get fiber photometry data
+reload = False
+fp_data, implant_info = fpah.load_fp_data(loc_db, sess_ids, reload=reload)
 
 # %% Observe the full signals
 
-for sess_id in sess_ids:
-    trial_data = sess_data[sess_data['sessid'] == sess_id]
-    sess_fp = fp_data[sess_id]
-    
-    # Get the block transition trial start times
-    trial_start_ts = sess_fp['trial_start_ts'][:-1]
-    block_start_times = trial_start_ts[trial_data['block_trial'] == 1]
-    block_rewards = trial_data['reward_volume'][trial_data['block_trial'] == 1]
-    
-    # fpah.view_processed_signals(sess_fp['processed_signals'], sess_fp['time'], 
-    #                             title='Full Signals - Session {}. Block Rewards: {}'.format(sess_id, ', '.join([str(r) for r in block_rewards])), 
-    #                             vert_marks=block_start_times, filter_outliers=True)
-    
-    fpah.view_signal(sess_fp['processed_signals'], sess_fp['time'], 'dff_iso', t_min=1950, t_max=1950+120, 
-                     figsize=None, ylabel='% dF/F', dec=20)
-
-# %% Average signal to the tone presentations, and response, all split by trial outcome
-
-signal_types = ['dff_iso'] # 'baseline_corr_lig','baseline_corr_iso',  'dff_iso', 'z_dff_iso', 'dff_baseline', 'z_dff_baseline', 'df_baseline_iso', 'z_df_baseline_iso'
-
-# whether to nomarlize aligned signals on a trial-by-trial basis to the average of the signal in the window before poking in
-trial_normalize = False
-
-title_suffix = '' #'420 Iso'
-
-outlier_thresh = 8 # z-score threshold
-
-def create_mat(signal, ts, align_ts, pre, post, windows, sel=[]):
-    if trial_normalize:
-        return fp_utils.build_trial_dff_signal_matrix(signal, ts, align_ts, pre, post, windows, sel)
-    else:
-        return fp_utils.build_signal_matrix(signal, ts, align_ts, pre, post, sel)
-
-for sess_id in sess_ids:
-    trial_data = sess_data[sess_data['sessid'] == sess_id]
-    sess_fp = fp_data[sess_id]
-
-    # get alignment trial filters
-    resp_sel = trial_data['hit'] == True
-    noresp_sel = trial_data['hit'] == False
-    rewarded_sel = trial_data['reward'] > 0
-    reward_tone_sel = trial_data['reward_tone']
-    resp_reward_sel = resp_sel & rewarded_sel
-    resp_noreward_sel = resp_sel & ~rewarded_sel
-
-    # get alignment times
-    ts = sess_fp['time']
-    trial_start_ts = sess_fp['trial_start_ts'][:-1]
-    abs_tone_ts = trial_start_ts + trial_data['abs_tone_start_time']
-    abs_cue_ts = trial_start_ts + trial_data['response_cue_time']
-    abs_resp_ts = trial_start_ts + trial_data['response_time']
-    # for trial signal normalization, choose range 0.5-1.5s after the trial starts
-    # there is a 2s ITI between response and trial start and the earliest a tone can be played is 2s after the trial starts
-    trial_norm_windows = trial_start_ts[:, None] + np.array([0.5, 1.5])
-
-    # get other important information
-    tone_vols = np.unique(trial_data['tone_db_offset'])
-    reward_vols = np.unique(trial_data['reward_volume'])
-
-    # compute block transition indices for each trial filter
-    first_block_trial_idxs = np.where(trial_data['block_trial'] == 1)[0]
-    def find_transition_idxs(trial_sel):
-        trial_sel_idxs = np.where(trial_sel)[0]
-        return np.unique([np.argmax(t_idx < trial_sel_idxs) for t_idx in first_block_trial_idxs])
-
-    block_trans_idxs = {}
-    block_trans_idxs['resp_reward'] = find_transition_idxs(resp_reward_sel)
-    block_trans_idxs['resp_noreward'] = find_transition_idxs(resp_noreward_sel)
-    block_trans_idxs['noresp'] = find_transition_idxs(noresp_sel)
-    for reward_vol in reward_vols:
-        reward_vol_sel = trial_data['reward_volume'] == reward_vol
-        block_trans_idxs['resp_reward_vol' + str(reward_vol)] = find_transition_idxs(resp_reward_sel & reward_vol_sel)
-        block_trans_idxs['resp_noreward_vol' + str(reward_vol)] = find_transition_idxs(resp_noreward_sel & reward_vol_sel)
-
-    for tone_vol in tone_vols:
-        tone_vol_sel = trial_data['tone_db_offset'] == tone_vol
-        block_trans_idxs['resp_reward_dB' + str(tone_vol)] = find_transition_idxs(resp_reward_sel & tone_vol_sel)
-        block_trans_idxs['resp_noreward_dB' + str(tone_vol)] = find_transition_idxs(resp_noreward_sel & tone_vol_sel)
-
-    for signal_type in signal_types:
-
-        data_dict = {region: {} for region in regions}
-        tone_outcome = copy.deepcopy(data_dict)
-        #tone_prev_outcome = copy.deepcopy(data_dict)
-        cue_outcome = copy.deepcopy(data_dict)
-        #cue_prev_outcome = copy.deepcopy(data_dict)
-        response = copy.deepcopy(data_dict)
-        tone_reward_vol = copy.deepcopy(data_dict)
-        cue_reward_vol = copy.deepcopy(data_dict)
-        resp_reward_vol = copy.deepcopy(data_dict)
-        tone_tone_vol = copy.deepcopy(data_dict)
-
-        for region in regions:
-            signal = sess_fp['processed_signals'][region][signal_type]
-
-            # aligned to tone by trial outcome
-            pre = 1
-            post = 3
-
-            norm_windows_tone = trial_norm_windows - abs_tone_ts.to_numpy()[:, None]
-            tone_outcome[region]['resp_reward'], t = create_mat(signal, ts, abs_tone_ts, pre, post, norm_windows_tone, resp_reward_sel)
-            tone_outcome[region]['resp_noreward'], t = create_mat(signal, ts, abs_tone_ts, pre, post, norm_windows_tone, resp_noreward_sel)
-            tone_outcome[region]['noresp'], t = create_mat(signal, ts, abs_tone_ts, pre, post, norm_windows_tone, noresp_sel)
-            tone_outcome['t'] = t
-
-            # aligned to cue by trial outcome
-            pre = 2
-            post = 3
-
-            norm_windows_cue = trial_norm_windows - abs_cue_ts.to_numpy()[:, None]
-            cue_outcome[region]['resp_reward'], t = create_mat(signal, ts, abs_cue_ts, pre, post, norm_windows_cue, resp_reward_sel)
-            cue_outcome[region]['resp_noreward'], t = create_mat(signal, ts, abs_cue_ts, pre, post, norm_windows_cue, resp_noreward_sel)
-            cue_outcome[region]['noresp'], t = create_mat(signal, ts, abs_cue_ts, pre, post, norm_windows_cue, noresp_sel)
-            cue_outcome['t'] = t
-
-            # aligned to response by trial outcome
-            pre = 2
-            post = 3
-
-            norm_windows_resp = trial_norm_windows - abs_resp_ts.to_numpy()[:, None]
-            response[region]['resp_reward'], t = create_mat(signal, ts, abs_resp_ts, pre, post, norm_windows_resp, resp_reward_sel)
-            response[region]['resp_noreward'], t = create_mat(signal, ts, abs_resp_ts, pre, post, norm_windows_resp, resp_noreward_sel)
-            response['t'] = t
-            
-            # aligned to response by trial outcome
-            pre = 2
-            post = 3
-
-            norm_windows_resp = trial_norm_windows - abs_resp_ts.to_numpy()[:, None]
-            response[region]['resp_reward'], t = create_mat(signal, ts, abs_resp_ts, pre, post, norm_windows_resp, resp_reward_sel)
-            response[region]['resp_noreward'], t = create_mat(signal, ts, abs_resp_ts, pre, post, norm_windows_resp, resp_noreward_sel)
-            response['t'] = t
-
-            # aligned to tone sorted by reward volumes and outcome
-            pre = 1
-            post = 3
-
-            for reward_vol in reward_vols:
-                reward_vol_sel = trial_data['reward_volume'] == reward_vol
-                tone_reward_vol[region]['resp_reward_vol' + str(reward_vol)], t = create_mat(signal, ts, abs_tone_ts, pre, post, norm_windows_tone, resp_reward_sel & reward_vol_sel)
-                tone_reward_vol[region]['resp_noreward_vol' + str(reward_vol)], t = create_mat(signal, ts, abs_tone_ts, pre, post, norm_windows_tone, resp_noreward_sel & reward_vol_sel)
-
-            tone_reward_vol['t'] = t
-            
-            # aligned to cue sorted by reward volumes and outcome
-            pre = 2
-            post = 2
-
-            for reward_vol in reward_vols:
-                reward_vol_sel = trial_data['reward_volume'] == reward_vol
-                cue_reward_vol[region]['resp_reward_vol' + str(reward_vol)], t = create_mat(signal, ts, abs_cue_ts, pre, post, norm_windows_cue, resp_reward_sel & reward_vol_sel)
-                cue_reward_vol[region]['resp_noreward_vol' + str(reward_vol)], t = create_mat(signal, ts, abs_cue_ts, pre, post, norm_windows_cue, resp_noreward_sel & reward_vol_sel)
-
-            cue_reward_vol['t'] = t
-
-            # aligned to response sorted by reward volumes and outcome
-            pre = 2
-            post = 2
-
-            for reward_vol in reward_vols:
-                reward_vol_sel = trial_data['reward_volume'] == reward_vol
-                resp_reward_vol[region]['resp_reward_vol' + str(reward_vol)], t = create_mat(signal, ts, abs_resp_ts, pre, post, norm_windows_resp, resp_reward_sel & reward_vol_sel)
-                resp_reward_vol[region]['resp_noreward_vol' + str(reward_vol)], t = create_mat(signal, ts, abs_resp_ts, pre, post, norm_windows_resp, resp_noreward_sel & reward_vol_sel)
-
-            resp_reward_vol['t'] = t
-
-            # aligned to tone sorted by tone volumes and outcome
-            pre = 1
-            post = 3
-
-            for tone_vol in tone_vols:
-                tone_vol_sel = trial_data['tone_db_offset'] == tone_vol
-                tone_tone_vol[region]['resp_reward_dB' + str(tone_vol)], t = create_mat(signal, ts, abs_tone_ts, pre, post, norm_windows_tone, resp_reward_sel & tone_vol_sel)
-                tone_tone_vol[region]['resp_noreward_dB' + str(tone_vol)], t = create_mat(signal, ts, abs_tone_ts, pre, post, norm_windows_tone, resp_noreward_sel & tone_vol_sel)
-
-            tone_tone_vol['t'] = t
-
-        # plot alignment results
-
-        # get appropriate labels
-        match signal_type: # noqa <-- to disable incorrect error message
-            case 'dff_iso':
-                signal_type_title = 'Isosbestic Normalized'
-                signal_type_label = 'dF/F'
-            case 'z_dff_iso':
-                signal_type_title = 'Isosbestic Normalized'
-                signal_type_label = 'z-scored dF/F'
-            case 'dff_baseline':
-                signal_type_title = 'Baseline Normalized'
-                signal_type_label = 'dF/F'
-            case 'z_dff_baseline':
-                signal_type_title = 'Baseline Normalized'
-                signal_type_label = 'z-scored dF/F'
-            case 'df_baseline_iso':
-                signal_type_title = 'Baseline-Subtracted Isosbestic Residuals'
-                signal_type_label = 'dF residuals'
-            case 'z_df_baseline_iso':
-                signal_type_title = 'Baseline-Subtracted Isosbestic Residuals'
-                signal_type_label = 'z-scored dF residuals'
-            case 'baseline_corr_lig':
-                signal_type_title = 'Baseline-Subtracted Ligand Signal'
-                signal_type_label = 'dF'
-            case 'baseline_corr_iso':
-                signal_type_title = 'Baseline-Subtracted Isosbestic Signal'
-                signal_type_label = 'dF'
-            case 'raw_lig':
-                signal_type_title = 'Raw Ligand Signal'
-                signal_type_label = 'dF/F' if trial_normalize else 'V'
-            case 'raw_iso':
-                signal_type_title = 'Raw Isosbestic Signal'
-                signal_type_label = 'dF/F' if trial_normalize else 'V'
-
-        if trial_normalize:
-            signal_type_title += ' - Trial Normalized'
-
-        if title_suffix != '':
-            signal_type_title += ' - ' + title_suffix
-
-        all_sub_titles = {'resp_reward': 'Rewarded Response', 'resp_noreward': 'Unrewarded Response', 'noresp': 'No Response'}
-        for reward_vol in reward_vols:
-            all_sub_titles.update({'resp_reward_vol' + str(reward_vol): 'Rewarded Response - {} μL Block'.format(reward_vol),
-                                  'resp_noreward_vol' + str(reward_vol): 'Unrewarded Response - {} μL Block'.format(reward_vol)})
-
-        for tone_vol in tone_vols:
-            all_sub_titles.update({'resp_reward_dB' + str(tone_vol): 'Rewarded Tone - {} dB Offset'.format(tone_vol),
-                                  'resp_noreward_dB' + str(tone_vol): 'Unrewarded Tone - {} dB Offset'.format(tone_vol)})
-
-        fpah.plot_aligned_signals(tone_outcome, 'Tone Aligned - {} (session {})'.format(signal_type_title, sess_id),
-                             all_sub_titles, 'Time from tone start (s)', signal_type_label, outlier_thresh=outlier_thresh,
-                             trial_markers=block_trans_idxs)
-
-        fpah.plot_aligned_signals(cue_outcome, 'Response Cue Aligned - {} (session {})'.format(signal_type_title, sess_id),
-                             all_sub_titles, 'Time from cue (s)', signal_type_label, outlier_thresh=outlier_thresh,
-                             trial_markers=block_trans_idxs)
-
-        fpah.plot_aligned_signals(response, 'Response Aligned - {} (session {})'.format(signal_type_title, sess_id),
-                             all_sub_titles, 'Time from reponse poke (s)', signal_type_label, outlier_thresh=outlier_thresh,
-                             trial_markers=block_trans_idxs)
-
-        fpah.plot_aligned_signals(tone_reward_vol, 'Tone Aligned, Reward Volume - {} (session {})'.format(signal_type_title, sess_id),
-                             all_sub_titles, 'Time from tone start (s)', signal_type_label, outlier_thresh=outlier_thresh,
-                             trial_markers=block_trans_idxs)
-        
-        fpah.plot_aligned_signals(cue_reward_vol, 'Response Cue Aligned, Reward Volume - {} (session {})'.format(signal_type_title, sess_id),
-                             all_sub_titles, 'Time from response cue (s)', signal_type_label, outlier_thresh=outlier_thresh,
-                             trial_markers=block_trans_idxs)
-
-        fpah.plot_aligned_signals(resp_reward_vol, 'Response Aligned, Reward Volume - {} (session {})'.format(signal_type_title, sess_id),
-                             all_sub_titles, 'Time from response poke (s)', signal_type_label, outlier_thresh=outlier_thresh,
-                             trial_markers=block_trans_idxs)
-        
-        fpah.plot_aligned_signals(tone_tone_vol, 'Tone Aligned, Tone Volume - {} (session {})'.format(signal_type_title, sess_id),
-                             all_sub_titles, 'Time from tone start (s)', signal_type_label, outlier_thresh=outlier_thresh,
-                             trial_markers=block_trans_idxs)
-
-
-# %% Plot average signals from multiple sessions on the same axes
-
-signal_type = 'z_dff_iso' # 'dff_iso', 'df_baseline_iso', 'raw_lig'
-regions = ['DMS', 'PFC']
-
-def stack_mat(old_mat, new_mat):
-    if len(old_mat) == 0:
-        return new_mat
-    else:
-        return np.vstack((old_mat, new_mat))
-    
-tone_vols = np.unique(sess_data['tone_db_offset'])
-reward_vols = np.unique(sess_data['reward_volume'])
-
-# build data matrices
-response_outcome = {region: {'rewarded': [], 'unrewarded': []} for region in regions}
-response_reward_vols = {region: {vol: {'rewarded': [], 'unrewarded': []} for vol in reward_vols} for region in regions}
-# reward_vols_block_epoch = {region: {vol: {'early_rewarded': [], 'early_unrewarded': [], 
-#                                           'late_rewarded': [], 'late_unrewarded': []} for vol in reward_vols} for region in regions}
-tone_outcome = {region: {'rewarded': [], 'unrewarded': [], 'noResp': []} for region in regions}
-tone_tone_vols = {region: {vol: {'rewarded': [], 'unrewarded': []} for vol in tone_vols} for region in regions}
-# tone_vols_block_epoch = {region: {vol: {'early_rewarded': [], 'early_unrewarded': [], 
-#                                           'late_rewarded': [], 'late_unrewarded': []} for vol in tone_vols} for region in regions}
-
-cue_outcome = {region: {'rewarded': [], 'unrewarded': [], 'noResp': []} for region in regions}
-
-# block_epoch_trials = 10
-
-for sess_id in sess_ids:
-    trial_data = sess_data[sess_data['sessid'] == sess_id]
-    sess_fp = fp_data[sess_id]
-
-    ts = sess_fp['time']
-    trial_start_ts = sess_fp['trial_start_ts'][:-1]
-    
-    resp_sel = trial_data['hit'] == True
-    noresp_sel = trial_data['hit'] == False
-    rewarded_sel = trial_data['reward'] > 0
-    reward_tone_sel = trial_data['reward_tone']
-    resp_reward_sel = resp_sel & rewarded_sel
-    resp_noreward_sel = resp_sel & ~rewarded_sel
-    
-    # get alignment times
-    ts = sess_fp['time']
-    trial_start_ts = sess_fp['trial_start_ts'][:-1]
-    abs_tone_ts = trial_start_ts + trial_data['abs_tone_start_time']
-    abs_cue_ts = trial_start_ts + trial_data['response_cue_time']
-    abs_resp_ts = trial_start_ts + trial_data['response_time']
-
-    for region in regions:
-        signal = sess_fp['processed_signals'][region][signal_type]
-
-        # aligned to response by trial outcome
-        pre = 1
-        post = 2
-
-        reward_mat, t = fp_utils.build_signal_matrix(signal, ts, abs_resp_ts, pre, post, resp_reward_sel)
-        unreward_mat, t = fp_utils.build_signal_matrix(signal, ts, abs_resp_ts, pre, post, resp_noreward_sel)
-        response_outcome[region]['rewarded'] = stack_mat(response_outcome[region]['rewarded'], reward_mat)
-        response_outcome[region]['unrewarded'] = stack_mat(response_outcome[region]['unrewarded'], unreward_mat)
-        response_outcome['t'] = t
-
-        # aligned to response by reward volume
-        pre = 1
-        post = 2
-        for vol in reward_vols:
-            reward_vol_sel = trial_data['reward_volume'] == vol
-            reward_mat, t = fp_utils.build_signal_matrix(signal, ts, abs_resp_ts, pre, post, resp_reward_sel & reward_vol_sel)
-            unreward_mat, t = fp_utils.build_signal_matrix(signal, ts, abs_resp_ts, pre, post, resp_noreward_sel & reward_vol_sel)
-            response_reward_vols[region][vol]['rewarded'] = stack_mat(response_reward_vols[region][vol]['rewarded'], reward_mat)
-            response_reward_vols[region][vol]['unrewarded'] = stack_mat(response_reward_vols[region][vol]['unrewarded'], unreward_mat)
-        
-        response_reward_vols['t'] = t
-        
-        # aligned to tone by trial outcome
-        pre = 1
-        post = 3
-
-        reward_mat, t = fp_utils.build_signal_matrix(signal, ts, abs_tone_ts, pre, post, resp_reward_sel)
-        unreward_mat, t = fp_utils.build_signal_matrix(signal, ts, abs_tone_ts, pre, post, resp_noreward_sel)
-        noResp_mat, t = fp_utils.build_signal_matrix(signal, ts, abs_tone_ts, pre, post, noresp_sel)
-        tone_outcome[region]['rewarded'] = stack_mat(tone_outcome[region]['rewarded'], reward_mat)
-        tone_outcome[region]['unrewarded'] = stack_mat(tone_outcome[region]['unrewarded'], unreward_mat)
-        tone_outcome[region]['noResp'] = stack_mat(tone_outcome[region]['noResp'], noResp_mat)
-        tone_outcome['t'] = t
-        
-        # aligned to tone by tone volume
-        pre = 1
-        post = 3
-        for vol in tone_vols:
-            tone_vol_sel = trial_data['tone_db_offset'] == vol
-            reward_mat, t = fp_utils.build_signal_matrix(signal, ts, abs_tone_ts, pre, post, resp_reward_sel & tone_vol_sel)
-            unreward_mat, t = fp_utils.build_signal_matrix(signal, ts, abs_tone_ts, pre, post, resp_noreward_sel & tone_vol_sel)
-            tone_tone_vols[region][vol]['rewarded'] = stack_mat(tone_tone_vols[region][vol]['rewarded'], reward_mat)
-            tone_tone_vols[region][vol]['unrewarded'] = stack_mat(tone_tone_vols[region][vol]['unrewarded'], unreward_mat)
-        
-        tone_tone_vols['t'] = t
-        
-        # aligned to response cue by trial outcome
-        pre = 2
-        post = 2
-
-        reward_mat, t = fp_utils.build_signal_matrix(signal, ts, abs_cue_ts, pre, post, resp_reward_sel)
-        unreward_mat, t = fp_utils.build_signal_matrix(signal, ts, abs_cue_ts, pre, post, resp_noreward_sel)
-        noResp_mat, t = fp_utils.build_signal_matrix(signal, ts, abs_cue_ts, pre, post, noresp_sel)
-        cue_outcome[region]['rewarded'] = stack_mat(cue_outcome[region]['rewarded'], reward_mat)
-        cue_outcome[region]['unrewarded'] = stack_mat(cue_outcome[region]['unrewarded'], unreward_mat)
-        cue_outcome[region]['noResp'] = stack_mat(cue_outcome[region]['noResp'], noResp_mat)
-        cue_outcome['t'] = t
-
-# %% Plot Averaged Signals
-
 filter_outliers = True
+save_plots = False
+show_plots = False
+
+for subj_id in sess_ids.keys():
+    for sess_id in sess_ids[subj_id]:
+        trial_data = sess_data[sess_data['sessid'] == sess_id]
+        sess_fp = fp_data[subj_id][sess_id]
+
+        # Get the block transition trial start times
+        trial_start_ts = sess_fp['trial_start_ts'][:-1]
+        block_start_times = trial_start_ts[trial_data['block_trial'] == 1]
+
+        fig = fpah.view_processed_signals(sess_fp['processed_signals'], sess_fp['time'],
+                                    title='Full Signals - Subject {}, Session {}'.format(subj_id, sess_id),
+                                    vert_marks=block_start_times, filter_outliers=filter_outliers)
+
+        if save_plots:
+            fpah.save_fig(fig, fpah.get_figure_save_path(behavior_name, subj_id, 'sess_{}'.format(sess_id)))
+
+        if not show_plots:
+            plt.close(fig)
+
+
+# %% Observe any sub-signals
+
+# tmp_sess_id = {207: [102367]}
+# tmp_fp_data, tmp_implant_info = fpah.load_fp_data(loc_db, tmp_sess_id)
+# sub_signal =  [0, np.inf] # [381, 385] #
+# filter_outliers = True
+# dec = 20
+
+# subj_id = list(tmp_sess_id.keys())[0]
+# sess_id = tmp_sess_id[subj_id][0]
+# #sess_fp = fp_data[subj_id][sess_id]
+# sess_fp = tmp_fp_data[subj_id][sess_id]
+# _ = fpah.view_processed_signals(sess_fp['processed_signals'], sess_fp['time'],
+#                             title='Sub Signal - Subject {}, Session {}'.format(subj_id, sess_id),
+#                             filter_outliers=filter_outliers,
+#                             t_min=sub_signal[0], t_max=sub_signal[1], dec=dec)
+
+# %% Get all aligned/sorted stacked signals
+
+signal_types = ['z_dff_iso'] # 'baseline_corr_lig','baseline_corr_iso',  'dff_iso', 'z_dff_iso', 'dff_baseline', 'z_dff_baseline', 'df_baseline_iso', 'z_df_baseline_iso'
+
+all_regions = np.unique([r for s in sess_ids.keys() for r in implant_info[s].keys()])
+data_dict = {sess_id: {signal: {region: {} for region in all_regions} for signal in signal_types} for sess_id in utils.flatten(sess_ids)}
+
+tone = copy.deepcopy(data_dict)
+cue = copy.deepcopy(data_dict)
+resp = copy.deepcopy(data_dict)
+cue_resp = copy.deepcopy(data_dict)
+
+rewards = np.unique(sess_data['reward_volume'])
+tone_vols = np.flip(np.unique(sess_data['tone_db_offset']))
+tone_rew_corrs = np.unique(sess_data['tone_reward_corr'])
+tone_rew_corrs = tone_rew_corrs[~np.isnan(tone_rew_corrs)]
+sides = ['left', 'right']
+
+# declare settings for normalized cue to response intervals
+norm_cue_resp_bins = 200
+
+for subj_id in sess_ids.keys():
+    for sess_id in sess_ids[subj_id]:
+
+        trial_data = sess_data[sess_data['sessid'] == sess_id]
+        sess_fp = fp_data[subj_id][sess_id]
+
+        # get alignment trial filters
+        resp_sel = trial_data['hit'] == True
+        no_resp_sel = trial_data['hit'] == False
+        prev_resp = np.insert(resp_sel[:-1], 0, False)
+        prev_no_resp = np.insert(no_resp_sel[:-1], 0, False)
+        future_resp = np.append(resp_sel[1:], False)
+        future_no_resp = np.append(no_resp_sel[1:], False)
+
+        resp_port = trial_data['response_port'].to_numpy()
+        reward_tone = trial_data['reward_tone'].to_numpy()
+        averse_outcome = trial_data['aversive_outcome'].to_numpy()
+
+        # only look at tones after first response for each tone type
+        post_rew_resp = np.full_like(resp_sel, False)
+        post_unrew_resp = np.full_like(resp_sel, False)
+
+        first_rew_resp = np.where(reward_tone & resp_sel)[0]
+        first_unrew_resp = np.where(~reward_tone & resp_sel)[0]
+        if len(first_rew_resp) > 0:
+            post_rew_resp[first_rew_resp[0]+1:] = True
+        if len(first_unrew_resp) > 0:
+            post_unrew_resp[first_unrew_resp[0]+1:] = True
+
+        reward = trial_data['reward_volume'].to_numpy()
+        tone_vol = trial_data['tone_db_offset'].to_numpy()
+        tone_rew_corr = trial_data['tone_reward_corr'].to_numpy()
+
+        # get alignment times
+        ts = sess_fp['time']
+        trial_start_ts = sess_fp['trial_start_ts'][:-1]
+        tone_start_ts = trial_start_ts + trial_data['abs_tone_start_time']
+        cue_ts = trial_start_ts + trial_data['response_cue_time']
+        resp_ts = trial_start_ts + trial_data['response_time']
+
+        for signal_type in signal_types:
+            for region in sess_fp['processed_signals'].keys():
+                signal = sess_fp['processed_signals'][region][signal_type]
+                region_side = implant_info[subj_id][region]['side']
+
+                # aligned to tone
+                pre = 3
+                post = 5
+                mat, t = fp_utils.build_signal_matrix(signal, ts, tone_start_ts, pre, post)
+                align_dict = tone
+
+                align_dict['t'] = t
+                align_dict[sess_id][signal_type][region]['resp'] = mat[resp_sel,:]
+                align_dict[sess_id][signal_type][region]['no_resp'] = mat[no_resp_sel,:]
+
+                align_dict[sess_id][signal_type][region]['prev_resp'] = mat[prev_resp,:]
+                align_dict[sess_id][signal_type][region]['prev_no_resp'] = mat[prev_no_resp,:]
+
+                align_dict[sess_id][signal_type][region]['resp_prev_resp'] = mat[resp_sel & prev_resp,:]
+                align_dict[sess_id][signal_type][region]['resp_prev_no_resp'] = mat[resp_sel & prev_no_resp,:]
+                align_dict[sess_id][signal_type][region]['no_resp_prev_resp'] = mat[no_resp_sel & prev_resp,:]
+                align_dict[sess_id][signal_type][region]['no_resp_prev_no_resp'] = mat[no_resp_sel & prev_no_resp,:]
+
+                align_dict[sess_id][signal_type][region]['reward_tone'] = mat[resp_sel & reward_tone & ~averse_outcome & post_rew_resp,:]
+                align_dict[sess_id][signal_type][region]['unreward_tone'] = mat[resp_sel & ~reward_tone & ~averse_outcome & post_unrew_resp,:]
+                align_dict[sess_id][signal_type][region]['reward_tone_averse'] = mat[resp_sel & reward_tone & averse_outcome & post_rew_resp,:]
+                align_dict[sess_id][signal_type][region]['unreward_tone_averse'] = mat[resp_sel & ~reward_tone & averse_outcome & post_unrew_resp,:]
+
+                align_dict[sess_id][signal_type][region]['resp_reward_tone'] = mat[resp_sel & reward_tone & ~averse_outcome & post_rew_resp,:]
+                align_dict[sess_id][signal_type][region]['resp_unreward_tone'] = mat[resp_sel & ~reward_tone & ~averse_outcome & post_unrew_resp,:]
+                align_dict[sess_id][signal_type][region]['no_resp_reward_tone'] = mat[no_resp_sel & reward_tone & ~averse_outcome & post_rew_resp,:]
+                align_dict[sess_id][signal_type][region]['no_resp_unreward_tone'] = mat[no_resp_sel & ~reward_tone & ~averse_outcome & post_unrew_resp,:]
+
+                align_dict[sess_id][signal_type][region]['resp_reward_tone_averse'] = mat[resp_sel & reward_tone & averse_outcome & post_rew_resp,:]
+                align_dict[sess_id][signal_type][region]['resp_unreward_tone_averse'] = mat[resp_sel & ~reward_tone & averse_outcome & post_unrew_resp,:]
+                align_dict[sess_id][signal_type][region]['no_resp_reward_tone_averse'] = mat[no_resp_sel & reward_tone & averse_outcome & post_rew_resp,:]
+                align_dict[sess_id][signal_type][region]['no_resp_unreward_tone_averse'] = mat[no_resp_sel & ~reward_tone & averse_outcome & post_unrew_resp,:]
+
+                for side in sides:
+                    side_type = fpah.get_implant_side_type(side, region_side)
+                    side_sel = resp_port == side
+
+                    align_dict[sess_id][signal_type][region][side_type] = mat[side_sel,:]
+
+                    align_dict[sess_id][signal_type][region][side_type+'_resp'] = mat[resp_sel & side_sel,:]
+                    align_dict[sess_id][signal_type][region][side_type+'_no_resp'] = mat[no_resp_sel & side_sel,:]
+
+                    align_dict[sess_id][signal_type][region][side_type+'_prev_resp'] = mat[prev_resp & side_sel,:]
+                    align_dict[sess_id][signal_type][region][side_type+'_prev_no_resp'] = mat[prev_no_resp & side_sel,:]
+
+                    align_dict[sess_id][signal_type][region][side_type+'_reward_tone'] = mat[resp_sel & reward_tone & ~averse_outcome & side_sel & post_rew_resp,:]
+                    align_dict[sess_id][signal_type][region][side_type+'_unreward_tone'] = mat[resp_sel & ~reward_tone & ~averse_outcome & side_sel & post_unrew_resp,:]
+                    align_dict[sess_id][signal_type][region][side_type+'_reward_tone_averse'] = mat[resp_sel & reward_tone & averse_outcome & side_sel & post_rew_resp,:]
+                    align_dict[sess_id][signal_type][region][side_type+'_unreward_tone_averse'] = mat[resp_sel & ~reward_tone & averse_outcome & side_sel & post_unrew_resp,:]
+
+                    align_dict[sess_id][signal_type][region][side_type+'_resp_reward_tone'] = mat[resp_sel & reward_tone & ~averse_outcome & side_sel & post_rew_resp,:]
+                    align_dict[sess_id][signal_type][region][side_type+'_resp_unreward_tone'] = mat[resp_sel & ~reward_tone & ~averse_outcome & side_sel & post_unrew_resp,:]
+                    align_dict[sess_id][signal_type][region][side_type+'_no_resp_reward_tone'] = mat[no_resp_sel & reward_tone & ~averse_outcome & side_sel & post_rew_resp,:]
+                    align_dict[sess_id][signal_type][region][side_type+'_no_resp_unreward_tone'] = mat[no_resp_sel & ~reward_tone & ~averse_outcome & side_sel & post_unrew_resp,:]
+
+                    align_dict[sess_id][signal_type][region][side_type+'_resp_reward_tone_averse'] = mat[resp_sel & reward_tone & averse_outcome & side_sel & post_rew_resp,:]
+                    align_dict[sess_id][signal_type][region][side_type+'_resp_unreward_tone_averse'] = mat[resp_sel & ~reward_tone & averse_outcome & side_sel & post_unrew_resp,:]
+                    align_dict[sess_id][signal_type][region][side_type+'_no_resp_reward_tone_averse'] = mat[no_resp_sel & reward_tone & averse_outcome & side_sel & post_rew_resp,:]
+                    align_dict[sess_id][signal_type][region][side_type+'_no_resp_unreward_tone_averse'] = mat[no_resp_sel & ~reward_tone & averse_outcome & side_sel & post_unrew_resp,:]
+
+                for v in tone_vols:
+                    vol_sel = tone_vol == v
+
+                    align_dict[sess_id][signal_type][region]['vol_'+str(v)] = mat[vol_sel,:]
+                    align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_resp'] = mat[resp_sel & vol_sel,:]
+                    align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_no_resp'] = mat[no_resp_sel & vol_sel,:]
+
+                    align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_reward_tone'] = mat[resp_sel & reward_tone & ~averse_outcome & vol_sel & post_rew_resp,:]
+                    align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_unreward_tone'] = mat[resp_sel & ~reward_tone & ~averse_outcome & vol_sel & post_unrew_resp,:]
+                    align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_reward_tone_averse'] = mat[resp_sel & reward_tone & averse_outcome & vol_sel & post_rew_resp,:]
+                    align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_unreward_tone_averse'] = mat[resp_sel & ~reward_tone & averse_outcome & vol_sel & post_unrew_resp,:]
+
+                    align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_resp_reward_tone'] = mat[resp_sel & reward_tone & ~averse_outcome & vol_sel & post_rew_resp,:]
+                    align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_resp_unreward_tone'] = mat[resp_sel & ~reward_tone & ~averse_outcome & vol_sel & post_unrew_resp,:]
+                    align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_no_resp_reward_tone'] = mat[no_resp_sel & reward_tone & ~averse_outcome & vol_sel & post_rew_resp,:]
+                    align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_no_resp_unreward_tone'] = mat[no_resp_sel & ~reward_tone & ~averse_outcome & vol_sel & post_unrew_resp,:]
+
+                    align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_resp_reward_tone_averse'] = mat[resp_sel & reward_tone & averse_outcome & vol_sel & post_rew_resp,:]
+                    align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_resp_unreward_tone_averse'] = mat[resp_sel & ~reward_tone & averse_outcome & vol_sel & post_unrew_resp,:]
+                    align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_no_resp_reward_tone_averse'] = mat[no_resp_sel & reward_tone & averse_outcome & vol_sel & post_rew_resp,:]
+                    align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_no_resp_unreward_tone_averse'] = mat[no_resp_sel & ~reward_tone & averse_outcome & vol_sel & post_unrew_resp,:]
+
+                    for side in sides:
+                        side_type = fpah.get_implant_side_type(side, region_side)
+                        side_sel = resp_port == side
+
+                        align_dict[sess_id][signal_type][region][side_type+'_vol_'+str(v)] = mat[vol_sel & side_sel,:]
+                        align_dict[sess_id][signal_type][region][side_type+'_vol_'+str(v)+'_resp'] = mat[resp_sel & vol_sel & side_sel,:]
+                        align_dict[sess_id][signal_type][region][side_type+'_vol_'+str(v)+'_no_resp'] = mat[no_resp_sel & vol_sel & side_sel,:]
+
+                        align_dict[sess_id][signal_type][region][side_type+'_vol_'+str(v)+'_reward_tone'] = mat[resp_sel & reward_tone & ~averse_outcome & vol_sel & side_sel & post_rew_resp,:]
+                        align_dict[sess_id][signal_type][region][side_type+'_vol_'+str(v)+'_unreward_tone'] = mat[resp_sel & ~reward_tone & ~averse_outcome & vol_sel & side_sel & post_unrew_resp,:]
+                        align_dict[sess_id][signal_type][region][side_type+'_vol_'+str(v)+'_reward_tone_averse'] = mat[resp_sel & reward_tone & averse_outcome & vol_sel & side_sel & post_rew_resp,:]
+                        align_dict[sess_id][signal_type][region][side_type+'_vol_'+str(v)+'_unreward_tone_averse'] = mat[resp_sel & ~reward_tone & averse_outcome & vol_sel & side_sel & post_unrew_resp,:]
+
+                    for c in tone_rew_corrs:
+                        corr_sel = tone_rew_corr == c
+
+                        align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_corr_'+str(c)] = mat[vol_sel & corr_sel,:]
+                        align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_corr_'+str(c)+'_resp'] = mat[resp_sel & vol_sel & corr_sel,:]
+                        align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_corr_'+str(c)+'_no_resp'] = mat[no_resp_sel & vol_sel & corr_sel,:]
+
+                        align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_corr_'+str(c)+'_reward_tone'] = mat[resp_sel & reward_tone & ~averse_outcome & vol_sel & corr_sel & post_rew_resp,:]
+                        align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_corr_'+str(c)+'_unreward_tone'] = mat[resp_sel & ~reward_tone & ~averse_outcome & vol_sel & corr_sel & post_unrew_resp,:]
+                        align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_corr_'+str(c)+'_reward_tone_averse'] = mat[resp_sel & reward_tone & averse_outcome & vol_sel & corr_sel & post_rew_resp,:]
+                        align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_corr_'+str(c)+'_unreward_tone_averse'] = mat[resp_sel & ~reward_tone & averse_outcome & vol_sel & corr_sel & post_unrew_resp,:]
+
+                        align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_corr_'+str(c)+'_resp_reward_tone'] = mat[resp_sel & reward_tone & ~averse_outcome & vol_sel & corr_sel & post_rew_resp,:]
+                        align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_corr_'+str(c)+'_resp_unreward_tone'] = mat[resp_sel & ~reward_tone & ~averse_outcome & vol_sel & corr_sel & post_unrew_resp,:]
+                        align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_corr_'+str(c)+'_no_resp_reward_tone'] = mat[no_resp_sel & reward_tone & ~averse_outcome & vol_sel & corr_sel & post_rew_resp,:]
+                        align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_corr_'+str(c)+'_no_resp_unreward_tone'] = mat[no_resp_sel & ~reward_tone & ~averse_outcome & vol_sel & corr_sel & post_unrew_resp,:]
+
+                        align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_corr_'+str(c)+'_resp_reward_tone_averse'] = mat[resp_sel & reward_tone & averse_outcome & vol_sel & corr_sel & post_rew_resp,:]
+                        align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_corr_'+str(c)+'_resp_unreward_tone_averse'] = mat[resp_sel & ~reward_tone & averse_outcome & vol_sel & corr_sel & post_unrew_resp,:]
+                        align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_corr_'+str(c)+'_no_resp_reward_tone_averse'] = mat[no_resp_sel & reward_tone & averse_outcome & vol_sel & corr_sel & post_rew_resp,:]
+                        align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_corr_'+str(c)+'_no_resp_unreward_tone_averse'] = mat[no_resp_sel & ~reward_tone & averse_outcome & vol_sel & corr_sel & post_unrew_resp,:]
+
+                for r in rewards:
+                    rew_sel = reward == r
+
+                    align_dict[sess_id][signal_type][region]['rew_'+str(r)] = mat[rew_sel,:]
+                    align_dict[sess_id][signal_type][region]['rew_'+str(r)+'_resp'] = mat[resp_sel & rew_sel,:]
+                    align_dict[sess_id][signal_type][region]['rew_'+str(r)+'_no_resp'] = mat[no_resp_sel & rew_sel,:]
+
+                    align_dict[sess_id][signal_type][region]['rew_'+str(r)+'_reward_tone'] = mat[resp_sel & reward_tone & ~averse_outcome & rew_sel & post_rew_resp,:]
+                    align_dict[sess_id][signal_type][region]['rew_'+str(r)+'_reward_tone_averse'] = mat[resp_sel & reward_tone & averse_outcome & rew_sel & post_rew_resp,:]
+
+                    align_dict[sess_id][signal_type][region]['rew_'+str(r)+'_resp_reward_tone'] = mat[resp_sel & reward_tone & ~averse_outcome & rew_sel & post_rew_resp,:]
+                    align_dict[sess_id][signal_type][region]['rew_'+str(r)+'_no_resp_reward_tone'] = mat[no_resp_sel & reward_tone & ~averse_outcome & rew_sel & post_rew_resp,:]
+
+                    align_dict[sess_id][signal_type][region]['rew_'+str(r)+'_resp_reward_tone_averse'] = mat[resp_sel & reward_tone & averse_outcome & rew_sel & post_rew_resp,:]
+                    align_dict[sess_id][signal_type][region]['rew_'+str(r)+'_no_resp_reward_tone_averse'] = mat[no_resp_sel & reward_tone & averse_outcome & rew_sel & post_rew_resp,:]
+
+                    for side in sides:
+                        side_type = fpah.get_implant_side_type(side, region_side)
+                        side_sel = resp_port == side
+
+                        align_dict[sess_id][signal_type][region][side_type+'_rew_'+str(r)] = mat[rew_sel & side_sel,:]
+                        align_dict[sess_id][signal_type][region][side_type+'_rew_'+str(r)+'_resp'] = mat[resp_sel & rew_sel & side_sel,:]
+                        align_dict[sess_id][signal_type][region][side_type+'_rew_'+str(r)+'_no_resp'] = mat[no_resp_sel & rew_sel & side_sel,:]
+
+                        align_dict[sess_id][signal_type][region][side_type+'_rew_'+str(r)+'_reward_tone'] = mat[resp_sel & reward_tone & ~averse_outcome & rew_sel & side_sel & post_rew_resp,:]
+                        align_dict[sess_id][signal_type][region][side_type+'_rew_'+str(r)+'_reward_tone_averse'] = mat[resp_sel & reward_tone & averse_outcome & rew_sel & side_sel & post_rew_resp,:]
+
+                    for c in tone_rew_corrs:
+                        corr_sel = tone_rew_corr == c
+
+                        align_dict[sess_id][signal_type][region]['rew_'+str(r)+'_corr_'+str(c)] = mat[rew_sel & corr_sel,:]
+                        align_dict[sess_id][signal_type][region]['rew_'+str(r)+'_corr_'+str(c)+'_resp'] = mat[resp_sel & rew_sel & corr_sel,:]
+                        align_dict[sess_id][signal_type][region]['rew_'+str(r)+'_corr_'+str(c)+'_no_resp'] = mat[no_resp_sel & rew_sel & corr_sel,:]
+
+                        align_dict[sess_id][signal_type][region]['rew_'+str(r)+'_corr_'+str(c)+'_reward_tone'] = mat[resp_sel & reward_tone & ~averse_outcome & rew_sel & corr_sel & post_rew_resp,:]
+                        align_dict[sess_id][signal_type][region]['rew_'+str(r)+'_corr_'+str(c)+'_reward_tone_averse'] = mat[resp_sel & reward_tone & averse_outcome & rew_sel & corr_sel & post_rew_resp,:]
+
+                        align_dict[sess_id][signal_type][region]['rew_'+str(r)+'_corr_'+str(c)+'_resp_reward_tone'] = mat[resp_sel & reward_tone & ~averse_outcome & rew_sel & corr_sel & post_rew_resp,:]
+                        align_dict[sess_id][signal_type][region]['rew_'+str(r)+'_corr_'+str(c)+'_no_resp_reward_tone'] = mat[no_resp_sel & reward_tone & ~averse_outcome & rew_sel & corr_sel & post_rew_resp,:]
+
+                        align_dict[sess_id][signal_type][region]['rew_'+str(r)+'_corr_'+str(c)+'_resp_reward_tone_averse'] = mat[resp_sel & reward_tone & averse_outcome & rew_sel & corr_sel & post_rew_resp,:]
+                        align_dict[sess_id][signal_type][region]['rew_'+str(r)+'_corr_'+str(c)+'_no_resp_reward_tone_averse'] = mat[no_resp_sel & reward_tone & averse_outcome & rew_sel & corr_sel & post_rew_resp,:]
+
+                    for v in tone_vols:
+                        vol_sel = tone_vol == v
+
+                        align_dict[sess_id][signal_type][region]['rew_'+str(r)+'_vol_'+str(v)] = mat[rew_sel & vol_sel & ~averse_outcome & post_rew_resp,:]
+                        align_dict[sess_id][signal_type][region]['rew_'+str(r)+'_vol_'+str(v)+'_averse'] = mat[rew_sel & vol_sel & averse_outcome & post_rew_resp,:]
+
+
+                # aligned to response cue
+                pre = 3
+                post = 3
+                mat, t = fp_utils.build_signal_matrix(signal, ts, cue_ts, pre, post)
+                align_dict = cue
+
+                align_dict['t'] = t
+                align_dict[sess_id][signal_type][region]['resp'] = mat[resp_sel,:]
+                align_dict[sess_id][signal_type][region]['no_resp'] = mat[no_resp_sel,:]
+
+                align_dict[sess_id][signal_type][region]['prev_resp'] = mat[prev_resp,:]
+                align_dict[sess_id][signal_type][region]['prev_no_resp'] = mat[prev_no_resp,:]
+
+                align_dict[sess_id][signal_type][region]['resp_prev_resp'] = mat[resp_sel & prev_resp,:]
+                align_dict[sess_id][signal_type][region]['resp_prev_no_resp'] = mat[resp_sel & prev_no_resp,:]
+                align_dict[sess_id][signal_type][region]['no_resp_prev_resp'] = mat[no_resp_sel & prev_resp,:]
+                align_dict[sess_id][signal_type][region]['no_resp_prev_no_resp'] = mat[no_resp_sel & prev_no_resp,:]
+
+                align_dict[sess_id][signal_type][region]['reward_tone'] = mat[resp_sel & reward_tone & ~averse_outcome & post_rew_resp,:]
+                align_dict[sess_id][signal_type][region]['unreward_tone'] = mat[resp_sel & ~reward_tone & ~averse_outcome & post_unrew_resp,:]
+                align_dict[sess_id][signal_type][region]['reward_tone_averse'] = mat[resp_sel & reward_tone & averse_outcome & post_rew_resp,:]
+                align_dict[sess_id][signal_type][region]['unreward_tone_averse'] = mat[resp_sel & ~reward_tone & averse_outcome & post_unrew_resp,:]
+
+                align_dict[sess_id][signal_type][region]['resp_reward_tone'] = mat[resp_sel & reward_tone & ~averse_outcome & post_rew_resp,:]
+                align_dict[sess_id][signal_type][region]['resp_unreward_tone'] = mat[resp_sel & ~reward_tone & ~averse_outcome & post_unrew_resp,:]
+                align_dict[sess_id][signal_type][region]['no_resp_reward_tone'] = mat[no_resp_sel & reward_tone & ~averse_outcome & post_rew_resp,:]
+                align_dict[sess_id][signal_type][region]['no_resp_unreward_tone'] = mat[no_resp_sel & ~reward_tone & ~averse_outcome & post_unrew_resp,:]
+
+                align_dict[sess_id][signal_type][region]['resp_reward_tone_averse'] = mat[resp_sel & reward_tone & averse_outcome & post_rew_resp,:]
+                align_dict[sess_id][signal_type][region]['resp_unreward_tone_averse'] = mat[resp_sel & ~reward_tone & averse_outcome & post_unrew_resp,:]
+                align_dict[sess_id][signal_type][region]['no_resp_reward_tone_averse'] = mat[no_resp_sel & reward_tone & averse_outcome & post_rew_resp,:]
+                align_dict[sess_id][signal_type][region]['no_resp_unreward_tone_averse'] = mat[no_resp_sel & ~reward_tone & averse_outcome & post_unrew_resp,:]
+
+                for side in sides:
+                    side_type = fpah.get_implant_side_type(side, region_side)
+                    side_sel = resp_port == side
+
+                    align_dict[sess_id][signal_type][region][side_type] = mat[side_sel,:]
+
+                    align_dict[sess_id][signal_type][region][side_type+'_resp'] = mat[resp_sel & side_sel,:]
+                    align_dict[sess_id][signal_type][region][side_type+'_no_resp'] = mat[no_resp_sel & side_sel,:]
+
+                    align_dict[sess_id][signal_type][region][side_type+'_prev_resp'] = mat[prev_resp & side_sel,:]
+                    align_dict[sess_id][signal_type][region][side_type+'_prev_no_resp'] = mat[prev_no_resp & side_sel,:]
+
+                    align_dict[sess_id][signal_type][region][side_type+'_reward_tone'] = mat[resp_sel & reward_tone & ~averse_outcome & side_sel & post_rew_resp,:]
+                    align_dict[sess_id][signal_type][region][side_type+'_unreward_tone'] = mat[resp_sel & ~reward_tone & ~averse_outcome & side_sel & post_unrew_resp,:]
+                    align_dict[sess_id][signal_type][region][side_type+'_reward_tone_averse'] = mat[resp_sel & reward_tone & averse_outcome & side_sel & post_rew_resp,:]
+                    align_dict[sess_id][signal_type][region][side_type+'_unreward_tone_averse'] = mat[resp_sel & ~reward_tone & averse_outcome & side_sel & post_unrew_resp,:]
+
+                    align_dict[sess_id][signal_type][region][side_type+'_resp_reward_tone'] = mat[resp_sel & reward_tone & ~averse_outcome & side_sel & post_rew_resp,:]
+                    align_dict[sess_id][signal_type][region][side_type+'_resp_unreward_tone'] = mat[resp_sel & ~reward_tone & ~averse_outcome & side_sel & post_unrew_resp,:]
+                    align_dict[sess_id][signal_type][region][side_type+'_no_resp_reward_tone'] = mat[no_resp_sel & reward_tone & ~averse_outcome & side_sel & post_rew_resp,:]
+                    align_dict[sess_id][signal_type][region][side_type+'_no_resp_unreward_tone'] = mat[no_resp_sel & ~reward_tone & ~averse_outcome & side_sel & post_unrew_resp,:]
+
+                    align_dict[sess_id][signal_type][region][side_type+'_resp_reward_tone_averse'] = mat[resp_sel & reward_tone & averse_outcome & side_sel & post_rew_resp,:]
+                    align_dict[sess_id][signal_type][region][side_type+'_resp_unreward_tone_averse'] = mat[resp_sel & ~reward_tone & averse_outcome & side_sel & post_unrew_resp,:]
+                    align_dict[sess_id][signal_type][region][side_type+'_no_resp_reward_tone_averse'] = mat[no_resp_sel & reward_tone & averse_outcome & side_sel & post_rew_resp,:]
+                    align_dict[sess_id][signal_type][region][side_type+'_no_resp_unreward_tone_averse'] = mat[no_resp_sel & ~reward_tone & averse_outcome & side_sel & post_unrew_resp,:]
+
+                for v in tone_vols:
+                    vol_sel = tone_vol == v
+
+                    align_dict[sess_id][signal_type][region]['vol_'+str(v)] = mat[vol_sel,:]
+                    align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_resp'] = mat[resp_sel & vol_sel,:]
+                    align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_no_resp'] = mat[no_resp_sel & vol_sel,:]
+
+                    align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_reward_tone'] = mat[resp_sel & reward_tone & ~averse_outcome & vol_sel & post_rew_resp,:]
+                    align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_unreward_tone'] = mat[resp_sel & ~reward_tone & ~averse_outcome & vol_sel & post_unrew_resp,:]
+                    align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_reward_tone_averse'] = mat[resp_sel & reward_tone & averse_outcome & vol_sel & post_rew_resp,:]
+                    align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_unreward_tone_averse'] = mat[resp_sel & ~reward_tone & averse_outcome & vol_sel & post_unrew_resp,:]
+
+                    align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_resp_reward_tone'] = mat[resp_sel & reward_tone & ~averse_outcome & vol_sel & post_rew_resp,:]
+                    align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_resp_unreward_tone'] = mat[resp_sel & ~reward_tone & ~averse_outcome & vol_sel & post_unrew_resp,:]
+                    align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_no_resp_reward_tone'] = mat[no_resp_sel & reward_tone & ~averse_outcome & vol_sel & post_rew_resp,:]
+                    align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_no_resp_unreward_tone'] = mat[no_resp_sel & ~reward_tone & ~averse_outcome & vol_sel & post_unrew_resp,:]
+
+                    align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_resp_reward_tone_averse'] = mat[resp_sel & reward_tone & averse_outcome & vol_sel & post_rew_resp,:]
+                    align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_resp_unreward_tone_averse'] = mat[resp_sel & ~reward_tone & averse_outcome & vol_sel & post_unrew_resp,:]
+                    align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_no_resp_reward_tone_averse'] = mat[no_resp_sel & reward_tone & averse_outcome & vol_sel & post_rew_resp,:]
+                    align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_no_resp_unreward_tone_averse'] = mat[no_resp_sel & ~reward_tone & averse_outcome & vol_sel & post_unrew_resp,:]
+
+                    for side in sides:
+                        side_type = fpah.get_implant_side_type(side, region_side)
+                        side_sel = resp_port == side
+
+                        align_dict[sess_id][signal_type][region][side_type+'_vol_'+str(v)] = mat[vol_sel & side_sel,:]
+                        align_dict[sess_id][signal_type][region][side_type+'_vol_'+str(v)+'_resp'] = mat[resp_sel & vol_sel & side_sel,:]
+                        align_dict[sess_id][signal_type][region][side_type+'_vol_'+str(v)+'_no_resp'] = mat[no_resp_sel & vol_sel & side_sel,:]
+
+                        align_dict[sess_id][signal_type][region][side_type+'_vol_'+str(v)+'_reward_tone'] = mat[resp_sel & reward_tone & ~averse_outcome & vol_sel & side_sel & post_rew_resp,:]
+                        align_dict[sess_id][signal_type][region][side_type+'_vol_'+str(v)+'_unreward_tone'] = mat[resp_sel & ~reward_tone & ~averse_outcome & vol_sel & side_sel & post_unrew_resp,:]
+                        align_dict[sess_id][signal_type][region][side_type+'_vol_'+str(v)+'_reward_tone_averse'] = mat[resp_sel & reward_tone & averse_outcome & vol_sel & side_sel & post_rew_resp,:]
+                        align_dict[sess_id][signal_type][region][side_type+'_vol_'+str(v)+'_unreward_tone_averse'] = mat[resp_sel & ~reward_tone & averse_outcome & vol_sel & side_sel & post_unrew_resp,:]
+
+
+                    for c in tone_rew_corrs:
+                        corr_sel = tone_rew_corr == c
+
+                        align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_corr_'+str(c)] = mat[vol_sel & corr_sel,:]
+                        align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_corr_'+str(c)+'_resp'] = mat[resp_sel & vol_sel & corr_sel,:]
+                        align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_corr_'+str(c)+'_no_resp'] = mat[no_resp_sel & vol_sel & corr_sel,:]
+
+                        align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_corr_'+str(c)+'_reward_tone'] = mat[resp_sel & reward_tone & ~averse_outcome & vol_sel & corr_sel & post_rew_resp,:]
+                        align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_corr_'+str(c)+'_unreward_tone'] = mat[resp_sel & ~reward_tone & ~averse_outcome & vol_sel & corr_sel & post_unrew_resp,:]
+                        align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_corr_'+str(c)+'_reward_tone_averse'] = mat[resp_sel & reward_tone & averse_outcome & vol_sel & corr_sel & post_rew_resp,:]
+                        align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_corr_'+str(c)+'_unreward_tone_averse'] = mat[resp_sel & ~reward_tone & averse_outcome & vol_sel & corr_sel & post_unrew_resp,:]
+
+                        align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_corr_'+str(c)+'_resp_reward_tone'] = mat[resp_sel & reward_tone & ~averse_outcome & vol_sel & corr_sel & post_rew_resp,:]
+                        align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_corr_'+str(c)+'_resp_unreward_tone'] = mat[resp_sel & ~reward_tone & ~averse_outcome & vol_sel & corr_sel & post_unrew_resp,:]
+                        align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_corr_'+str(c)+'_no_resp_reward_tone'] = mat[no_resp_sel & reward_tone & ~averse_outcome & vol_sel & corr_sel & post_rew_resp,:]
+                        align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_corr_'+str(c)+'_no_resp_unreward_tone'] = mat[no_resp_sel & ~reward_tone & ~averse_outcome & vol_sel & corr_sel & post_unrew_resp,:]
+
+                        align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_corr_'+str(c)+'_resp_reward_tone_averse'] = mat[resp_sel & reward_tone & averse_outcome & vol_sel & corr_sel & post_rew_resp,:]
+                        align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_corr_'+str(c)+'_resp_unreward_tone_averse'] = mat[resp_sel & ~reward_tone & averse_outcome & vol_sel & corr_sel & post_unrew_resp,:]
+                        align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_corr_'+str(c)+'_no_resp_reward_tone_averse'] = mat[no_resp_sel & reward_tone & averse_outcome & vol_sel & corr_sel & post_rew_resp,:]
+                        align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_corr_'+str(c)+'_no_resp_unreward_tone_averse'] = mat[no_resp_sel & ~reward_tone & averse_outcome & vol_sel & corr_sel & post_unrew_resp,:]
+
+
+                for r in rewards:
+                    rew_sel = reward == r
+
+                    align_dict[sess_id][signal_type][region]['rew_'+str(r)] = mat[rew_sel,:]
+                    align_dict[sess_id][signal_type][region]['rew_'+str(r)+'_resp'] = mat[resp_sel & rew_sel,:]
+                    align_dict[sess_id][signal_type][region]['rew_'+str(r)+'_no_resp'] = mat[no_resp_sel & rew_sel,:]
+
+                    align_dict[sess_id][signal_type][region]['rew_'+str(r)+'_reward_tone'] = mat[resp_sel & reward_tone & ~averse_outcome & rew_sel & post_rew_resp,:]
+                    align_dict[sess_id][signal_type][region]['rew_'+str(r)+'_reward_tone_averse'] = mat[resp_sel & reward_tone & averse_outcome & rew_sel & post_rew_resp,:]
+
+                    align_dict[sess_id][signal_type][region]['rew_'+str(r)+'_resp_reward_tone'] = mat[resp_sel & reward_tone & ~averse_outcome & rew_sel & post_rew_resp,:]
+                    align_dict[sess_id][signal_type][region]['rew_'+str(r)+'_no_resp_reward_tone'] = mat[no_resp_sel & reward_tone & ~averse_outcome & rew_sel & post_rew_resp,:]
+
+                    align_dict[sess_id][signal_type][region]['rew_'+str(r)+'_resp_reward_tone_averse'] = mat[resp_sel & reward_tone & averse_outcome & rew_sel & post_rew_resp,:]
+                    align_dict[sess_id][signal_type][region]['rew_'+str(r)+'_no_resp_reward_tone_averse'] = mat[no_resp_sel & reward_tone & averse_outcome & rew_sel & post_rew_resp,:]
+
+                    for side in sides:
+                        side_type = fpah.get_implant_side_type(side, region_side)
+                        side_sel = resp_port == side
+
+                        align_dict[sess_id][signal_type][region][side_type+'_rew_'+str(r)] = mat[rew_sel & side_sel,:]
+                        align_dict[sess_id][signal_type][region][side_type+'_rew_'+str(r)+'_resp'] = mat[resp_sel & rew_sel & side_sel,:]
+                        align_dict[sess_id][signal_type][region][side_type+'_rew_'+str(r)+'_no_resp'] = mat[no_resp_sel & rew_sel & side_sel,:]
+
+                        align_dict[sess_id][signal_type][region][side_type+'_rew_'+str(r)+'_reward_tone'] = mat[resp_sel & reward_tone & ~averse_outcome & rew_sel & side_sel & post_rew_resp,:]
+                        align_dict[sess_id][signal_type][region][side_type+'_rew_'+str(r)+'_reward_tone_averse'] = mat[resp_sel & reward_tone & averse_outcome & rew_sel & side_sel & post_rew_resp,:]
+
+
+                    #TODO: have all reward tones together in addition to splitting out by averse or not
+                    for c in tone_rew_corrs:
+                        corr_sel = tone_rew_corr == c
+
+                        align_dict[sess_id][signal_type][region]['rew_'+str(r)+'_corr_'+str(c)] = mat[rew_sel & corr_sel,:]
+                        align_dict[sess_id][signal_type][region]['rew_'+str(r)+'_corr_'+str(c)+'_resp'] = mat[resp_sel & rew_sel & corr_sel,:]
+                        align_dict[sess_id][signal_type][region]['rew_'+str(r)+'_corr_'+str(c)+'_no_resp'] = mat[no_resp_sel & rew_sel & corr_sel,:]
+
+                        align_dict[sess_id][signal_type][region]['rew_'+str(r)+'_corr_'+str(c)+'_reward_tone'] = mat[resp_sel & reward_tone & ~averse_outcome & rew_sel & corr_sel & post_rew_resp,:]
+                        align_dict[sess_id][signal_type][region]['rew_'+str(r)+'_corr_'+str(c)+'_reward_tone_averse'] = mat[resp_sel & reward_tone & averse_outcome & rew_sel & corr_sel & post_rew_resp,:]
+
+                        align_dict[sess_id][signal_type][region]['rew_'+str(r)+'_corr_'+str(c)+'_resp_reward_tone'] = mat[resp_sel & reward_tone & ~averse_outcome & rew_sel & corr_sel & post_rew_resp,:]
+                        align_dict[sess_id][signal_type][region]['rew_'+str(r)+'_corr_'+str(c)+'_no_resp_reward_tone'] = mat[no_resp_sel & reward_tone & ~averse_outcome & rew_sel & corr_sel & post_rew_resp,:]
+
+                        align_dict[sess_id][signal_type][region]['rew_'+str(r)+'_corr_'+str(c)+'_resp_reward_tone_averse'] = mat[resp_sel & reward_tone & averse_outcome & rew_sel & corr_sel & post_rew_resp,:]
+                        align_dict[sess_id][signal_type][region]['rew_'+str(r)+'_corr_'+str(c)+'_no_resp_reward_tone_averse'] = mat[no_resp_sel & reward_tone & averse_outcome & rew_sel & corr_sel & post_rew_resp,:]
+
+                    for v in tone_vols:
+                        vol_sel = tone_vol == v
+
+                        align_dict[sess_id][signal_type][region]['rew_'+str(r)+'_vol_'+str(v)] = mat[rew_sel & vol_sel & ~averse_outcome & post_rew_resp,:]
+                        align_dict[sess_id][signal_type][region]['rew_'+str(r)+'_vol_'+str(v)+'_averse'] = mat[rew_sel & vol_sel & averse_outcome & post_rew_resp,:]
+
+
+                # aligned to response poke
+                pre = 3
+                post = 10
+                mat, t = fp_utils.build_signal_matrix(signal, ts, resp_ts, pre, post)
+                align_dict = resp
+
+                align_dict['t'] = t
+                align_dict[sess_id][signal_type][region]['prev_resp'] = mat[prev_resp,:]
+                align_dict[sess_id][signal_type][region]['prev_no_resp'] = mat[prev_no_resp,:]
+
+                align_dict[sess_id][signal_type][region]['reward_tone'] = mat[resp_sel & reward_tone & ~averse_outcome & post_rew_resp,:]
+                align_dict[sess_id][signal_type][region]['unreward_tone'] = mat[resp_sel & ~reward_tone & ~averse_outcome & post_unrew_resp,:]
+                align_dict[sess_id][signal_type][region]['reward_tone_averse'] = mat[resp_sel & reward_tone & averse_outcome & post_rew_resp,:]
+                align_dict[sess_id][signal_type][region]['unreward_tone_averse'] = mat[resp_sel & ~reward_tone & averse_outcome & post_unrew_resp,:]
+
+                for side in sides:
+                    side_type = fpah.get_implant_side_type(side, region_side)
+                    side_sel = resp_port == side
+
+                    align_dict[sess_id][signal_type][region][side_type] = mat[side_sel,:]
+
+                    align_dict[sess_id][signal_type][region][side_type+'_prev_resp'] = mat[prev_resp & side_sel,:]
+                    align_dict[sess_id][signal_type][region][side_type+'_prev_no_resp'] = mat[prev_no_resp & side_sel,:]
+
+                    align_dict[sess_id][signal_type][region][side_type+'_reward_tone'] = mat[resp_sel & reward_tone & ~averse_outcome & side_sel & post_rew_resp,:]
+                    align_dict[sess_id][signal_type][region][side_type+'_unreward_tone'] = mat[resp_sel & ~reward_tone & ~averse_outcome & side_sel & post_unrew_resp,:]
+                    align_dict[sess_id][signal_type][region][side_type+'_reward_tone_averse'] = mat[resp_sel & reward_tone & averse_outcome & side_sel & post_rew_resp,:]
+                    align_dict[sess_id][signal_type][region][side_type+'_unreward_tone_averse'] = mat[resp_sel & ~reward_tone & averse_outcome & side_sel & post_unrew_resp,:]
+
+                for v in tone_vols:
+                    vol_sel = tone_vol == v
+
+                    align_dict[sess_id][signal_type][region]['vol_'+str(v)] = mat[vol_sel,:]
+
+                    align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_reward_tone'] = mat[resp_sel & reward_tone & ~averse_outcome & vol_sel & post_rew_resp,:]
+                    align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_unreward_tone'] = mat[resp_sel & ~reward_tone & ~averse_outcome & vol_sel & post_unrew_resp,:]
+                    align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_reward_tone_averse'] = mat[resp_sel & reward_tone & averse_outcome & vol_sel & post_rew_resp,:]
+                    align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_unreward_tone_averse'] = mat[resp_sel & ~reward_tone & averse_outcome & vol_sel & post_unrew_resp,:]
+
+                    for side in sides:
+                        side_type = fpah.get_implant_side_type(side, region_side)
+                        side_sel = resp_port == side
+
+                        align_dict[sess_id][signal_type][region][side_type+'_vol_'+str(v)] = mat[vol_sel & side_sel,:]
+
+                        align_dict[sess_id][signal_type][region][side_type+'_vol_'+str(v)+'_reward_tone'] = mat[resp_sel & reward_tone & ~averse_outcome & vol_sel & side_sel & post_rew_resp,:]
+                        align_dict[sess_id][signal_type][region][side_type+'_vol_'+str(v)+'_unreward_tone'] = mat[resp_sel & ~reward_tone & ~averse_outcome & vol_sel & side_sel & post_unrew_resp,:]
+                        align_dict[sess_id][signal_type][region][side_type+'_vol_'+str(v)+'_reward_tone_averse'] = mat[resp_sel & reward_tone & averse_outcome & vol_sel & side_sel & post_rew_resp,:]
+                        align_dict[sess_id][signal_type][region][side_type+'_vol_'+str(v)+'_unreward_tone_averse'] = mat[resp_sel & ~reward_tone & averse_outcome & vol_sel & side_sel & post_unrew_resp,:]
+
+                    for c in tone_rew_corrs:
+                        corr_sel = tone_rew_corr == c
+
+                        align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_corr_'+str(c)] = mat[vol_sel & corr_sel,:]
+
+                        align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_corr_'+str(c)+'_reward_tone'] = mat[resp_sel & reward_tone & ~averse_outcome & vol_sel & corr_sel & post_rew_resp,:]
+                        align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_corr_'+str(c)+'_unreward_tone'] = mat[resp_sel & ~reward_tone & ~averse_outcome & vol_sel & corr_sel & post_unrew_resp,:]
+                        align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_corr_'+str(c)+'_reward_tone_averse'] = mat[resp_sel & reward_tone & averse_outcome & vol_sel & corr_sel & post_rew_resp,:]
+                        align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_corr_'+str(c)+'_unreward_tone_averse'] = mat[resp_sel & ~reward_tone & averse_outcome & vol_sel & corr_sel & post_unrew_resp,:]
+
+
+                for r in rewards:
+                    rew_sel = reward == r
+
+                    align_dict[sess_id][signal_type][region]['rew_'+str(r)] = mat[rew_sel,:]
+                    align_dict[sess_id][signal_type][region]['rew_'+str(r)+'_reward_tone'] = mat[resp_sel & reward_tone & ~averse_outcome & rew_sel & post_rew_resp,:]
+                    align_dict[sess_id][signal_type][region]['rew_'+str(r)+'_reward_tone_averse'] = mat[resp_sel & reward_tone & averse_outcome & rew_sel & post_rew_resp,:]
+
+                    for side in sides:
+                        side_type = fpah.get_implant_side_type(side, region_side)
+                        side_sel = resp_port == side
+
+                        align_dict[sess_id][signal_type][region][side_type+'_rew_'+str(r)] = mat[rew_sel & side_sel,:]
+                        align_dict[sess_id][signal_type][region][side_type+'_rew_'+str(r)+'_reward_tone'] = mat[resp_sel & reward_tone & ~averse_outcome & rew_sel & side_sel & post_rew_resp,:]
+                        align_dict[sess_id][signal_type][region][side_type+'_rew_'+str(r)+'_reward_tone_averse'] = mat[resp_sel & reward_tone & averse_outcome & rew_sel & side_sel & post_rew_resp,:]
+
+                    for c in tone_rew_corrs:
+                        corr_sel = tone_rew_corr == c
+
+                        align_dict[sess_id][signal_type][region]['rew_'+str(r)+'_corr_'+str(c)] = mat[rew_sel & corr_sel,:]
+                        align_dict[sess_id][signal_type][region]['rew_'+str(r)+'_corr_'+str(c)+'_reward_tone'] = mat[resp_sel & reward_tone & ~averse_outcome & rew_sel & corr_sel & post_rew_resp,:]
+                        align_dict[sess_id][signal_type][region]['rew_'+str(r)+'_corr_'+str(c)+'_reward_tone_averse'] = mat[resp_sel & reward_tone & averse_outcome & rew_sel & corr_sel & post_rew_resp,:]
+
+                    for v in tone_vols:
+                        vol_sel = tone_vol == v
+
+                        align_dict[sess_id][signal_type][region]['rew_'+str(r)+'_vol_'+str(v)] = mat[rew_sel & vol_sel & ~averse_outcome & post_rew_resp,:]
+                        align_dict[sess_id][signal_type][region]['rew_'+str(r)+'_vol_'+str(v)+'_averse'] = mat[rew_sel & vol_sel & averse_outcome & post_rew_resp,:]
+
+
+                # time normalized signal matrices
+                mat = fp_utils.build_time_norm_signal_matrix(signal, ts, cue_ts, resp_ts, norm_cue_resp_bins)
+                align_dict = cue_resp
+
+                align_dict['t'] = np.linspace(0, 1, norm_cue_resp_bins)
+                align_dict[sess_id][signal_type][region]['prev_resp'] = mat[prev_resp,:]
+                align_dict[sess_id][signal_type][region]['prev_no_resp'] = mat[prev_no_resp,:]
+
+                align_dict[sess_id][signal_type][region]['reward_tone'] = mat[resp_sel & reward_tone & ~averse_outcome & post_rew_resp,:]
+                align_dict[sess_id][signal_type][region]['unreward_tone'] = mat[resp_sel & ~reward_tone & ~averse_outcome & post_unrew_resp,:]
+                align_dict[sess_id][signal_type][region]['reward_tone_averse'] = mat[resp_sel & reward_tone & averse_outcome & post_rew_resp,:]
+                align_dict[sess_id][signal_type][region]['unreward_tone_averse'] = mat[resp_sel & ~reward_tone & averse_outcome & post_unrew_resp,:]
+
+                for side in sides:
+                    side_type = fpah.get_implant_side_type(side, region_side)
+                    side_sel = resp_port == side
+
+                    align_dict[sess_id][signal_type][region][side_type] = mat[side_sel,:]
+
+                    align_dict[sess_id][signal_type][region][side_type+'_prev_resp'] = mat[prev_resp & side_sel,:]
+                    align_dict[sess_id][signal_type][region][side_type+'_prev_no_resp'] = mat[prev_no_resp & side_sel,:]
+
+                    align_dict[sess_id][signal_type][region][side_type+'_reward_tone'] = mat[resp_sel & reward_tone & ~averse_outcome & side_sel & post_rew_resp,:]
+                    align_dict[sess_id][signal_type][region][side_type+'_unreward_tone'] = mat[resp_sel & ~reward_tone & ~averse_outcome & side_sel & post_unrew_resp,:]
+                    align_dict[sess_id][signal_type][region][side_type+'_reward_tone_averse'] = mat[resp_sel & reward_tone & averse_outcome & side_sel & post_rew_resp,:]
+                    align_dict[sess_id][signal_type][region][side_type+'_unreward_tone_averse'] = mat[resp_sel & ~reward_tone & averse_outcome & side_sel & post_unrew_resp,:]
+
+                for v in tone_vols:
+                    vol_sel = tone_vol == v
+
+                    align_dict[sess_id][signal_type][region]['vol_'+str(v)] = mat[vol_sel,:]
+
+                    align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_reward_tone'] = mat[resp_sel & reward_tone & ~averse_outcome & vol_sel & post_rew_resp,:]
+                    align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_unreward_tone'] = mat[resp_sel & ~reward_tone & ~averse_outcome & vol_sel & post_unrew_resp,:]
+                    align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_reward_tone_averse'] = mat[resp_sel & reward_tone & averse_outcome & vol_sel & post_rew_resp,:]
+                    align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_unreward_tone_averse'] = mat[resp_sel & ~reward_tone & averse_outcome & vol_sel & post_unrew_resp,:]
+
+                    for side in sides:
+                        side_type = fpah.get_implant_side_type(side, region_side)
+                        side_sel = resp_port == side
+
+                        align_dict[sess_id][signal_type][region][side_type+'_vol_'+str(v)] = mat[vol_sel & side_sel,:]
+
+                        align_dict[sess_id][signal_type][region][side_type+'_vol_'+str(v)+'_reward_tone'] = mat[resp_sel & reward_tone & ~averse_outcome & vol_sel & side_sel & post_rew_resp,:]
+                        align_dict[sess_id][signal_type][region][side_type+'_vol_'+str(v)+'_unreward_tone'] = mat[resp_sel & ~reward_tone & ~averse_outcome & vol_sel & side_sel & post_unrew_resp,:]
+                        align_dict[sess_id][signal_type][region][side_type+'_vol_'+str(v)+'_reward_tone_averse'] = mat[resp_sel & reward_tone & averse_outcome & vol_sel & side_sel & post_rew_resp,:]
+                        align_dict[sess_id][signal_type][region][side_type+'_vol_'+str(v)+'_unreward_tone_averse'] = mat[resp_sel & ~reward_tone & averse_outcome & vol_sel & side_sel & post_unrew_resp,:]
+
+                    for c in tone_rew_corrs:
+                        corr_sel = tone_rew_corr == c
+
+                        align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_corr_'+str(c)] = mat[vol_sel & corr_sel,:]
+
+                        align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_corr_'+str(c)+'_reward_tone'] = mat[resp_sel & reward_tone & ~averse_outcome & vol_sel & corr_sel & post_rew_resp,:]
+                        align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_corr_'+str(c)+'_unreward_tone'] = mat[resp_sel & ~reward_tone & ~averse_outcome & vol_sel & corr_sel & post_unrew_resp,:]
+                        align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_corr_'+str(c)+'_reward_tone_averse'] = mat[resp_sel & reward_tone & averse_outcome & vol_sel & corr_sel & post_rew_resp,:]
+                        align_dict[sess_id][signal_type][region]['vol_'+str(v)+'_corr_'+str(c)+'_unreward_tone_averse'] = mat[resp_sel & ~reward_tone & averse_outcome & vol_sel & corr_sel & post_unrew_resp,:]
+
+
+                for r in rewards:
+                    rew_sel = reward == r
+
+                    align_dict[sess_id][signal_type][region]['rew_'+str(r)] = mat[rew_sel,:]
+                    align_dict[sess_id][signal_type][region]['rew_'+str(r)+'_reward_tone'] = mat[resp_sel & reward_tone & ~averse_outcome & rew_sel & post_rew_resp,:]
+                    align_dict[sess_id][signal_type][region]['rew_'+str(r)+'_reward_tone_averse'] = mat[resp_sel & reward_tone & averse_outcome & rew_sel & post_rew_resp,:]
+
+                    for side in sides:
+                        side_type = fpah.get_implant_side_type(side, region_side)
+                        side_sel = resp_port == side
+
+                        align_dict[sess_id][signal_type][region][side_type+'_rew_'+str(r)] = mat[rew_sel & side_sel,:]
+                        align_dict[sess_id][signal_type][region][side_type+'_rew_'+str(r)+'_reward_tone'] = mat[resp_sel & reward_tone & ~averse_outcome & rew_sel & side_sel & post_rew_resp,:]
+                        align_dict[sess_id][signal_type][region][side_type+'_rew_'+str(r)+'_reward_tone_averse'] = mat[resp_sel & reward_tone & averse_outcome & rew_sel & side_sel & post_rew_resp,:]
+
+                    for c in tone_rew_corrs:
+                        corr_sel = tone_rew_corr == c
+
+                        align_dict[sess_id][signal_type][region]['rew_'+str(r)+'_corr_'+str(c)] = mat[rew_sel & corr_sel,:]
+                        align_dict[sess_id][signal_type][region]['rew_'+str(r)+'_corr_'+str(c)+'_reward_tone'] = mat[resp_sel & reward_tone & ~averse_outcome & rew_sel & corr_sel & post_rew_resp,:]
+                        align_dict[sess_id][signal_type][region]['rew_'+str(r)+'_corr_'+str(c)+'_reward_tone_averse'] = mat[resp_sel & reward_tone & averse_outcome & rew_sel & corr_sel & post_rew_resp,:]
+
+
+# %% Set up average plot options
+
+# modify these options to change what will be used in the average signal plots
+signal_type = 'z_dff_iso' # 'dff_iso', 'df_baseline_iso', 'raw_lig'
+signal_label = 'Z-scored ΔF/F'
+regions = ['DMS', 'PL']
+subjects = list(sess_ids.keys())
+filter_outliers = False
 outlier_thresh = 20
-
-def remove_outliers(mat):
-    if filter_outliers:
-        mat[np.abs(mat) > outlier_thresh] = np.nan
-        
-    return mat
-
 use_se = True
-def calc_error(mat):
-    if use_se:
-        return utils.stderr(mat, axis=0)
-    else:
-        return np.std(mat, axis=0)
+ph = 3.5;
+pw = 5;
+n_reg = len(regions)
+tone_xlims = {'DMS': [-1.5,2], 'PL': [-3,4]}
+resp_xlims = {'DMS': [-1.5,2], 'PL': [-3,10]}
+gen_xlims = {'DMS': [-1.5,1.5], 'PL': [-3,3]}
 
-# trial outcome
-fig, axs = plt.subplots(2, 1, figsize=(5, 7), layout='constrained')
-fig.suptitle('Response Aligned by Trial Outcome')
-t = response_outcome['t']
+tone_end = 1 # 0.5 #
+reward_time = 0.5 # None #
 
-ax = axs[0]
-region = 'DMS'
-ax.set_title(region)
-reward_act = remove_outliers(response_outcome[region]['rewarded'])
-unreward_act = remove_outliers(response_outcome[region]['unrewarded'])
-plot_utils.plot_psth(np.nanmean(reward_act, axis=0), t, calc_error(reward_act), ax, label='Rewarded')
-plot_utils.plot_psth(np.nanmean(unreward_act, axis=0), t, calc_error(unreward_act), ax, label='Unrewarded')
-ax.set_ylabel('Z-scored ΔF/F')
-ax.set_xlabel('Time from response (s)')
+save_plots = True
+show_plots = False
 
-ax = axs[1]
-region = 'PFC'
-ax.set_title(region)
-reward_act = remove_outliers(response_outcome[region]['rewarded'])
-unreward_act = remove_outliers(response_outcome[region]['unrewarded'])
-plot_utils.plot_psth(np.nanmean(reward_act, axis=0), t, calc_error(reward_act), ax, label='Rewarded')
-plot_utils.plot_psth(np.nanmean(unreward_act, axis=0), t, calc_error(unreward_act), ax, label='Unrewarded')
-ax.set_ylabel('Z-scored ΔF/F')
-ax.set_xlabel('Time from response (s)')
-ax.legend(loc='upper left')
+# make this wrapper to simplify the stack command by not having to include the options declared above
+def stack_mats(mat_dict, groups=None):
+    return fpah.stack_fp_mats(mat_dict, regions, sess_ids, subjects, signal_type, filter_outliers, outlier_thresh, groups)
 
+tone_mats = stack_mats(tone)
+cue_mats = stack_mats(cue)
+resp_mats = stack_mats(resp)
+cue_resp_mats = stack_mats(cue_resp)
 
-# Reward volumes by outcome
-fig, axs = plt.subplots(2, 2, figsize=(9, 7), layout='constrained', sharey='row')
-fig.suptitle('Response Aligned by Reward Volume')
-t = response_reward_vols['t']
+all_mats = {Align.tone: tone_mats, Align.cue: cue_mats, Align.resp: resp_mats, Align.cue_resp: cue_resp_mats}
 
-ax = axs[0,0]
-region = 'DMS'
-ax.set_title(region+' - Rewarded')
-for vol in reward_vols:
-    act = remove_outliers(response_reward_vols[region][vol]['rewarded'])
-    plot_utils.plot_psth(np.nanmean(act, axis=0), t, calc_error(act), ax, label='{} μL'.format(vol))
-ax.set_ylabel('Z-scored ΔF/F')
-ax.set_xlabel('Time from response (s)')
+all_ts = {Align.tone: tone['t'], Align.cue: cue['t'], Align.resp: resp['t'], Align.cue_resp: cue_resp['t']}
 
-ax = axs[0,1]
-ax.set_title(region+' - Unrewarded')
-for vol in reward_vols:
-    act = remove_outliers(response_reward_vols[region][vol]['unrewarded'])
-    plot_utils.plot_psth(np.nanmean(act, axis=0), t, calc_error(act), ax, label='{} μL'.format(vol))
-ax.set_xlabel('Time from response (s)')
-ax.legend(loc='upper left')
+all_xlims = {Align.tone: tone_xlims, Align.cue: gen_xlims, Align.resp: resp_xlims, Align.cue_resp: None}
 
-ax = axs[1,0]
-region = 'PFC'
-ax.set_title(region+' - Rewarded')
-for vol in reward_vols:
-    act = remove_outliers(response_reward_vols[region][vol]['rewarded'])
-    plot_utils.plot_psth(np.nanmean(act, axis=0), t, calc_error(act), ax, label='{} μL'.format(vol))
-ax.set_ylabel('Z-scored ΔF/F')
-ax.set_xlabel('Time from response (s)')
+all_dashlines = {Align.tone: tone_end, Align.cue: None, Align.resp: reward_time, Align.cue_resp: None}
 
-ax = axs[1,1]
-ax.set_title(region+' - Unrewarded')
-for vol in reward_vols:
-    act = remove_outliers(response_reward_vols[region][vol]['unrewarded'])
-    plot_utils.plot_psth(np.nanmean(act, axis=0), t, calc_error(act), ax, label='{} μL'.format(vol))
-ax.set_xlabel('Time from response (s)')
-ax.legend(loc='upper left')
+left_left = {'DMS': {'loc': 'upper left'}, 'PL': {'loc': 'upper left'}}
+left_right = {'DMS': {'loc': 'upper left'}, 'PL': {'loc': 'upper right'}}
+right_left = {'DMS': {'loc': 'upper right'}, 'PL': {'loc': 'upper left'}}
+right_right = {'DMS': {'loc': 'upper right'}, 'PL': {'loc': 'upper right'}}
+all_legend_params = {Align.tone: right_left, Align.cue: left_left, Align.resp: left_right, Align.cue_resp: right_left}
 
-# Tone outcome
-fig, axs = plt.subplots(2, 1, figsize=(5, 7), layout='constrained')
-fig.suptitle('Tone Aligned by Trial Outcome')
-t = tone_outcome['t']
+def save_plot(fig, plot_name):
+    if save_plots and not plot_name is None:
+        fpah.save_fig(fig, fpah.get_figure_save_path(behavior_name, subjects, plot_name))
 
-ax = axs[0]
-region = 'DMS'
-ax.set_title(region)
-reward_act = remove_outliers(tone_outcome[region]['rewarded'])
-unreward_act = remove_outliers(tone_outcome[region]['unrewarded'])
-noResp_act = remove_outliers(tone_outcome[region]['noResp'])
-plot_utils.plot_psth(np.nanmean(reward_act, axis=0), t, calc_error(reward_act), ax, label='Rewarded')
-plot_utils.plot_psth(np.nanmean(unreward_act, axis=0), t, calc_error(unreward_act), ax, label='Unrewarded')
-plot_utils.plot_psth(np.nanmean(noResp_act, axis=0), t, calc_error(noResp_act), ax, label='No Response')
-ax.set_ylabel('Z-scored ΔF/F')
-ax.set_xlabel('Time from tone start (s)')
-ax.legend(loc='upper right')
+    if not show_plots:
+        plt.close(fig)
 
-ax = axs[1]
-region = 'PFC'
-ax.set_title(region)
-reward_act = remove_outliers(tone_outcome[region]['rewarded'])
-unreward_act = remove_outliers(tone_outcome[region]['unrewarded'])
-noResp_act = remove_outliers(tone_outcome[region]['noResp'])
-plot_utils.plot_psth(np.nanmean(reward_act, axis=0), t, calc_error(reward_act), ax, label='Rewarded')
-plot_utils.plot_psth(np.nanmean(unreward_act, axis=0), t, calc_error(unreward_act), ax, label='Unrewarded')
-plot_utils.plot_psth(np.nanmean(noResp_act, axis=0), t, calc_error(noResp_act), ax, label='No Response')
-ax.set_ylabel('Z-scored ΔF/F')
-ax.set_xlabel('Time from tone start (s)')
+def plot_avg_signals(align, plot_groups, group_labels, plot_titles, gen_title, xlims_dict=None,
+                     regions=regions, dashlines=None, legend_params=None, group_colors=None, gen_plot_name=None):
+
+    mat = all_mats[align]
+    t = all_ts[align]
+    align_title = fpah.get_align_title(align)
+    x_label = fpah.get_align_xlabel(align)
+
+    if xlims_dict is None:
+        xlims_dict = all_xlims[align]
+
+    if dashlines is None:
+        dashlines = all_dashlines[align]
+
+    if legend_params is None:
+        legend_params = all_legend_params[align]
+
+    fig, plotted = fpah.plot_avg_signals(plot_groups, group_labels, mat, regions, t, gen_title.format(align_title), plot_titles, x_label, signal_label, xlims_dict,
+                                dashlines=dashlines, legend_params=legend_params, group_colors=group_colors, use_se=use_se, ph=ph, pw=pw)
+
+    if plotted and not gen_plot_name is None:
+        save_plot(fig, gen_plot_name.format(align))
+
+    if not plotted:
+        plt.close(fig)
+
+# %% Response, Side, and Tone Types
+
+# response and side
+plot_groups = [['resp', 'no_resp'],
+               ['contra', 'ipsi'],
+               ['contra_resp', 'contra_no_resp', 'ipsi_resp', 'ipsi_no_resp']]
+group_labels = {'resp': 'Response', 'no_resp': 'No Response', 'contra': 'Contra',
+                'ipsi': 'Ipsi', 'contra_resp': 'Contra Resp', 'contra_no_resp': 'Contra No Resp',
+                'ipsi_resp': 'Ipsi Resp', 'ipsi_no_resp': 'Ipsi No Resp',}
+plot_titles = ['Choice', 'Response Port Side', 'Response Port Side & Choice']
+gen_title = 'Choice by Response Port Side Aligned to {}'
+gen_plot_name = '{}_choice_side'
+
+aligns = [Align.tone, Align.cue]
+
+for align in aligns:
+    plot_avg_signals(align, plot_groups, group_labels, plot_titles, gen_title, gen_plot_name=gen_plot_name)
 
 
+# tone type and side
+plot_groups = [['reward_tone', 'unreward_tone'],
+               ['contra_reward_tone', 'contra_unreward_tone', 'ipsi_reward_tone', 'ipsi_unreward_tone']]
+group_labels = {'reward_tone': 'Rewarding', 'unreward_tone': 'Unrewarding',
+                'contra_reward_tone': 'Contra Rew', 'contra_unreward_tone': 'Contra Unrew',
+                'ipsi_reward_tone': 'Ipsi Rew', 'ipsi_unreward_tone': 'Ipsi Unrew'}
+plot_titles = ['Tone Type', 'Response Port Side & Tone Type']
+gen_title = 'Tone Type by Response Port Side Aligned to {}'
+gen_plot_name = '{}_tone_type_side'
 
-# Tone volumes by outcome
-fig, axs = plt.subplots(2, 2, figsize=(9, 7), layout='constrained', sharey='row')
-fig.suptitle('Tone Aligned by Tone Volume')
-t = tone_tone_vols['t']
+aligns = [Align.tone, Align.cue, Align.resp, Align.cue_resp]
 
-ax = axs[0,0]
-region = 'DMS'
-ax.set_title(region+' - Rewarded')
-for vol in tone_vols:
-    act = remove_outliers(tone_tone_vols[region][vol]['rewarded'])
-    plot_utils.plot_psth(np.nanmean(act, axis=0), t, calc_error(act), ax, label='{} dB offset'.format(vol))
-ax.set_ylabel('Z-scored ΔF/F')
-ax.set_xlabel('Time from tone start (s)')
-ax.legend(loc='upper right')
-
-ax = axs[0,1]
-ax.set_title(region+' - Unrewarded')
-for vol in tone_vols:
-    act = remove_outliers(tone_tone_vols[region][vol]['unrewarded'])
-    plot_utils.plot_psth(np.nanmean(act, axis=0), t, calc_error(act), ax, label='{} dB offset'.format(vol))
-ax.set_xlabel('Time from tone start (s)')
+for align in aligns:
+    plot_avg_signals(align, plot_groups, group_labels, plot_titles, gen_title, gen_plot_name=gen_plot_name)
 
 
-ax = axs[1,0]
-region = 'PFC'
-ax.set_title(region+' - Rewarded')
-for vol in tone_vols:
-    act = remove_outliers(tone_tone_vols[region][vol]['rewarded'])
-    plot_utils.plot_psth(np.nanmean(act, axis=0), t, calc_error(act), ax, label='{} dB offset'.format(vol))
-ax.set_ylabel('Z-scored ΔF/F')
-ax.set_xlabel('Time from tone start (s)')
+# tone type, response, and side
+plot_groups = [['resp_reward_tone', 'resp_unreward_tone', 'no_resp_reward_tone', 'no_resp_unreward_tone'],
+               ['contra_resp_reward_tone', 'contra_resp_unreward_tone', 'contra_no_resp_reward_tone', 'contra_no_resp_unreward_tone'],
+               ['ipsi_resp_reward_tone', 'ipsi_resp_unreward_tone', 'ipsi_no_resp_reward_tone', 'ipsi_no_resp_unreward_tone']]
+group_labels = {'resp_reward_tone': 'Rew, Resp', 'resp_unreward_tone': 'Unrew, Resp',
+                'no_resp_reward_tone': 'Rew, No Resp', 'no_resp_unreward_tone': 'Unrew, No Resp',
+                'contra_resp_reward_tone': 'Rew, Resp', 'contra_resp_unreward_tone': 'Unrew, Resp',
+                'contra_no_resp_reward_tone': 'Rew, No Resp', 'contra_no_resp_unreward_tone': 'Unrew, No Resp',
+                'ipsi_resp_reward_tone': 'Rew, Resp', 'ipsi_resp_unreward_tone': 'Unrew, Resp',
+                'ipsi_no_resp_reward_tone': 'Rew, No Resp', 'ipsi_no_resp_unreward_tone': 'Unrew, No Resp'}
 
-ax = axs[1,1]
-ax.set_title(region+' - Unrewarded')
-for vol in tone_vols:
-    act = remove_outliers(tone_tone_vols[region][vol]['unrewarded'])
-    plot_utils.plot_psth(np.nanmean(act, axis=0), t, calc_error(act), ax, label='{} dB offset'.format(vol))
-ax.set_xlabel('Time from tone start (s)')
-ax.legend(loc='upper left')
+plot_titles = ['All Port Sides', 'Contra Response Port', 'Ipsi Response Port']
+gen_title = 'Tone Type & Choice by Response Port Side Aligned to {}'
+gen_plot_name = '{}_tone_type_choice_side'
 
-# Cue outcome
-fig, axs = plt.subplots(2, 1, figsize=(5, 7), layout='constrained')
-fig.suptitle('Response Cue Aligned by Trial Outcome')
-t = cue_outcome['t']
+aligns = [Align.tone, Align.cue]
 
-ax = axs[0]
-region = 'DMS'
-ax.set_title(region)
-reward_act = remove_outliers(cue_outcome[region]['rewarded'])
-unreward_act = remove_outliers(cue_outcome[region]['unrewarded'])
-noResp_act = remove_outliers(cue_outcome[region]['noResp'])
-plot_utils.plot_psth(np.nanmean(reward_act, axis=0), t, calc_error(reward_act), ax, label='Rewarded')
-plot_utils.plot_psth(np.nanmean(unreward_act, axis=0), t, calc_error(unreward_act), ax, label='Unrewarded')
-plot_utils.plot_psth(np.nanmean(noResp_act, axis=0), t, calc_error(noResp_act), ax, label='No Response')
-ax.set_ylabel('Z-scored ΔF/F')
-ax.set_xlabel('Time from cue (s)')
-ax.legend(loc='upper right')
+for align in aligns:
+    plot_avg_signals(align, plot_groups, group_labels, plot_titles, gen_title, gen_plot_name=gen_plot_name)
 
-ax = axs[1]
-region = 'PFC'
-ax.set_title(region)
-reward_act = remove_outliers(cue_outcome[region]['rewarded'])
-unreward_act = remove_outliers(cue_outcome[region]['unrewarded'])
-noResp_act = remove_outliers(cue_outcome[region]['noResp'])
-plot_utils.plot_psth(np.nanmean(reward_act, axis=0), t, calc_error(reward_act), ax, label='Rewarded')
-plot_utils.plot_psth(np.nanmean(unreward_act, axis=0), t, calc_error(unreward_act), ax, label='Unrewarded')
-plot_utils.plot_psth(np.nanmean(noResp_act, axis=0), t, calc_error(noResp_act), ax, label='No Response')
-ax.set_ylabel('Z-scored ΔF/F')
-ax.set_xlabel('Time from cue (s)')
+
+# %% Aversive tone types
+
+# tone type and side
+plot_groups = [['reward_tone_averse', 'unreward_tone_averse'],
+               ['contra_reward_tone_averse', 'contra_unreward_tone_averse', 'ipsi_reward_tone_averse', 'ipsi_unreward_tone_averse']]
+group_labels = {'reward_tone_averse': 'Rewarding', 'unreward_tone_averse': 'Unrewarding',
+                'contra_reward_tone_averse': 'Contra Rew', 'contra_unreward_tone_averse': 'Contra Unrew',
+                'ipsi_reward_tone_averse': 'Ipsi Rew', 'ipsi_unreward_tone_averse': 'Ipsi Unrew'}
+plot_titles = ['Tone Type', 'Response Port Side & Tone Type']
+gen_title = 'Tone Type by Response Port Side for Aversive Blocks Aligned to {}'
+gen_plot_name = '{}_tone_type_side_averse'
+
+aligns = [Align.tone, Align.cue, Align.resp, Align.cue_resp]
+
+for align in aligns:
+    plot_avg_signals(align, plot_groups, group_labels, plot_titles, gen_title, gen_plot_name=gen_plot_name)
+
+
+# Averse and non-averse on same axes
+plot_groups = [['reward_tone', 'reward_tone_averse', 'unreward_tone', 'unreward_tone_averse'],
+               ['contra_reward_tone', 'contra_reward_tone_averse', 'contra_unreward_tone', 'contra_unreward_tone_averse'],
+               ['ipsi_reward_tone', 'ipsi_reward_tone_averse', 'ipsi_unreward_tone', 'ipsi_unreward_tone_averse']]
+group_labels = {'reward_tone': 'Rewarding', 'unreward_tone': 'Unrewarding',
+                'reward_tone_averse': 'Rewarding Averse', 'unreward_tone_averse': 'Unrewarding Averse',
+                'contra_reward_tone': 'Rewarding', 'contra_unreward_tone': 'Unrewarding',
+                'contra_reward_tone_averse': 'Rewarding Averse', 'contra_unreward_tone_averse': 'Unrewarding Averse',
+                'ipsi_reward_tone': 'Rewarding', 'ipsi_unreward_tone': 'Unrewarding',
+                'ipsi_reward_tone_averse': 'Rewarding Averse', 'ipsi_unreward_tone_averse': 'Unrewarding Averse'}
+plot_titles = ['Tone Type', 'Contra Response Port & Tone Type', 'Ipsi Response Port & Tone Type']
+gen_title = 'Tone Type by Response Port Side & Type of Block Aligned to {}'
+gen_plot_name = '{}_tone_type_side_both_conditions'
+
+aligns = [Align.tone, Align.cue, Align.resp]
+
+for align in aligns:
+    plot_avg_signals(align, plot_groups, group_labels, plot_titles, gen_title, gen_plot_name=gen_plot_name)
+
+
+# tone type, response, and side
+plot_groups = [['resp_reward_tone_averse', 'resp_unreward_tone_averse', 'no_resp_reward_tone_averse', 'no_resp_unreward_tone_averse'],
+               ['contra_resp_reward_tone_averse', 'contra_resp_unreward_tone_averse', 'contra_no_resp_reward_tone_averse', 'contra_no_resp_unreward_tone_averse'],
+               ['ipsi_resp_reward_tone_averse', 'ipsi_resp_unreward_tone_averse', 'ipsi_no_resp_reward_tone_averse', 'ipsi_no_resp_unreward_tone_averse']]
+group_labels = {'resp_reward_tone_averse': 'Rew, Resp', 'resp_unreward_tone_averse': 'Unrew, Resp',
+                'no_resp_reward_tone_averse': 'Rew, No Resp', 'no_resp_unreward_tone_averse': 'Unrew, No Resp',
+                'contra_resp_reward_tone_averse': 'Rew, Resp', 'contra_resp_unreward_tone_averse': 'Unrew, Resp',
+                'contra_no_resp_reward_tone_averse': 'Rew, No Resp', 'contra_no_resp_unreward_tone_averse': 'Unrew, No Resp',
+                'ipsi_resp_reward_tone_averse': 'Rew, Resp', 'ipsi_resp_unreward_tone_averse': 'Unrew, Resp',
+                'ipsi_no_resp_reward_tone_averse': 'Rew, No Resp', 'ipsi_no_resp_unreward_tone_averse': 'Unrew, No Resp'}
+
+plot_titles = ['All Port Sides', 'Contra Response Port', 'Ipsi Response Port']
+gen_title = 'Tone Type & Choice by Response Port Side for Aversive Blocks Aligned to {}'
+gen_plot_name = '{}_tone_type_choice_side_averse'
+
+aligns = [Align.tone, Align.cue]
+
+for align in aligns:
+    plot_avg_signals(align, plot_groups, group_labels, plot_titles, gen_title, gen_plot_name=gen_plot_name)
+
+
+# %% Tone Volumes
+
+# tone volume and choice
+gen_plot_groups = ['vol_{}', 'vol_{}_resp', 'vol_{}_no_resp']
+plot_groups = [[group.format(v) for v in tone_vols] for group in gen_plot_groups]
+group_labels = {group.format(v): '{} dB'.format(v) for group in gen_plot_groups for v in tone_vols}
+
+plot_titles = ['All Choices', 'Responses', 'No Responses']
+gen_title = 'Tone Volume Offset for All Tones by Choice Aligned to {}'
+gen_plot_name = '{}_tone_vol_choice_by_choice'
+
+aligns = [Align.tone, Align.cue]
+
+for align in aligns:
+    plot_avg_signals(align, plot_groups, group_labels, plot_titles, gen_title, gen_plot_name=gen_plot_name)
+
+
+# tone volume and choice
+gen_plot_groups = ['vol_{}_resp', 'vol_{}_no_resp']
+plot_groups = [[group.format(v) for group in gen_plot_groups] for v in tone_vols]
+gen_group_labels = {'vol_{}_resp': 'Response', 'vol_{}_no_resp': 'No Response'}
+group_labels = {group.format(v): label for group, label in gen_group_labels.items() for v in tone_vols}
+
+plot_titles = ['{} dB Offset'.format(v) for v in tone_vols]
+gen_title = 'Choice by Tone Volume Offset Aligned to {}'
+gen_plot_name = '{}_tone_vol_choice_by_offset'
+
+aligns = [Align.tone, Align.cue]
+
+for align in aligns:
+    plot_avg_signals(align, plot_groups, group_labels, plot_titles, gen_title, gen_plot_name=gen_plot_name)
+
+
+# tone volume & type
+gen_plot_groups = ['vol_{}_reward_tone', 'vol_{}_unreward_tone']
+plot_groups = [[group.format(v) for group in gen_plot_groups] for v in tone_vols]
+gen_group_labels = {'vol_{}_reward_tone': 'Rewarding', 'vol_{}_unreward_tone': 'Unrewarding'}
+group_labels = {group.format(v): label for group, label in gen_group_labels.items() for v in tone_vols}
+
+plot_titles = ['{} dB Offset'.format(v) for v in tone_vols]
+gen_title = 'Tone Type by Tone Volume Offset Aligned to {}'
+gen_plot_name = '{}_tone_vol_tone_type'
+
+aligns = [Align.tone, Align.cue, Align.resp, Align.cue_resp]
+
+for align in aligns:
+    plot_avg_signals(align, plot_groups, group_labels, plot_titles, gen_title, gen_plot_name=gen_plot_name)
+
+
+# tone volume & type and choice
+gen_plot_groups = ['vol_{}_resp_reward_tone', 'vol_{}_no_resp_reward_tone', 'vol_{}_resp_unreward_tone', 'vol_{}_no_resp_unreward_tone']
+plot_groups = [[group.format(v) for group in gen_plot_groups] for v in tone_vols]
+gen_group_labels = {'vol_{}_resp_reward_tone': 'Rew, Resp', 'vol_{}_no_resp_reward_tone': 'Rew, No Resp',
+                    'vol_{}_resp_unreward_tone': 'Unrew, Resp', 'vol_{}_no_resp_unreward_tone': 'Unrew, No Resp'}
+group_labels = {group.format(v): label for group, label in gen_group_labels.items() for v in tone_vols}
+
+plot_titles = ['{} dB Offset'.format(v) for v in tone_vols]
+gen_title = 'Tone Type & Choice by Tone Volume Offset Aligned to {}'
+gen_plot_name = '{}_tone_vol_tone_type_choice'
+
+aligns = [Align.tone, Align.cue]
+
+for align in aligns:
+    plot_avg_signals(align, plot_groups, group_labels, plot_titles, gen_title, gen_plot_name=gen_plot_name)
+
+
+# tone volume & side
+gen_plot_groups = ['contra_vol_{}', 'ipsi_vol_{}']
+plot_groups = [[group.format(v) for group in gen_plot_groups] for v in tone_vols]
+gen_group_labels = {'contra_vol_{}': 'Contra', 'ipsi_vol_{}': 'Ipsi'}
+group_labels = {group.format(v): label for group, label in gen_group_labels.items() for v in tone_vols}
+
+plot_titles = ['{} dB Offset'.format(v) for v in tone_vols]
+gen_title = 'Response Port Side by Tone Volume Offset Aligned to {}'
+gen_plot_name = '{}_tone_vol_side'
+
+aligns = [Align.tone, Align.cue, Align.resp]
+
+for align in aligns:
+    plot_avg_signals(align, plot_groups, group_labels, plot_titles, gen_title, gen_plot_name=gen_plot_name)
+
+
+# TODO: all of the below for responses only
+# tone volume & tone/reward correlation
+gen_plot_group = 'vol_{}_corr_{}'
+plot_groups = [[gen_plot_group.format(v,c) for v in tone_vols] for c in tone_rew_corrs]
+group_labels = {gen_plot_group.format(v,c): '{} dB'.format(v) for v in tone_vols for c in tone_rew_corrs}
+
+plot_titles = ['{} Correlation'.format(c) for c in tone_rew_corrs]
+gen_title = 'Tone Volume Offset by Tone Offset/Reward Volume Correlation Aligned to {}'
+gen_plot_name = '{}_tone_vol_corr'
+
+aligns = [Align.tone, Align.cue, Align.resp]
+
+for align in aligns:
+    plot_avg_signals(align, plot_groups, group_labels, plot_titles, gen_title, gen_plot_name=gen_plot_name)
+
+
+# rewarding tone volume & tone/reward correlation
+gen_plot_group = 'vol_{}_corr_{}_reward_tone'
+plot_groups = [[gen_plot_group.format(v,c) for v in tone_vols] for c in tone_rew_corrs]
+group_labels = {gen_plot_group.format(v,c): '{} dB'.format(v) for v in tone_vols for c in tone_rew_corrs}
+
+plot_titles = ['{} Correlation'.format(c) for c in tone_rew_corrs]
+gen_title = 'Rewarding Tone Volume Offset by Tone Offset/Reward Volume Correlation Aligned to {}'
+gen_plot_name = '{}_tone_vol_corr_rewarding'
+
+aligns = [Align.tone, Align.cue, Align.resp]
+
+for align in aligns:
+    plot_avg_signals(align, plot_groups, group_labels, plot_titles, gen_title, gen_plot_name=gen_plot_name)
+
+
+# unrewarding tone volume & tone/reward correlation
+gen_plot_group = 'vol_{}_corr_{}_unreward_tone'
+plot_groups = [[gen_plot_group.format(v,c) for v in tone_vols] for c in tone_rew_corrs]
+group_labels = {gen_plot_group.format(v,c): '{} dB'.format(v) for v in tone_vols for c in tone_rew_corrs}
+
+plot_titles = ['{} Correlation'.format(c) for c in tone_rew_corrs]
+gen_title = 'Unrewarding Tone Volume Offset by Tone Offset/Reward Volume Correlation Aligned to {}'
+gen_plot_name = '{}_tone_vol_corr_unrewarding'
+
+aligns = [Align.tone, Align.cue, Align.resp]
+
+for align in aligns:
+    plot_avg_signals(align, plot_groups, group_labels, plot_titles, gen_title, gen_plot_name=gen_plot_name)
+
+
+# %% Aversive Tone Volumes
+
+# tone volume & type
+gen_plot_groups = ['vol_{}_reward_tone_averse', 'vol_{}_unreward_tone_averse']
+plot_groups = [[group.format(v) for group in gen_plot_groups] for v in tone_vols]
+gen_group_labels = {'vol_{}_reward_tone_averse': 'Rewarding', 'vol_{}_unreward_tone_averse': 'Unrewarding'}
+group_labels = {group.format(v): label for group, label in gen_group_labels.items() for v in tone_vols}
+
+plot_titles = ['{} dB Offset'.format(v) for v in tone_vols]
+gen_title = 'Tone Type by Tone Volume Offset for Aversive Blocks Aligned to {}'
+gen_plot_name = '{}_tone_vol_tone_type_averse'
+
+aligns = [Align.tone, Align.cue, Align.resp, Align.cue_resp]
+
+for align in aligns:
+    plot_avg_signals(align, plot_groups, group_labels, plot_titles, gen_title, gen_plot_name=gen_plot_name)
+
+
+# tone volume & type and choice
+gen_plot_groups = ['vol_{}_resp_reward_tone_averse', 'vol_{}_no_resp_reward_tone_averse', 'vol_{}_resp_unreward_tone_averse', 'vol_{}_no_resp_unreward_tone_averse']
+plot_groups = [[group.format(v) for group in gen_plot_groups] for v in tone_vols]
+gen_group_labels = {'vol_{}_resp_reward_tone_averse': 'Rew, Resp', 'vol_{}_no_resp_reward_tone_averse': 'Rew, No Resp',
+                    'vol_{}_resp_unreward_tone_averse': 'Unrew, Resp', 'vol_{}_no_resp_unreward_tone_averse': 'Unrew, No Resp'}
+group_labels = {group.format(v): label for group, label in gen_group_labels.items() for v in tone_vols}
+
+plot_titles = ['{} dB Offset'.format(v) for v in tone_vols]
+gen_title = 'Tone Type & Choice by Tone Volume Offset for Aversive Blocks Aligned to {}'
+gen_plot_name = '{}_tone_vol_tone_type_choice_averse'
+
+aligns = [Align.tone, Align.cue]
+
+for align in aligns:
+    plot_avg_signals(align, plot_groups, group_labels, plot_titles, gen_title, gen_plot_name=gen_plot_name)
+
+
+# %% Reward Volume
+
+# reward volume & side
+gen_plot_groups = ['rew_{}_reward_tone', 'contra_rew_{}_reward_tone', 'ipsi_rew_{}_reward_tone']
+plot_groups = [[group.format(r) for r in rewards] for group in gen_plot_groups]
+group_labels = {group.format(r): '{} μL'.format(r) for group in gen_plot_groups for r in rewards}
+
+plot_titles = ['All Port Sides', 'Contra Response Port', 'Ipsi Response Port']
+gen_title = 'Reward Volume by Response Port Side Aligned to {}'
+gen_plot_name = '{}_rew_side'
+
+aligns = [Align.tone, Align.cue, Align.resp]
+
+for align in aligns:
+    plot_avg_signals(align, plot_groups, group_labels, plot_titles, gen_title, gen_plot_name=gen_plot_name)
+
+
+# reward & tone volume
+gen_plot_group = 'rew_{}_vol_{}'
+plot_groups = [[gen_plot_group.format(r,v) for v in tone_vols] for r in rewards]
+group_labels = {gen_plot_group.format(r,v): '{} dB'.format(v) for v in tone_vols for r in rewards}
+
+plot_titles = ['{} μL'.format(r) for r in rewards]
+gen_title = 'Tone Volume Offset by Reward Volume Aligned to {}'
+gen_plot_name = '{}_rew_tone_vol_by_rew'
+
+aligns = [Align.tone, Align.cue, Align.resp]
+
+for align in aligns:
+    plot_avg_signals(align, plot_groups, group_labels, plot_titles, gen_title, gen_plot_name=gen_plot_name)
+
+
+gen_plot_group = 'rew_{}_vol_{}'
+plot_groups = [[gen_plot_group.format(r,v) for r in rewards] for v in tone_vols]
+group_labels = {gen_plot_group.format(r,v): '{} μL'.format(r) for v in tone_vols for r in rewards}
+
+plot_titles = ['{} dB'.format(v) for v in tone_vols]
+gen_title = 'Reward Volume by Tone Volume Offset Aligned to {}'
+gen_plot_name = '{}_rew_tone_vol_by_vol'
+
+aligns = [Align.tone, Align.cue, Align.resp]
+
+for align in aligns:
+    plot_avg_signals(align, plot_groups, group_labels, plot_titles, gen_title, gen_plot_name=gen_plot_name)

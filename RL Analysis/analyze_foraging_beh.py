@@ -36,7 +36,7 @@ import statsmodels.api as sm
 
 # subj_ids = subject_info['subjid']
 
-subj_ids = [179]
+subj_ids = [180,191,182,202]
 sess_ids = db_access.get_subj_sess_ids(subj_ids, protocol='ClassicRLTasks', stage_num=4)
 
 # get trial information
@@ -90,10 +90,11 @@ for subj_id in subj_ids:
     # switch_delays = np.insert(switch_delays.astype(object), 0, 'All')
     switch_delays = ['All']
 
-    for data, col, title, y_label in zip([harvest_count_data, prev_rew_data],
-                                         ['patch_harvest_count', 'prev_reward'],
-                                         ['Harvests Per Patch', 'Reward Before Switch'],
-                                         ['# Harvests', 'Last Reward (μL)']):
+    for data, col, title, y_label, legend_loc in zip([harvest_count_data, prev_rew_data],
+                                                     ['patch_harvest_count', 'prev_reward'],
+                                                     ['Harvests Per Patch', 'Reward Before Switch'],
+                                                     ['# Harvests', 'Last Reward (μL)'],
+                                                     ['upper left', 'upper right']):
 
         for delay in switch_delays:
             if delay != 'All':
@@ -129,7 +130,7 @@ for subj_id in subj_ids:
             plot_utils.plot_grouped_error_bar(plot_values, plot_errors, value_labels=['All', 'Left', 'Right'], x_labels=init_rewards, ax=ax)
             ax.set_ylabel(y_label)
             ax.set_xlabel('Initial Reward (μL)')
-            ax.legend(title='Sides')
+            ax.legend(title='Sides', loc=legend_loc)
 
             # plot by decay rate and side
             ax = fig.add_subplot(gs[0,3:6], sharey=ax)
@@ -140,7 +141,7 @@ for subj_id in subj_ids:
             plot_utils.plot_grouped_error_bar(plot_values, plot_errors, value_labels=['All', 'Left', 'Right'], x_labels=decay_rates, ax=ax)
 
             ax.set_xlabel('Depletion Rate')
-            ax.legend(title='Sides')
+            ax.legend(title='Sides', loc='upper right')
 
             # plot by decay rate and side
             # all sides
@@ -153,7 +154,7 @@ for subj_id in subj_ids:
 
             ax.set_ylabel(y_label)
             ax.set_xlabel('Initial Reward (μL)')
-            ax.legend(title='Depletion Rate')
+            ax.legend(title='Depletion Rate', loc=legend_loc)
 
             # left side
             ax = fig.add_subplot(gs[1,2:4], sharey=ax)
@@ -164,7 +165,7 @@ for subj_id in subj_ids:
             plot_utils.plot_grouped_error_bar(plot_values, plot_errors, value_labels=decay_rates, x_labels=init_rewards, ax=ax)
 
             ax.set_xlabel('Initial Reward (μL)')
-            ax.legend(title='Depletion Rate')
+            ax.legend(title='Depletion Rate', loc=legend_loc)
 
             # right side
             ax = fig.add_subplot(gs[1,4:6], sharey=ax)
@@ -175,7 +176,7 @@ for subj_id in subj_ids:
             plot_utils.plot_grouped_error_bar(plot_values, plot_errors, value_labels=decay_rates, x_labels=init_rewards, ax=ax)
 
             ax.set_xlabel('Initial Reward (μL)')
-            ax.legend(title='Depletion Rate')
+            ax.legend(title='Depletion Rate', loc=legend_loc)
 
 # %% Probability of switching patches by response
 

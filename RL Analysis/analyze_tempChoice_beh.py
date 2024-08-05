@@ -39,7 +39,7 @@ import statsmodels.api as sm
 sess_ids = db_access.get_fp_protocol_subj_sess_ids('ClassicRLTasks', 3)
 
 # optionally limit sessions based on subject ids
-subj_ids = [182,207]
+subj_ids = [179,188,207,182]
 sess_ids = {k: v for k, v in sess_ids.items() if k in subj_ids}
 
 #sess_ids = db_access.get_subj_sess_ids(subj_ids, protocol='ClassicRLTasks', stage_num=3)
@@ -97,11 +97,11 @@ for subj_id in subj_ids:
     ax = fig.add_subplot(gs[0,1])
     data = choose_fast_side_probs['block_rates x slow_delay']
     #x_vals = [float(x) for x in choose_fast_side_probs['slow_delay'].index.to_list()]
-    rates = choose_fast_side_probs['block_rates'].index.to_list()
+    rates = choose_fast_side_probs['block_rates']['block_rates']
 
     for rate in rates:
-        rate_data = data.loc[[rate]]
-        rate_x_vals = [float(x) for x in rate_data.index.get_level_values('slow_delay')]
+        rate_data = data[data['block_rates'] == rate]
+        rate_x_vals = [float(x) for x in rate_data['slow_delay']]
         ax.errorbar(rate_x_vals, rate_data['rate'], yerr=bah.convert_rate_err_to_mat(rate_data), fmt='o-', capsize=4, label=rate)
 
     ax.set_ylabel('p(Choose Fast)')
@@ -129,11 +129,11 @@ for subj_id in subj_ids:
     ax = fig.add_subplot(gs[0,1])
     data = choose_fast_side_probs['block_rewards x slow_delay']
     #x_vals = [float(x) for x in choose_fast_side_probs['slow_delay'].index.to_list()]
-    rates = choose_fast_side_probs['block_rewards'].index.to_list()
+    rates = choose_fast_side_probs['block_rewards']['block_rewards']
 
     for rate in rates:
-        rate_data = data.loc[[rate]]
-        rate_x_vals = [float(x) for x in rate_data.index.get_level_values('slow_delay')]
+        rate_data = data[data['block_rewards'] == rate]
+        rate_x_vals = [float(x) for x in rate_data['slow_delay']]
         ax.errorbar(rate_x_vals, rate_data['rate'], yerr=bah.convert_rate_err_to_mat(rate_data), fmt='o-', capsize=4, label=rate)
 
     ax.set_ylabel('p(Choose Fast)')

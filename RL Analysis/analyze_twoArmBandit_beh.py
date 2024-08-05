@@ -37,19 +37,20 @@ import re
 
 # subj_ids = subject_info['subjid']
 
-sess_ids = db_access.get_fp_protocol_subj_sess_ids('ClassicRLTasks', 2)
+#sess_ids = db_access.get_fp_protocol_subj_sess_ids('ClassicRLTasks', 2)
 
 # optionally limit sessions based on subject ids
-subj_ids = [191, 182]
-sess_ids = {k: v for k, v in sess_ids.items() if k in subj_ids}
+subj_ids = [179, 188, 191, 207, 182]
+# sess_ids = {k: v for k, v in sess_ids.items() if k in subj_ids}
 
-#sess_ids = db_access.get_subj_sess_ids(subj_ids, protocol='ClassicRLTasks', stage_num=2)
+sess_ids = db_access.get_subj_sess_ids(subj_ids, protocol='ClassicRLTasks', stage_num=2)
 #sess_ids = bah.limit_sess_ids(sess_ids, 10)
 #sess_ids = {179: [95201, 95312, 95347]}
 
 # get trial information
+reload = False
 loc_db = db.LocalDB_BasicRLTasks('twoArmBandit')
-all_sess = loc_db.get_behavior_data(utils.flatten(sess_ids))
+all_sess = loc_db.get_behavior_data(utils.flatten(sess_ids), reload=reload)
 
 # make sure RT column is filled in (it wasn't initially)
 all_sess['RT'] = all_sess['response_time'] - all_sess['response_cue_time']
@@ -96,7 +97,7 @@ for subj_id in subj_ids:
     ax = fig.add_subplot(gs[0, 0])
 
     data = choose_high_trial_probs['block_prob']
-    x_labels = data.index.to_list()
+    x_labels = data['block_prob']
     x_vals = np.arange(len(x_labels))
     prob_vals = np.unique([int(x.split('/')[0]) for x in x_labels])
 
@@ -114,7 +115,7 @@ for subj_id in subj_ids:
 
     left_data = choose_left_side_probs['high_side']
     right_data = choose_right_side_probs['high_side']
-    x_labels = left_data.index.to_list()
+    x_labels = left_data['high_side']
     x_vals = [1,2]
 
     ax.errorbar(x_vals, left_data['rate'], yerr=bah.convert_rate_err_to_mat(left_data), fmt='o', capsize=4, label='Left Choice')
@@ -131,7 +132,7 @@ for subj_id in subj_ids:
     ax = fig.add_subplot(gs[1, :])
 
     data = choose_left_side_probs['side_prob']
-    x_labels = data.index.to_list()
+    x_labels = data['side_prob']
     x_vals = np.arange(len(x_labels))
     prob_vals = np.unique([int(x.split('/')[0]) for x in x_labels])
 
@@ -253,7 +254,7 @@ for subj_id in subj_ids:
     gs = GridSpec(1, 2, figure=fig, width_ratios=[3,4])
 
     data = choose_high_trial_probs['block_prob']
-    x_labels = data.index.to_list()
+    x_labels = data['block_prob']
     x_vals = np.arange(len(x_labels))
     prob_vals = np.unique([int(x.split('/')[0]) for x in x_labels])
 
@@ -536,7 +537,7 @@ for subj_id in subj_ids:
 
 # %% Logistic regression of choice by past choices and trial outcomes
 separate_block_rates = True
-n_back = 4
+n_back = 5
 # whether to model the interaction as win-stay/lose switch or not
 include_winstay = False
 # whether to include reward as a predictor on its own
@@ -697,7 +698,7 @@ for subj_id in subj_ids:
 
     # plot regression coefficients over trials back
     fig, axs = plt.subplots(1, len(reg_groups), layout='constrained', figsize=(4*len(reg_groups), 4), sharey=True)
-    fig.suptitle('Choice Regression Coefficients by Block Reward Rate')
+    fig.suptitle('Choice Regression Coefficients by Block Reward Rate (Rat {})'.format(subj_id))
 
     x_vals = np.arange(n_back)+1
 

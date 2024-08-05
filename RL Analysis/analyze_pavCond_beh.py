@@ -38,7 +38,7 @@ import statsmodels.api as sm
 
 subj_ids = [191]
 sess_ids = db_access.get_subj_sess_ids(subj_ids, protocol='ClassicRLTasks', stage_num=1)
-sess_ids = bah.limit_sess_ids(sess_ids, 5)
+sess_ids = bah.limit_sess_ids(sess_ids, 15)
 
 # get trial information
 loc_db = db.LocalDB_BasicRLTasks('pavlovCond')
@@ -100,31 +100,31 @@ for subj_id in subj_ids:
     fig = plt.figure(layout='constrained', figsize=(8, 10))
     fig.suptitle('Response Rates (Rat {})'.format(subj_id))
     gs = GridSpec(3, 2, figure=fig)
-    
+
     # Response metrics for all tones
     ax = fig.add_subplot(gs[0, 0])
     ax.set_title('All Tones by Side')
     bah.plot_rate_heatmap(resp_probs, 'tone_type', 'Tone Type', 'response_port', 'Response Side', ax, col_summary=False)
-    
+
     ax = fig.add_subplot(gs[1, 0])
     ax.set_title('All Tones by Tone Delay')
     bah.plot_rate_heatmap(resp_probs, 'tone_type', 'Tone Type', 'tone_start_bin', 'Tone Delay', ax)
-    
+
     # Response metrics for rewarded tones
     ax = fig.add_subplot(gs[0, 1])
     ax.set_title('Rewarded Tones by Reward Volume')
     bah.plot_rate_heatmap(resp_tone_probs, 'tone_reward_corr', 'Tone Volume/Reward Correlation', 'reward_volume', 'Reward Volume',  ax, col_summary=False)
-    
+
     ax = fig.add_subplot(gs[1, 1])
     ax.set_title('Rewarded Tones by Tone Volume')
     bah.plot_rate_heatmap(resp_tone_probs, 'tone_reward_corr', 'Tone Volume/Reward Correlation', 'tone_db_offset', 'Tone Volume Offset (dB)', ax)
-    
+
     # Probability of responding after rewarded/unrewarded tone over time
     n_trials = 50
     blocks = subj_sess['sess_block'].unique()
     rew_resp_mat = np.full((len(blocks), n_trials), np.nan)
     unrew_resp_mat = copy.deepcopy(rew_resp_mat)
-    
+
     # fill in the matrices with the responses for each trial type at the start of each block
     for i, block in enumerate(blocks):
         block_sess = subj_sess[subj_sess['sess_block'] == block]
@@ -136,7 +136,7 @@ for subj_id in subj_ids:
             unrew_resp = unrew_resp[:n_trials]
         rew_resp_mat[i,:len(rew_resp)] = rew_resp
         unrew_resp_mat[i,:len(unrew_resp)] = unrew_resp
-        
+
     ax = fig.add_subplot(gs[2, :])
     ax.set_title('Responses Over Time')
 
@@ -148,13 +148,13 @@ for subj_id in subj_ids:
     ax.set_xlabel('Trials from block switch')
     ax.set_ylabel('p(Response)')
     ax.legend()
-            
+
     # RESPONSE TIMES
 
     fig = plt.figure(layout='constrained', figsize=(8, 9))
     fig.suptitle('Response Latencies (Rat {})'.format(subj_id))
     gs = GridSpec(3, 1, figure=fig)
-    
+
     # By Rewarded/unrewarded tone and delays
     ax = fig.add_subplot(gs[0])
     sb.boxplot(data=subj_sess, x='tone_start_bin', y='RT', hue='tone_type', ax=ax)
@@ -162,14 +162,14 @@ for subj_id in subj_ids:
     ax.set_ylabel('Response Latency (s)')
     ax.set_title('All Tones')
     ax.legend(title='Tone Type')
-    
+
     ax = fig.add_subplot(gs[1])
     sb.boxplot(data=subj_sess_rew_tones, x='tone_reward_corr', y='RT', hue='reward_volume', ax=ax)
     ax.set_xlabel('Tone Volume/Reward Correlation')
     ax.set_ylabel('Response Latency (s)')
     ax.set_title('Rewarded Tones by Reward Volume')
     ax.legend(title='Reward Volume (μL)')
-    
+
     ax = fig.add_subplot(gs[2])
     sb.boxplot(data=subj_sess_rew_tones, x='tone_reward_corr', y='RT', hue='tone_db_offset', ax=ax)
     ax.set_xlabel('Tone Volume/Reward Correlation')

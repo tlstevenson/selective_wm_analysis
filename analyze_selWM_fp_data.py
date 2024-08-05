@@ -24,27 +24,31 @@ import copy
 
 # used for saving plots
 behavior_name = 'SelWM - Two Tones'
-
-# get all session ids for given protocol
 sess_ids = db_access.get_fp_protocol_subj_sess_ids('ToneCatDelayResp', 8)
+
+# behavior_name = 'SelWM - Grow Nosepoke'
+# sess_ids = db_access.get_fp_protocol_subj_sess_ids('ToneCatDelayResp2', 7)
+
+# behavior_name = 'SelWM - Grow Delay'
+# sess_ids = db_access.get_fp_protocol_subj_sess_ids('ToneCatDelayResp2', 9)
+
+# behavior_name = 'SelWM - Two Tones'
+# sess_ids = db_access.get_fp_protocol_subj_sess_ids('ToneCatDelayResp2', 10)
 
 # optionally limit sessions based on subject ids
 subj_ids = [179]
 sess_ids = {k: v for k, v in sess_ids.items() if k in subj_ids}
 
-# behavior_name = 'SelWM - Grow Nosepoke'
-# sess_ids = db_access.get_fp_protocol_subj_sess_ids('ToneCatDelayResp2', 7)
-
-# # optionally limit sessions based on subject ids
-# subj_ids = [179]
-# sess_ids = {k: v for k, v in sess_ids.items() if k in subj_ids}
-
 loc_db = db.LocalDB_ToneCatDelayResp()
 sess_data = loc_db.get_behavior_data(utils.flatten(sess_ids)) # reload=True
 
+sess_data['incongruent'] = sess_data['tone_info'].apply(lambda x: x[0] != x[-1] if utils.is_list(x) and len(x) == 2 else False)
 sess_data['tone_info_str'] = sess_data['tone_info'].apply(lambda x: ', '.join(x) if utils.is_list(x) else x)
 sess_data['prev_tone_info_str'] = sess_data['prev_choice_tone_info'].apply(lambda x: ', '.join(x) if utils.is_list(x) else x)
 sess_data['cpoke_out_latency'] = sess_data['cpoke_out_time'] - sess_data['response_cue_time']
+
+if 'irrelevant_tone_db_offset' in sess_data.columns:
+    sess_data.rename(columns={'irrelevant_tone_db_offset': 'tone_db_offsets'}, inplace=True)
 
 # calculate stimulus duration bins
 # TODO: see if pd.cut makes more sense
@@ -65,7 +69,7 @@ sess_data['stim_dur_bin'] = pd.Categorical(sess_data['stim_dur_bin'], categories
 if 'rel_tone_end_times' in sess_data.columns:
     last_tone_ends = sess_data['rel_tone_end_times'].apply(lambda x: x[-1] if utils.is_list(x) else x )
 else:
-    last_tone_ends = sess_data['rel_tone_start_times'].apply(lambda x: x[-1] if utils.is_list(x) else x ) + 0.25 #0.3
+    last_tone_ends = sess_data['rel_tone_start_times'].apply(lambda x: x[-1] if utils.is_list(x) else x ) + 0.3
 
 sess_data['resp_delay'] = sess_data['stim_dur'] - last_tone_ends
 
@@ -85,47 +89,13 @@ sess_data['resp_delay_bin'] = pd.Categorical(sess_data['resp_delay_bin'], catego
 # %% Get and process photometry data
 
 # get fiber photometry data
-fp_data = loc_db.get_sess_fp_data(utils.flatten(sess_ids)) # , reload=True
-# separate into different dictionaries
-implant_info = fp_data['implant_info']
-fp_data = fp_data['fp_data']
-
-isos = np.array(['420', '405'])
-ligs = np.array(['490', '465'])
-
-for subj_id in sess_ids.keys():
-    for sess_id in sess_ids[subj_id]:
-        raw_signals = fp_data[subj_id][sess_id]['raw_signals']
-
-        fp_data[subj_id][sess_id]['processed_signals'] = {}
-
-        for region in raw_signals.keys():
-            lig_sel = np.array([k in raw_signals[region].keys() for k in ligs])
-            iso_sel = np.array([k in raw_signals[region].keys() for k in isos])
-            if sum(lig_sel) > 1:
-                lig = ligs[0]
-            elif sum(lig_sel) == 1:
-                lig = ligs[lig_sel][0]
-            else:
-                raise Exception('No ligand wavelength found')
-
-            if sum(iso_sel) > 1:
-                iso = isos[0]
-            elif sum(iso_sel) == 1:
-                iso = isos[iso_sel][0]
-            else:
-                raise Exception('No isosbestic wavelength found')
-
-            raw_lig = raw_signals[region][lig]
-            raw_iso = raw_signals[region][iso]
-
-            fp_data[subj_id][sess_id]['processed_signals'][region] = fpah.get_all_processed_signals(raw_lig, raw_iso)
+reload = False
+fp_data, implant_info = fpah.load_fp_data(loc_db, sess_ids, reload=reload)
 
 # %% Observe the full signals
 
-sub_signal = [] # sub signal time limits in seconds
 filter_outliers = True
-save_plots = True
+save_plots = False
 show_plots = False
 
 for subj_id in sess_ids.keys():
@@ -133,14 +103,9 @@ for subj_id in sess_ids.keys():
         trial_data = sess_data[sess_data['sessid'] == sess_id]
         sess_fp = fp_data[subj_id][sess_id]
 
-        if len(sub_signal) > 0:
-            fig = fpah.view_processed_signals(sess_fp['processed_signals'], sess_fp['time'], title='Full Signals - Session {}'.format(sess_id),
-                                        filter_outliers=filter_outliers, outlier_zthresh=7,
-                                        t_min=sub_signal[0], t_max=sub_signal[1], dec=1)
-
-        else:
-            fig = fpah.view_processed_signals(sess_fp['processed_signals'], sess_fp['time'], title='Full Signals - Session {}'.format(sess_id),
-                                        filter_outliers=filter_outliers)
+        fig = fpah.view_processed_signals(sess_fp['processed_signals'], sess_fp['time'],
+                                    title='Full Signals - Subject {}, Session {}'.format(subj_id, sess_id),
+                                    filter_outliers=filter_outliers)
 
         if save_plots:
             fpah.save_fig(fig, fpah.get_figure_save_path(behavior_name, subj_id, 'sess_{}'.format(sess_id)))
@@ -148,6 +113,24 @@ for subj_id in sess_ids.keys():
         if not show_plots:
             plt.close(fig)
 
+
+# %% Observe any sub-signals
+tmp_sess_id = {180: [101447]}
+tmp_fp_data, tmp_implant_info = fpah.load_fp_data(loc_db, tmp_sess_id)
+sub_signal = [950, 1050] # [0, np.inf] #
+filter_outliers = True
+
+subj_id = list(tmp_sess_id.keys())[0]
+sess_id = tmp_sess_id[subj_id][0]
+#sess_fp = fp_data[subj_id][sess_id]
+sess_fp = tmp_fp_data[subj_id][sess_id]
+# _ = fpah.view_processed_signals(sess_fp['processed_signals'], sess_fp['time'],
+#                             title='Sub Signal - Subject {}, Session {}'.format(subj_id, sess_id),
+#                             filter_outliers=filter_outliers,
+#                             t_min=sub_signal[0], t_max=sub_signal[1], dec=1)
+
+fpah.view_signal(sess_fp['processed_signals'], sess_fp['time'], 'dff_iso', title=None, dec=10,
+            t_min=sub_signal[0], t_max=sub_signal[1], figsize=(9,6), ylabel='% ΔF/F')
 
 # %% Construct aligned signal matrices grouped by various factors
 
@@ -170,6 +153,11 @@ stim_types = np.array(sorted(sess_data['tone_info_str'].unique().tolist(), key=l
 tone_types = np.unique(sess_data['response_tone'])
 stim_durs = np.unique(sess_data['stim_dur_bin'])
 resp_delays = np.unique(sess_data['resp_delay_bin'])
+variants = np.unique(sess_data['task_variant'])
+
+# get tone side mapping
+tone_port = sess_data[['subjid','correct_port', 'response_tone']].drop_duplicates()
+tone_port = {i: tone_port[tone_port['subjid'] == i].set_index('response_tone')['correct_port'].to_dict() for i in sess_ids.keys()}
 
 # declare settings for normalized cue to response intervals
 norm_cue_resp_bins = 200
@@ -201,6 +189,7 @@ for subj_id in sess_ids.keys():
 
         one_tone_sel = trial_data['n_tones'] == 1
         two_tone_sel = trial_data['n_tones'] == 2
+        no_tone_offset = trial_data['tone_db_offsets'].apply(lambda x: all(np.array(utils.flatten([x])) == 0)).to_numpy()
 
         choices = trial_data['choice'].to_numpy()
 
@@ -232,6 +221,8 @@ for subj_id in sess_ids.keys():
         trial_stims = trial_data['tone_info_str']
         prev_trial_stims = trial_data['prev_tone_info_str']
         correct_sides = trial_data['correct_port']
+        incongruent = trial_data['incongruent']
+        variant = trial_data['task_variant']
 
         trial_durs = trial_data['stim_dur_bin']
         trial_delays = trial_data['resp_delay_bin']
@@ -367,37 +358,123 @@ for subj_id in sess_ids.keys():
                 align_dict = tones
 
                 align_dict['t'] = t
-                align_dict[sess_id][signal_type][region]['first_all'] = first_mat[~bail_sel, :]
-                align_dict[sess_id][signal_type][region]['first_hit_all'] = first_mat[hit_sel & ~bail_sel,:]
-                align_dict[sess_id][signal_type][region]['first_miss_all'] = first_mat[miss_sel & ~bail_sel,:]
+                align_dict[sess_id][signal_type][region]['first'] = first_mat[~bail_sel, :]
+                align_dict[sess_id][signal_type][region]['first_one_tone'] = first_mat[~bail_sel & one_tone_sel, :]
+                align_dict[sess_id][signal_type][region]['first_two_tone'] = first_mat[~bail_sel & two_tone_sel, :]
+                align_dict[sess_id][signal_type][region]['first_hit'] = first_mat[hit_sel & ~bail_sel,:]
+                align_dict[sess_id][signal_type][region]['first_miss'] = first_mat[miss_sel & ~bail_sel,:]
                 align_dict[sess_id][signal_type][region]['first_hit_one_tone'] = first_mat[hit_sel & one_tone_sel,:]
                 align_dict[sess_id][signal_type][region]['first_miss_one_tone'] = first_mat[miss_sel & one_tone_sel,:]
-                align_dict[sess_id][signal_type][region]['first_hit_two_tones'] = first_mat[hit_sel & two_tone_sel,:]
-                align_dict[sess_id][signal_type][region]['first_miss_two_tones'] = first_mat[miss_sel & two_tone_sel,:]
+                align_dict[sess_id][signal_type][region]['first_hit_two_tone'] = first_mat[hit_sel & two_tone_sel,:]
+                align_dict[sess_id][signal_type][region]['first_miss_two_tone'] = first_mat[miss_sel & two_tone_sel,:]
 
-                align_dict[sess_id][signal_type][region]['second_all'] = second_mat[two_tone_sel & ~bail_sel,:]
+                align_dict[sess_id][signal_type][region]['second'] = second_mat[two_tone_sel & ~bail_sel,:]
                 align_dict[sess_id][signal_type][region]['second_hit'] = second_mat[hit_sel & two_tone_sel,:]
                 align_dict[sess_id][signal_type][region]['second_miss'] = second_mat[miss_sel & two_tone_sel,:]
 
+                align_dict[sess_id][signal_type][region]['second_cong'] = second_mat[two_tone_sel & ~bail_sel & ~incongruent,:]
+                align_dict[sess_id][signal_type][region]['second_incong'] = second_mat[two_tone_sel & ~bail_sel & incongruent,:]
+                align_dict[sess_id][signal_type][region]['second_hit_cong'] = second_mat[hit_sel & two_tone_sel & ~incongruent,:]
+                align_dict[sess_id][signal_type][region]['second_miss_cong'] = second_mat[miss_sel & two_tone_sel & ~incongruent,:]
+                align_dict[sess_id][signal_type][region]['second_hit_incong'] = second_mat[hit_sel & two_tone_sel & incongruent,:]
+                align_dict[sess_id][signal_type][region]['second_miss_incong'] = second_mat[miss_sel & two_tone_sel & incongruent,:]
+
                 # TODO: Look at tones heard before bails
 
-                for tone_type in tone_types:
-                    stim_sel_first = tone_infos.apply(lambda x: x[0] == tone_type if utils.is_list(x) else x == tone_type).to_numpy() & ~bail_sel
-                    stim_sel_second = tone_infos.apply(lambda x: x[1] == tone_type if (utils.is_list(x) and len(x) > 1) else False).to_numpy() & ~bail_sel
+                for v in variants:
+                    v_sel = variant == v
 
-                    align_dict[sess_id][signal_type][region]['first_'+tone_type+'_all'] = first_mat[stim_sel_first,:]
-                    align_dict[sess_id][signal_type][region]['first_'+tone_type+'_hit_all'] = first_mat[stim_sel_first & hit_sel,:]
-                    align_dict[sess_id][signal_type][region]['first_'+tone_type+'_miss_all'] = first_mat[stim_sel_first & miss_sel,:]
-                    align_dict[sess_id][signal_type][region]['first_'+tone_type+'_hit_one_tone'] = first_mat[stim_sel_first & hit_sel & one_tone_sel,:]
-                    align_dict[sess_id][signal_type][region]['first_'+tone_type+'_miss_one_tone'] = first_mat[stim_sel_first & miss_sel & one_tone_sel,:]
-                    align_dict[sess_id][signal_type][region]['first_'+tone_type+'_hit_two_tones'] = first_mat[stim_sel_first & hit_sel & two_tone_sel,:]
-                    align_dict[sess_id][signal_type][region]['first_'+tone_type+'_miss_two_tones'] = first_mat[stim_sel_first & miss_sel & two_tone_sel,:]
+                    align_dict[sess_id][signal_type][region]['first_var_'+v] = first_mat[~bail_sel & v_sel, :]
+                    align_dict[sess_id][signal_type][region]['first_one_tone_var_'+v] = first_mat[~bail_sel & one_tone_sel & v_sel, :]
+                    align_dict[sess_id][signal_type][region]['first_two_tone_var_'+v] = first_mat[~bail_sel & two_tone_sel & v_sel, :]
+                    align_dict[sess_id][signal_type][region]['first_hit_var_'+v] = first_mat[hit_sel & ~bail_sel & v_sel,:]
+                    align_dict[sess_id][signal_type][region]['first_miss_var_'+v] = first_mat[miss_sel & ~bail_sel & v_sel,:]
+                    align_dict[sess_id][signal_type][region]['first_hit_one_tone_var_'+v] = first_mat[hit_sel & one_tone_sel & v_sel,:]
+                    align_dict[sess_id][signal_type][region]['first_miss_one_tone_var_'+v] = first_mat[miss_sel & one_tone_sel & v_sel,:]
+                    align_dict[sess_id][signal_type][region]['first_hit_two_tone_var_'+v] = first_mat[hit_sel & two_tone_sel & v_sel,:]
+                    align_dict[sess_id][signal_type][region]['first_miss_two_tone_var_'+v] = first_mat[miss_sel & two_tone_sel & v_sel,:]
 
-                    align_dict[sess_id][signal_type][region]['second_'+tone_type+'_all'] = second_mat[stim_sel_second,:]
-                    align_dict[sess_id][signal_type][region]['second_'+tone_type+'_hit'] = second_mat[stim_sel_second & hit_sel,:]
-                    align_dict[sess_id][signal_type][region]['second_'+tone_type+'_miss'] = second_mat[stim_sel_second & miss_sel,:]
+                    align_dict[sess_id][signal_type][region]['second_var_'+v] = second_mat[two_tone_sel & ~bail_sel & v_sel,:]
+                    align_dict[sess_id][signal_type][region]['second_hit_var_'+v] = second_mat[hit_sel & two_tone_sel & v_sel,:]
+                    align_dict[sess_id][signal_type][region]['second_miss_var_'+v] = second_mat[miss_sel & two_tone_sel & v_sel,:]
 
-                    # TODO: Look at tone type by stimulus type
+                    align_dict[sess_id][signal_type][region]['second_cong_var_'+v] = second_mat[two_tone_sel & ~bail_sel & ~incongruent & v_sel,:]
+                    align_dict[sess_id][signal_type][region]['second_incong_var_'+v] = second_mat[two_tone_sel & ~bail_sel & incongruent & v_sel,:]
+                    align_dict[sess_id][signal_type][region]['second_hit_cong_var_'+v] = second_mat[hit_sel & two_tone_sel & ~incongruent & v_sel,:]
+                    align_dict[sess_id][signal_type][region]['second_miss_cong_var_'+v] = second_mat[miss_sel & two_tone_sel & ~incongruent & v_sel,:]
+                    align_dict[sess_id][signal_type][region]['second_hit_incong_var_'+v] = second_mat[hit_sel & two_tone_sel & incongruent & v_sel,:]
+                    align_dict[sess_id][signal_type][region]['second_miss_incong_var_'+v] = second_mat[miss_sel & two_tone_sel & incongruent & v_sel,:]
+
+                    align_dict[sess_id][signal_type][region]['first_var_'+v+'_db_offset'] = first_mat[two_tone_sel & ~bail_sel & v_sel & ~no_tone_offset, :]
+                    align_dict[sess_id][signal_type][region]['first_hit_var_'+v+'_db_offset'] = first_mat[two_tone_sel & hit_sel & ~bail_sel & v_sel & ~no_tone_offset,:]
+                    align_dict[sess_id][signal_type][region]['first_miss_var_'+v+'_db_offset'] = first_mat[two_tone_sel & miss_sel & ~bail_sel & v_sel & ~no_tone_offset,:]
+
+                    align_dict[sess_id][signal_type][region]['first_var_'+v+'_no_db_offset'] = first_mat[two_tone_sel & ~bail_sel & v_sel & no_tone_offset, :]
+                    align_dict[sess_id][signal_type][region]['first_hit_var_'+v+'_no_db_offset'] = first_mat[two_tone_sel & hit_sel & ~bail_sel & v_sel & no_tone_offset,:]
+                    align_dict[sess_id][signal_type][region]['first_miss_var_'+v+'_no_db_offset'] = first_mat[two_tone_sel & miss_sel & ~bail_sel & v_sel & no_tone_offset,:]
+
+                    align_dict[sess_id][signal_type][region]['second_var_'+v+'_db_offset'] = second_mat[two_tone_sel & ~bail_sel & v_sel & ~no_tone_offset,:]
+                    align_dict[sess_id][signal_type][region]['second_hit_var_'+v+'_db_offset'] = second_mat[hit_sel & two_tone_sel & v_sel & ~no_tone_offset,:]
+                    align_dict[sess_id][signal_type][region]['second_miss_var_'+v+'_db_offset'] = second_mat[miss_sel & two_tone_sel & v_sel & ~no_tone_offset,:]
+
+                    align_dict[sess_id][signal_type][region]['second_var_'+v+'_no_db_offset'] = second_mat[two_tone_sel & ~bail_sel & v_sel & no_tone_offset,:]
+                    align_dict[sess_id][signal_type][region]['second_hit_var_'+v+'_no_db_offset'] = second_mat[hit_sel & two_tone_sel & v_sel & no_tone_offset,:]
+                    align_dict[sess_id][signal_type][region]['second_miss_var_'+v+'_no_db_offset'] = second_mat[miss_sel & two_tone_sel & v_sel & no_tone_offset,:]
+
+                    align_dict[sess_id][signal_type][region]['second_cong_var_'+v+'_db_offset'] = second_mat[two_tone_sel & ~bail_sel & ~incongruent & v_sel & ~no_tone_offset,:]
+                    align_dict[sess_id][signal_type][region]['second_incong_var_'+v+'_db_offset'] = second_mat[two_tone_sel & ~bail_sel & incongruent & v_sel & ~no_tone_offset,:]
+                    align_dict[sess_id][signal_type][region]['second_hit_cong_var_'+v+'_db_offset'] = second_mat[hit_sel & two_tone_sel & ~incongruent & v_sel & ~no_tone_offset,:]
+                    align_dict[sess_id][signal_type][region]['second_miss_cong_var_'+v+'_db_offset'] = second_mat[miss_sel & two_tone_sel & ~incongruent & v_sel & ~no_tone_offset,:]
+                    align_dict[sess_id][signal_type][region]['second_hit_incong_var_'+v+'_db_offset'] = second_mat[hit_sel & two_tone_sel & incongruent & v_sel & ~no_tone_offset,:]
+                    align_dict[sess_id][signal_type][region]['second_miss_incong_var_'+v+'_db_offset'] = second_mat[miss_sel & two_tone_sel & incongruent & v_sel & ~no_tone_offset,:]
+
+                    align_dict[sess_id][signal_type][region]['second_cong_var_'+v+'_no_db_offset'] = second_mat[two_tone_sel & ~bail_sel & ~incongruent & v_sel & no_tone_offset,:]
+                    align_dict[sess_id][signal_type][region]['second_incong_var_'+v+'_no_db_offset'] = second_mat[two_tone_sel & ~bail_sel & incongruent & v_sel & no_tone_offset,:]
+                    align_dict[sess_id][signal_type][region]['second_hit_cong_var_'+v+'_no_db_offset'] = second_mat[hit_sel & two_tone_sel & ~incongruent & v_sel & no_tone_offset,:]
+                    align_dict[sess_id][signal_type][region]['second_miss_cong_var_'+v+'_no_db_offset'] = second_mat[miss_sel & two_tone_sel & ~incongruent & v_sel & no_tone_offset,:]
+                    align_dict[sess_id][signal_type][region]['second_hit_incong_var_'+v+'_no_db_offset'] = second_mat[hit_sel & two_tone_sel & incongruent & v_sel & no_tone_offset,:]
+                    align_dict[sess_id][signal_type][region]['second_miss_incong_var_'+v+'_no_db_offset'] = second_mat[miss_sel & two_tone_sel & incongruent & v_sel & no_tone_offset,:]
+
+                    for tone_type in tone_types:
+                        side_type = fpah.get_implant_side_type(tone_port[subj_id][tone_type], region_side)
+                        stim_sel_first = tone_infos.apply(lambda x: x[0] == tone_type if utils.is_list(x) else x == tone_type).to_numpy() & ~bail_sel
+                        stim_sel_second = tone_infos.apply(lambda x: x[1] == tone_type if (utils.is_list(x) and len(x) > 1) else False).to_numpy() & ~bail_sel
+
+                        align_dict[sess_id][signal_type][region]['first_'+side_type+'_var_'+v] = first_mat[stim_sel_first & v_sel,:]
+                        align_dict[sess_id][signal_type][region]['first_'+side_type+'_hit_var_'+v] = first_mat[stim_sel_first & hit_sel & v_sel,:]
+                        align_dict[sess_id][signal_type][region]['first_'+side_type+'_miss_var_'+v] = first_mat[stim_sel_first & miss_sel & v_sel,:]
+                        align_dict[sess_id][signal_type][region]['first_'+side_type+'_hit_one_tone_var_'+v] = first_mat[stim_sel_first & hit_sel & one_tone_sel & v_sel,:]
+                        align_dict[sess_id][signal_type][region]['first_'+side_type+'_miss_one_tone_var_'+v] = first_mat[stim_sel_first & miss_sel & one_tone_sel & v_sel,:]
+                        align_dict[sess_id][signal_type][region]['first_'+side_type+'_hit_two_tone_var_'+v] = first_mat[stim_sel_first & hit_sel & two_tone_sel & v_sel,:]
+                        align_dict[sess_id][signal_type][region]['first_'+side_type+'_miss_two_tone_var_'+v] = first_mat[stim_sel_first & miss_sel & two_tone_sel & v_sel,:]
+
+                        align_dict[sess_id][signal_type][region]['second_'+side_type+'_var_'+v] = second_mat[stim_sel_second & v_sel,:]
+                        align_dict[sess_id][signal_type][region]['second_'+side_type+'_hit_var_'+v] = second_mat[stim_sel_second & hit_sel & v_sel,:]
+                        align_dict[sess_id][signal_type][region]['second_'+side_type+'_miss_var_'+v] = second_mat[stim_sel_second & miss_sel & v_sel,:]
+
+                        align_dict[sess_id][signal_type][region]['second_'+side_type+'_cong_var_'+v] = second_mat[stim_sel_second & two_tone_sel & ~bail_sel & ~incongruent & v_sel,:]
+                        align_dict[sess_id][signal_type][region]['second_'+side_type+'_incong_var_'+v] = second_mat[stim_sel_second & two_tone_sel & ~bail_sel & incongruent & v_sel,:]
+                        align_dict[sess_id][signal_type][region]['second_'+side_type+'_hit_cong_var_'+v] = second_mat[stim_sel_second & hit_sel & two_tone_sel & ~incongruent & v_sel,:]
+                        align_dict[sess_id][signal_type][region]['second_'+side_type+'_miss_cong_var_'+v] = second_mat[stim_sel_second & miss_sel & two_tone_sel & ~incongruent & v_sel,:]
+                        align_dict[sess_id][signal_type][region]['second_'+side_type+'_hit_incong_var_'+v] = second_mat[stim_sel_second & hit_sel & two_tone_sel & incongruent & v_sel,:]
+                        align_dict[sess_id][signal_type][region]['second_'+side_type+'_miss_incong_var_'+v] = second_mat[stim_sel_second & miss_sel & two_tone_sel & incongruent & v_sel,:]
+
+                        align_dict[sess_id][signal_type][region]['first_'+side_type+'_var_'+v+'_db_offset'] = first_mat[two_tone_sel & stim_sel_first & ~no_tone_offset & v_sel,:]
+                        align_dict[sess_id][signal_type][region]['first_'+side_type+'_hit_var_'+v+'_db_offset'] = first_mat[two_tone_sel & stim_sel_first & hit_sel & ~no_tone_offset & v_sel,:]
+                        align_dict[sess_id][signal_type][region]['first_'+side_type+'_miss_var_'+v+'_db_offset'] = first_mat[two_tone_sel & stim_sel_first & miss_sel & ~no_tone_offset & v_sel,:]
+
+                        align_dict[sess_id][signal_type][region]['first_'+side_type+'_var_'+v+'_no_db_offset'] = first_mat[two_tone_sel & stim_sel_first & no_tone_offset & v_sel,:]
+                        align_dict[sess_id][signal_type][region]['first_'+side_type+'_hit_var_'+v+'_no_db_offset'] = first_mat[two_tone_sel & stim_sel_first & hit_sel & no_tone_offset & v_sel,:]
+                        align_dict[sess_id][signal_type][region]['first_'+side_type+'_miss_var_'+v+'_no_db_offset'] = first_mat[two_tone_sel & stim_sel_first & miss_sel & no_tone_offset & v_sel,:]
+
+                        align_dict[sess_id][signal_type][region]['second_'+side_type+'_var_'+v+'_db_offset'] = second_mat[stim_sel_second & ~no_tone_offset & v_sel,:]
+                        align_dict[sess_id][signal_type][region]['second_'+side_type+'_hit_var_'+v+'_db_offset'] = second_mat[stim_sel_second & hit_sel & ~no_tone_offset & v_sel,:]
+                        align_dict[sess_id][signal_type][region]['second_'+side_type+'_miss_var_'+v+'_db_offset'] = second_mat[stim_sel_second & miss_sel & ~no_tone_offset & v_sel,:]
+
+                        align_dict[sess_id][signal_type][region]['second_'+side_type+'_var_'+v+'_no_db_offset'] = second_mat[stim_sel_second & no_tone_offset & v_sel,:]
+                        align_dict[sess_id][signal_type][region]['second_'+side_type+'_hit_var_'+v+'_no_db_offset'] = second_mat[stim_sel_second & hit_sel & no_tone_offset & v_sel,:]
+                        align_dict[sess_id][signal_type][region]['second_'+side_type+'_miss_var_'+v+'_no_db_offset'] = second_mat[stim_sel_second & miss_sel & no_tone_offset & v_sel,:]
+
 
                 # response cue
                 pre = 3
@@ -450,7 +527,7 @@ for subj_id in sess_ids.keys():
                 align_dict[sess_id][signal_type][region]['miss_switch_prev_diff_trial'] = mat[prev_trial_diff & prev_choice_diff & miss_sel & sel,:]
 
                 align_dict[sess_id][signal_type][region]['one_tone'] = mat[one_tone_sel & sel,:]
-                align_dict[sess_id][signal_type][region]['two_tones'] = mat[two_tone_sel & sel,:]
+                align_dict[sess_id][signal_type][region]['two_tone'] = mat[two_tone_sel & sel,:]
 
                 for side in sides:
                     side_type = fpah.get_implant_side_type(side, region_side)
@@ -501,7 +578,7 @@ for subj_id in sess_ids.keys():
                     dur_sel = (trial_durs == dur) & sel
                     align_dict[sess_id][signal_type][region]['dur_'+dur] = mat[dur_sel,:]
                     align_dict[sess_id][signal_type][region]['one_tone_dur_'+dur] = mat[one_tone_sel & dur_sel,:]
-                    align_dict[sess_id][signal_type][region]['two_tones_dur_'+dur] = mat[two_tone_sel & dur_sel,:]
+                    align_dict[sess_id][signal_type][region]['two_tone_dur_'+dur] = mat[two_tone_sel & dur_sel,:]
 
                     for side in sides:
                         side_type = fpah.get_implant_side_type(side, region_side)
@@ -513,7 +590,7 @@ for subj_id in sess_ids.keys():
                     delay_sel = (trial_delays == delay) & sel
                     align_dict[sess_id][signal_type][region]['delay_'+delay] = mat[delay_sel,:]
                     align_dict[sess_id][signal_type][region]['one_tone_delay_'+delay] = mat[one_tone_sel & delay_sel,:]
-                    align_dict[sess_id][signal_type][region]['two_tones_delay_'+delay] = mat[two_tone_sel & delay_sel,:]
+                    align_dict[sess_id][signal_type][region]['two_tone_delay_'+delay] = mat[two_tone_sel & delay_sel,:]
 
                     for side in sides:
                         side_type = fpah.get_implant_side_type(side, region_side)
@@ -574,7 +651,7 @@ for subj_id in sess_ids.keys():
                     align_dict[sess_id][signal_type][region]['miss_switch_prev_diff_trial'] = mat[prev_trial_diff & prev_choice_diff & miss_sel & sel,:]
 
                     align_dict[sess_id][signal_type][region]['one_tone'] = mat[one_tone_sel & ~bail_sel & sel,:]
-                    align_dict[sess_id][signal_type][region]['two_tones'] = mat[two_tone_sel & ~bail_sel & sel,:]
+                    align_dict[sess_id][signal_type][region]['two_tone'] = mat[two_tone_sel & ~bail_sel & sel,:]
 
                     for side in sides:
                         side_type = fpah.get_implant_side_type(side, region_side)
@@ -624,7 +701,7 @@ for subj_id in sess_ids.keys():
                         dur_sel = (trial_durs == dur) & ~bail_sel & sel
                         align_dict[sess_id][signal_type][region]['dur_'+dur] = mat[dur_sel,:]
                         align_dict[sess_id][signal_type][region]['one_tone_dur_'+dur] = mat[one_tone_sel & dur_sel,:]
-                        align_dict[sess_id][signal_type][region]['two_tones_dur_'+dur] = mat[two_tone_sel & dur_sel,:]
+                        align_dict[sess_id][signal_type][region]['two_tone_dur_'+dur] = mat[two_tone_sel & dur_sel,:]
                         align_dict[sess_id][signal_type][region]['dur_'+dur+'_hit'] = mat[dur_sel & hit_sel,:]
                         align_dict[sess_id][signal_type][region]['dur_'+dur+'_miss'] = mat[dur_sel & miss_sel,:]
 
@@ -640,7 +717,7 @@ for subj_id in sess_ids.keys():
                         delay_sel = (trial_delays == delay) & ~bail_sel & sel
                         align_dict[sess_id][signal_type][region]['delay_'+delay] = mat[delay_sel,:]
                         align_dict[sess_id][signal_type][region]['one_tone_delay_'+delay] = mat[one_tone_sel & delay_sel,:]
-                        align_dict[sess_id][signal_type][region]['two_tones_delay_'+delay] = mat[two_tone_sel & delay_sel,:]
+                        align_dict[sess_id][signal_type][region]['two_tone_delay_'+delay] = mat[two_tone_sel & delay_sel,:]
                         align_dict[sess_id][signal_type][region]['delay_'+delay+'_hit'] = mat[delay_sel & hit_sel,:]
                         align_dict[sess_id][signal_type][region]['delay_'+delay+'_miss'] = mat[delay_sel & miss_sel,:]
 
@@ -726,7 +803,7 @@ for subj_id in sess_ids.keys():
                 align_dict[sess_id][signal_type][region]['miss_future_switch'] = mat[next_choice_diff & miss_sel,:]
 
                 align_dict[sess_id][signal_type][region]['one_tone'] = mat[one_tone_sel & ~bail_sel,:]
-                align_dict[sess_id][signal_type][region]['two_tones'] = mat[two_tone_sel & ~bail_sel,:]
+                align_dict[sess_id][signal_type][region]['two_tone'] = mat[two_tone_sel & ~bail_sel,:]
 
                 for side in sides:
                     side_type = fpah.get_implant_side_type(side, region_side)
@@ -805,7 +882,7 @@ for subj_id in sess_ids.keys():
                     dur_sel = (trial_durs == dur) & ~bail_sel
                     align_dict[sess_id][signal_type][region]['dur_'+dur] = mat[dur_sel,:]
                     align_dict[sess_id][signal_type][region]['one_tone_dur_'+dur] = mat[one_tone_sel & dur_sel,:]
-                    align_dict[sess_id][signal_type][region]['two_tones_dur_'+dur] = mat[two_tone_sel & dur_sel,:]
+                    align_dict[sess_id][signal_type][region]['two_tone_dur_'+dur] = mat[two_tone_sel & dur_sel,:]
                     align_dict[sess_id][signal_type][region]['dur_'+dur+'_hit'] = mat[dur_sel & hit_sel,:]
                     align_dict[sess_id][signal_type][region]['dur_'+dur+'_miss'] = mat[dur_sel & miss_sel,:]
 
@@ -821,7 +898,7 @@ for subj_id in sess_ids.keys():
                     delay_sel = (trial_delays == delay) & ~bail_sel
                     align_dict[sess_id][signal_type][region]['delay_'+delay] = mat[delay_sel,:]
                     align_dict[sess_id][signal_type][region]['one_tone_delay_'+delay] = mat[one_tone_sel & delay_sel,:]
-                    align_dict[sess_id][signal_type][region]['two_tones_delay_'+delay] = mat[two_tone_sel & delay_sel,:]
+                    align_dict[sess_id][signal_type][region]['two_tone_delay_'+delay] = mat[two_tone_sel & delay_sel,:]
                     align_dict[sess_id][signal_type][region]['delay_'+delay+'_hit'] = mat[delay_sel & hit_sel,:]
                     align_dict[sess_id][signal_type][region]['delay_'+delay+'_miss'] = mat[delay_sel & miss_sel,:]
 
@@ -956,8 +1033,8 @@ tone_xlims = {'DMS': [-1,1], 'PL': [-2,2]}
 
 save_plots = True
 show_plots = False
-reward_time = None
-tone_end = 0.25
+reward_time = None # 0.5 #
+tone_end = 0.25 # 0.3 #
 
 # make this wrapper to simplify the stack command by not having to include the options declared above
 def stack_mats(mat_dict, groups=None):
@@ -1022,11 +1099,14 @@ def plot_avg_signals(align, plot_groups, group_labels, plot_titles, gen_title, x
     if legend_params is None:
         legend_params = all_legend_params[align]
 
-    fig = fpah.plot_avg_signals(plot_groups, group_labels, mat, regions, t, gen_title.format(align_title), plot_titles, x_label, signal_label, xlims_dict,
+    fig, plotted = fpah.plot_avg_signals(plot_groups, group_labels, mat, regions, t, gen_title.format(align_title), plot_titles, x_label, signal_label, xlims_dict,
                                 dashlines=dashlines, legend_params=legend_params, group_colors=group_colors, use_se=use_se, ph=ph, pw=pw)
 
-    if not gen_plot_name is None:
+    if plotted and not gen_plot_name is None:
         save_plot(fig, gen_plot_name.format(align))
+
+    if not plotted:
+        plt.close(fig)
 
 
 # %% Choice, side, and prior reward groupings for multiple alignment points
@@ -1160,9 +1240,9 @@ for align in aligns:
 
 gen_plot_groups = ['stim_{}', 'stim_{}_hit', 'stim_{}_miss']
 plot_groups = [[group.format(s) for s in stim_types] for group in gen_plot_groups]
-plot_groups.insert(0, ['one_tone', 'two_tones'])
+plot_groups.insert(0, ['one_tone', 'two_tone'])
 group_labels = {group.format(s): s for group in gen_plot_groups for s in stim_types}
-group_labels.update({'one_tone': '1 Tone', 'two_tones': '2 Tones'})
+group_labels.update({'one_tone': '1 Tone', 'two_tone': '2 Tones'})
 
 plot_titles = ['Number of Tones', 'Current Stimulus', 'Current Stimulus Hits', 'Current Stimulus Misses']
 gen_title = 'Prior Outcome and Current Stimulus Groupings Aligned to {}'
@@ -1367,33 +1447,82 @@ plot_avg_signals(align, plot_groups, group_labels, plot_titles, gen_title, gen_p
 # %% Tone Alignments
 align = Align.tone
 
-# all tone types
-plot_groups = [['first_all', 'second_all'], ['first_hit_all', 'first_miss_all', 'second_hit', 'second_miss']]
-group_labels = {'first_all': 'First', 'second_all': 'Second',
-                'first_hit_all': 'First Hit', 'first_miss_all': 'First Miss',
-                'second_hit': 'Second Hit', 'second_miss': 'Second Miss'}
+for v in variants:
+    # all tones together
+    plot_groups = [['first_var_{}', 'second_var_{}'],
+                   ['first_contra_var_{}', 'first_ipsi_var_{}', 'second_contra_var_{}', 'second_ipsi_var_{}']]
 
-plot_titles = ['Tone Position', 'Tone Position by Outcome']
-gen_title = 'Tone Position Aligned to {}'
-gen_plot_name = '{}_position_outcome'
+    group_labels = {'first_var_{}': 'First', 'second_var_{}': 'Second',
+                    'first_contra_var_{}': 'First Contra', 'first_ipsi_var_{}': 'First Ipsi',
+                    'second_contra_var_{}': 'Second Contra', 'second_ipsi_var_{}': 'Second Ipsi'}
 
-plot_avg_signals(align, plot_groups, group_labels, plot_titles, gen_title, gen_plot_name=gen_plot_name)
+    plot_groups = [[g.format(v) for g in pg] for pg in plot_groups]
+    group_labels = {k.format(v): l for k, l in group_labels.items()}
+
+    plot_titles = ['Tone Position', 'Tone Position & Port Side']
+    gen_title = 'Tone Position & Associated Port Side for \''+v+'\' Variant Aligned to {}'
+    gen_plot_name = '{}_position_side_'+v
+
+    plot_avg_signals(align, plot_groups, group_labels, plot_titles, gen_title, gen_plot_name=gen_plot_name)
 
 
-# by tone type
-gen_plot_groups = [['first_{}_all', 'second_{}_all'], ['first_{}_hit_all', 'first_{}_miss_all'], ['second_{}_hit', 'second_{}_miss']]
-group_labels = {'first_{}_all': 'First {}', 'second_{}_all': 'Second {}',
-                'first_{}_hit_all': 'First {} Hit', 'first_{}_miss_all': 'First {} Miss',
-                'second_{}_hit': 'Second {} Hit', 'second_{}_miss': 'Second {} Miss'}
+    # Single tone trials, side and outcome
+    plot_groups = [['first_hit_one_tone_var_{}', 'first_miss_one_tone_var_{}'],
+                   ['first_contra_hit_one_tone_var_{}', 'first_contra_miss_one_tone_var_{}', 'first_ipsi_hit_one_tone_var_{}', 'first_ipsi_miss_one_tone_var_{}']]
+    group_labels = {'first_hit_one_tone_var_{}': 'Hit', 'first_miss_one_tone_var_{}': 'Miss',
+                    'first_contra_hit_one_tone_var_{}': 'Contra Hit', 'first_contra_miss_one_tone_var_{}': 'Contra Miss',
+                    'first_ipsi_hit_one_tone_var_{}': 'Ipsi Hit', 'first_ipsi_miss_one_tone_var_{}': 'Ipsi Miss'}
 
-plot_groups = [[g.format(t) for t in tone_types for g in pg] for pg in gen_plot_groups]
-group_labels = {k.format(t): v.format(t) for k, v in group_labels.items() for t in tone_types}
+    plot_groups = [[g.format(v) for g in pg] for pg in plot_groups]
+    group_labels = {k.format(v): l for k, l in group_labels.items()}
 
-plot_titles = ['All Outcomes', 'First Tone by Outome', 'Second Tone by Outcome']
-gen_title = 'Tone Position and Tone Type Aligned to {}'
-gen_plot_name = '{}_type_position_outcome'
+    plot_titles = ['All Tones by Outcome', 'Tones by Port Side & Outcome']
+    gen_title = 'One Tone Trials by Port Side & Outcome for \''+v+'\' Variant Aligned to {}'
+    gen_plot_name = '{}_one_tone_side_outcome_'+v
 
-plot_avg_signals(align, plot_groups, group_labels, plot_titles, gen_title, gen_plot_name=gen_plot_name)
+    plot_avg_signals(align, plot_groups, group_labels, plot_titles, gen_title, gen_plot_name=gen_plot_name)
+
+
+    # two tone trials, position, side & outcome
+    plot_groups = [['first_hit_two_tone_var_{}', 'first_miss_two_tone_var_{}', 'second_hit_var_{}', 'second_miss_var_{}'],
+                   ['first_contra_hit_two_tone_var_{}', 'first_contra_miss_two_tone_var_{}', 'first_ipsi_hit_two_tone_var_{}', 'first_ipsi_miss_two_tone_var_{}'],
+                   ['second_contra_hit_var_{}', 'second_contra_miss_var_{}', 'second_ipsi_hit_var_{}', 'second_ipsi_miss_var_{}']]
+    group_labels = {'first_hit_two_tone_var_{}': 'First Hit', 'first_miss_two_tone_var_{}': 'First Miss',
+                    'second_hit_var_{}': 'Second Hit', 'second_miss_var_{}': 'Second Miss',
+                    'first_contra_hit_two_tone_var_{}': 'Contra Hit', 'first_contra_miss_two_tone_var_{}': 'Contra Miss',
+                    'first_ipsi_hit_two_tone_var_{}': 'Ipsi Hit', 'first_ipsi_miss_two_tone_var_{}': 'Ipsi Miss',
+                    'second_contra_hit_var_{}': 'Contra Hit', 'second_contra_miss_var_{}': 'Contra Miss',
+                    'second_ipsi_hit_var_{}': 'Ipsi Hit', 'second_ipsi_miss_var_{}': 'Ipsi Miss'}
+
+    plot_groups = [[g.format(v) for g in pg] for pg in plot_groups]
+    group_labels = {k.format(v): l for k, l in group_labels.items()}
+
+    plot_titles = ['All Tones by Position & Outcome', 'First Tones by Port Side & Outome', 'Second Tones by Port Side & Outcome']
+    gen_title = 'Two Tone Trials by Tone Positions, Port Side, & Outcome for \''+v+'\' Variant Aligned to {}'
+    gen_plot_name = '{}_two_tone_side_outcome_'+v
+
+    plot_avg_signals(align, plot_groups, group_labels, plot_titles, gen_title, gen_plot_name=gen_plot_name)
+
+
+    # two tone trials, position, side & outcome, no volume offset
+    plot_groups = [['first_hit_var_{}_no_db_offset', 'first_miss_var_{}_no_db_offset', 'second_hit_var_{}_no_db_offset', 'second_miss_var_{}_no_db_offset'],
+                   ['first_contra_hit_var_{}_no_db_offset', 'first_contra_miss_var_{}_no_db_offset', 'first_ipsi_hit_var_{}_no_db_offset', 'first_ipsi_miss_var_{}_no_db_offset'],
+                   ['second_contra_hit_var_{}_no_db_offset', 'second_contra_miss_var_{}_no_db_offset', 'second_ipsi_hit_var_{}_no_db_offset', 'second_ipsi_miss_var_{}_no_db_offset']]
+    group_labels = {'first_hit_var_{}_no_db_offset': 'First Hit', 'first_miss_var_{}_no_db_offset': 'First Miss',
+                    'second_hit_var_{}_no_db_offset': 'Second Hit', 'second_miss_var_{}_no_db_offset': 'Second Miss',
+                    'first_contra_hit_var_{}_no_db_offset': 'Contra Hit', 'first_contra_miss_var_{}_no_db_offset': 'Contra Miss',
+                    'first_ipsi_hit_var_{}_no_db_offset': 'Ipsi Hit', 'first_ipsi_miss_var_{}_no_db_offset': 'Ipsi Miss',
+                    'second_contra_hit_var_{}_no_db_offset': 'Contra Hit', 'second_contra_miss_var_{}_no_db_offset': 'Contra Miss',
+                    'second_ipsi_hit_var_{}_no_db_offset': 'Ipsi Hit', 'second_ipsi_miss_var_{}_no_db_offset': 'Ipsi Miss'}
+
+    plot_groups = [[g.format(v) for g in pg] for pg in plot_groups]
+    group_labels = {k.format(v): l for k, l in group_labels.items()}
+
+    plot_titles = ['All Tones by Position & Outcome', 'First Tones by Port Side & Outome', 'Second Tones by Port Side & Outcome']
+    gen_title = 'Full Volume Two Tone Trials by Tone Positions, Port Side, & Outcome for \''+v+'\' Variant Aligned to {}'
+    gen_plot_name = '{}_two_tone_side_outcome_no_offset_'+v
+
+    plot_avg_signals(align, plot_groups, group_labels, plot_titles, gen_title, gen_plot_name=gen_plot_name)
 
 
 # %% Trial duration and response delay duration
@@ -1413,7 +1542,7 @@ for align in aligns:
     plot_avg_signals(align, plot_groups, group_labels, plot_titles, gen_title, gen_plot_name=gen_plot_name)
 
 # trial durations by number of tones
-gen_plot_groups = ['one_tone_dur_{}', 'two_tones_dur_{}']
+gen_plot_groups = ['one_tone_dur_{}', 'two_tone_dur_{}']
 plot_groups = [[group.format(d) for d in stim_durs] for group in gen_plot_groups]
 group_labels = {group.format(d): d for group in gen_plot_groups for d in stim_durs}
 
@@ -1437,7 +1566,7 @@ for align in aligns:
     plot_avg_signals(align, plot_groups, group_labels, plot_titles, gen_title, gen_plot_name=gen_plot_name)
 
 # response delays by number of tones
-gen_plot_groups = ['one_tone_delay_{}', 'two_tones_delay_{}']
+gen_plot_groups = ['one_tone_delay_{}', 'two_tone_delay_{}']
 plot_groups = [[group.format(d) for d in resp_delays] for group in gen_plot_groups]
 group_labels = {group.format(d): d for group in gen_plot_groups for d in resp_delays}
 
@@ -1498,61 +1627,61 @@ plot_avg_signals(align, plot_groups, group_labels, plot_titles, gen_title, gen_p
 
 # %% Look at some behavioral metrics
 
-sess_metrics = {}
+# sess_metrics = {}
 
-for sess_id in sess_ids:
-    sess_metrics[sess_id] = {}
+# for sess_id in sess_ids:
+#     sess_metrics[sess_id] = {}
 
-    trial_data = sess_data[sess_data['sessid'] == sess_id]
-    hit_sel = trial_data['hit'] == True
-    miss_sel = trial_data['hit'] == False
-    bail_sel = trial_data['bail'] == True
+#     trial_data = sess_data[sess_data['sessid'] == sess_id]
+#     hit_sel = trial_data['hit'] == True
+#     miss_sel = trial_data['hit'] == False
+#     bail_sel = trial_data['bail'] == True
 
-    prev_hit_sel = np.insert(hit_sel[:-1].to_numpy(), 0, False)
-    prev_miss_sel = np.insert(miss_sel[:-1].to_numpy(), 0, False)
-    prev_bail_sel = np.insert(bail_sel[:-1].to_numpy(), 0, False)
+#     prev_hit_sel = np.insert(hit_sel[:-1].to_numpy(), 0, False)
+#     prev_miss_sel = np.insert(miss_sel[:-1].to_numpy(), 0, False)
+#     prev_bail_sel = np.insert(bail_sel[:-1].to_numpy(), 0, False)
 
-    prev_choice_same = np.insert(trial_data['choice'][:-1].to_numpy() == trial_data['choice'][1:].to_numpy(),
-                                 0, False)
-    prev_tone_same = np.insert(trial_data['correct_port'][:-1].to_numpy() == trial_data['correct_port'][1:].to_numpy(),
-                                 0, False)
+#     prev_choice_same = np.insert(trial_data['choice'][:-1].to_numpy() == trial_data['choice'][1:].to_numpy(),
+#                                  0, False)
+#     prev_tone_same = np.insert(trial_data['correct_port'][:-1].to_numpy() == trial_data['correct_port'][1:].to_numpy(),
+#                                  0, False)
 
-    # probability of outcome given previous outcome
-    sess_metrics[sess_id]['p(hit|prev hit)'] = np.sum(hit_sel & prev_hit_sel)/np.sum(prev_hit_sel)
-    sess_metrics[sess_id]['p(hit|prev miss)'] = np.sum(hit_sel & prev_miss_sel)/np.sum(prev_miss_sel)
-    sess_metrics[sess_id]['p(hit|prev bail)'] = np.sum(hit_sel & prev_bail_sel)/np.sum(prev_bail_sel)
+#     # probability of outcome given previous outcome
+#     sess_metrics[sess_id]['p(hit|prev hit)'] = np.sum(hit_sel & prev_hit_sel)/np.sum(prev_hit_sel)
+#     sess_metrics[sess_id]['p(hit|prev miss)'] = np.sum(hit_sel & prev_miss_sel)/np.sum(prev_miss_sel)
+#     sess_metrics[sess_id]['p(hit|prev bail)'] = np.sum(hit_sel & prev_bail_sel)/np.sum(prev_bail_sel)
 
-    sess_metrics[sess_id]['p(miss|prev hit)'] = np.sum(miss_sel & prev_hit_sel)/np.sum(prev_hit_sel)
-    sess_metrics[sess_id]['p(miss|prev miss)'] = np.sum(miss_sel & prev_miss_sel)/np.sum(prev_miss_sel)
-    sess_metrics[sess_id]['p(miss|prev bail)'] = np.sum(miss_sel & prev_bail_sel)/np.sum(prev_bail_sel)
+#     sess_metrics[sess_id]['p(miss|prev hit)'] = np.sum(miss_sel & prev_hit_sel)/np.sum(prev_hit_sel)
+#     sess_metrics[sess_id]['p(miss|prev miss)'] = np.sum(miss_sel & prev_miss_sel)/np.sum(prev_miss_sel)
+#     sess_metrics[sess_id]['p(miss|prev bail)'] = np.sum(miss_sel & prev_bail_sel)/np.sum(prev_bail_sel)
 
-    sess_metrics[sess_id]['p(bail|prev hit)'] = np.sum(bail_sel & prev_hit_sel)/np.sum(prev_hit_sel)
-    sess_metrics[sess_id]['p(bail|prev miss)'] = np.sum(bail_sel & prev_miss_sel)/np.sum(prev_miss_sel)
-    sess_metrics[sess_id]['p(bail|prev bail)'] = np.sum(bail_sel & prev_bail_sel)/np.sum(prev_bail_sel)
+#     sess_metrics[sess_id]['p(bail|prev hit)'] = np.sum(bail_sel & prev_hit_sel)/np.sum(prev_hit_sel)
+#     sess_metrics[sess_id]['p(bail|prev miss)'] = np.sum(bail_sel & prev_miss_sel)/np.sum(prev_miss_sel)
+#     sess_metrics[sess_id]['p(bail|prev bail)'] = np.sum(bail_sel & prev_bail_sel)/np.sum(prev_bail_sel)
 
-    # stay and switch require animals to make responses on consecutive trials, so they cant bail
-    sess_metrics[sess_id]['p(stay|prev hit)'] = np.sum(prev_choice_same & prev_hit_sel & ~bail_sel)/np.sum(prev_hit_sel & ~bail_sel)
-    sess_metrics[sess_id]['p(stay|prev miss)'] = np.sum(prev_choice_same & prev_miss_sel & ~bail_sel)/np.sum(prev_miss_sel & ~bail_sel)
+#     # stay and switch require animals to make responses on consecutive trials, so they cant bail
+#     sess_metrics[sess_id]['p(stay|prev hit)'] = np.sum(prev_choice_same & prev_hit_sel & ~bail_sel)/np.sum(prev_hit_sel & ~bail_sel)
+#     sess_metrics[sess_id]['p(stay|prev miss)'] = np.sum(prev_choice_same & prev_miss_sel & ~bail_sel)/np.sum(prev_miss_sel & ~bail_sel)
 
-    sess_metrics[sess_id]['p(switch|prev hit)'] = np.sum(~prev_choice_same & prev_hit_sel & ~bail_sel)/np.sum(prev_hit_sel & ~bail_sel)
-    sess_metrics[sess_id]['p(switch|prev miss)'] = np.sum(~prev_choice_same & prev_miss_sel & ~bail_sel)/np.sum(prev_miss_sel & ~bail_sel)
+#     sess_metrics[sess_id]['p(switch|prev hit)'] = np.sum(~prev_choice_same & prev_hit_sel & ~bail_sel)/np.sum(prev_hit_sel & ~bail_sel)
+#     sess_metrics[sess_id]['p(switch|prev miss)'] = np.sum(~prev_choice_same & prev_miss_sel & ~bail_sel)/np.sum(prev_miss_sel & ~bail_sel)
 
-    sess_metrics[sess_id]['p(stay|prev hit & same tone)'] = np.sum(prev_choice_same & prev_hit_sel & ~bail_sel & prev_tone_same)/np.sum(prev_hit_sel & ~bail_sel & prev_tone_same)
-    sess_metrics[sess_id]['p(stay|prev hit & diff tone)'] = np.sum(prev_choice_same & prev_hit_sel & ~bail_sel & ~prev_tone_same)/np.sum(prev_hit_sel & ~bail_sel & ~prev_tone_same)
-    sess_metrics[sess_id]['p(stay|prev miss & same tone)'] = np.sum(prev_choice_same & prev_miss_sel & ~bail_sel & prev_tone_same)/np.sum(prev_miss_sel & ~bail_sel & prev_tone_same)
-    sess_metrics[sess_id]['p(stay|prev miss & diff tone)'] = np.sum(prev_choice_same & prev_miss_sel & ~bail_sel & ~prev_tone_same)/np.sum(prev_miss_sel & ~bail_sel & ~prev_tone_same)
+#     sess_metrics[sess_id]['p(stay|prev hit & same tone)'] = np.sum(prev_choice_same & prev_hit_sel & ~bail_sel & prev_tone_same)/np.sum(prev_hit_sel & ~bail_sel & prev_tone_same)
+#     sess_metrics[sess_id]['p(stay|prev hit & diff tone)'] = np.sum(prev_choice_same & prev_hit_sel & ~bail_sel & ~prev_tone_same)/np.sum(prev_hit_sel & ~bail_sel & ~prev_tone_same)
+#     sess_metrics[sess_id]['p(stay|prev miss & same tone)'] = np.sum(prev_choice_same & prev_miss_sel & ~bail_sel & prev_tone_same)/np.sum(prev_miss_sel & ~bail_sel & prev_tone_same)
+#     sess_metrics[sess_id]['p(stay|prev miss & diff tone)'] = np.sum(prev_choice_same & prev_miss_sel & ~bail_sel & ~prev_tone_same)/np.sum(prev_miss_sel & ~bail_sel & ~prev_tone_same)
 
-    sess_metrics[sess_id]['p(switch|prev hit & same tone)'] = np.sum(~prev_choice_same & prev_hit_sel & ~bail_sel & prev_tone_same)/np.sum(prev_hit_sel & ~bail_sel & prev_tone_same)
-    sess_metrics[sess_id]['p(switch|prev hit & diff tone)'] = np.sum(~prev_choice_same & prev_hit_sel & ~bail_sel & ~prev_tone_same)/np.sum(prev_hit_sel & ~bail_sel & ~prev_tone_same)
-    sess_metrics[sess_id]['p(switch|prev miss & same tone)'] = np.sum(~prev_choice_same & prev_miss_sel & ~bail_sel & prev_tone_same)/np.sum(prev_miss_sel & ~bail_sel & prev_tone_same)
-    sess_metrics[sess_id]['p(switch|prev miss & diff tone)'] = np.sum(~prev_choice_same & prev_miss_sel & ~bail_sel & ~prev_tone_same)/np.sum(prev_miss_sel & ~bail_sel & ~prev_tone_same)
+#     sess_metrics[sess_id]['p(switch|prev hit & same tone)'] = np.sum(~prev_choice_same & prev_hit_sel & ~bail_sel & prev_tone_same)/np.sum(prev_hit_sel & ~bail_sel & prev_tone_same)
+#     sess_metrics[sess_id]['p(switch|prev hit & diff tone)'] = np.sum(~prev_choice_same & prev_hit_sel & ~bail_sel & ~prev_tone_same)/np.sum(prev_hit_sel & ~bail_sel & ~prev_tone_same)
+#     sess_metrics[sess_id]['p(switch|prev miss & same tone)'] = np.sum(~prev_choice_same & prev_miss_sel & ~bail_sel & prev_tone_same)/np.sum(prev_miss_sel & ~bail_sel & prev_tone_same)
+#     sess_metrics[sess_id]['p(switch|prev miss & diff tone)'] = np.sum(~prev_choice_same & prev_miss_sel & ~bail_sel & ~prev_tone_same)/np.sum(prev_miss_sel & ~bail_sel & ~prev_tone_same)
 
-    # probability of hit/miss given previous outcome when responding multiple times in a row
-    sess_metrics[sess_id]['p(hit|prev hit & no bail)'] = np.sum(hit_sel & prev_hit_sel & ~bail_sel)/np.sum(prev_hit_sel & ~bail_sel)
-    sess_metrics[sess_id]['p(hit|prev miss & no bail)'] = np.sum(hit_sel & prev_miss_sel & ~bail_sel)/np.sum(prev_miss_sel & ~bail_sel)
+#     # probability of hit/miss given previous outcome when responding multiple times in a row
+#     sess_metrics[sess_id]['p(hit|prev hit & no bail)'] = np.sum(hit_sel & prev_hit_sel & ~bail_sel)/np.sum(prev_hit_sel & ~bail_sel)
+#     sess_metrics[sess_id]['p(hit|prev miss & no bail)'] = np.sum(hit_sel & prev_miss_sel & ~bail_sel)/np.sum(prev_miss_sel & ~bail_sel)
 
-    sess_metrics[sess_id]['p(miss|prev hit & no bail)'] = np.sum(miss_sel & prev_hit_sel & ~bail_sel)/np.sum(prev_hit_sel & ~bail_sel)
-    sess_metrics[sess_id]['p(miss|prev miss & no bail)'] = np.sum(miss_sel & prev_miss_sel & ~bail_sel)/np.sum(prev_miss_sel & ~bail_sel)
+#     sess_metrics[sess_id]['p(miss|prev hit & no bail)'] = np.sum(miss_sel & prev_hit_sel & ~bail_sel)/np.sum(prev_hit_sel & ~bail_sel)
+#     sess_metrics[sess_id]['p(miss|prev miss & no bail)'] = np.sum(miss_sel & prev_miss_sel & ~bail_sel)/np.sum(prev_miss_sel & ~bail_sel)
 
 # %% Look at timing information
 

@@ -142,10 +142,10 @@ def plot_rate_heatmap(rate_dict, column_key, column_name, row_key, row_name, ax=
 
     # Add in summary statistics for each row and column
     if row_summary:
-        values['all'] = rate_dict[row_key]['rate']  # Across columns
+        values['all'] = rate_dict[row_key].set_index(row_key)['rate']  # Across columns
 
     if col_summary:
-        values.loc['all'] = rate_dict[column_key]['rate']  # Down rows
+        values.loc['all'] = rate_dict[column_key].set_index(column_key)['rate']  # Down rows
 
     plot_utils.plot_value_matrix(values, ax=ax, fmt=fmt, cbar=cbar, x_rot=x_rot, y_rot=y_rot)
 

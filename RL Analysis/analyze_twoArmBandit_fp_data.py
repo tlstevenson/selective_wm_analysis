@@ -19,6 +19,7 @@ import beh_analysis_helpers as bah
 import numpy as np
 import matplotlib.pyplot as plt
 import copy
+import time
 
 # %% Load behavior data
 
@@ -29,11 +30,12 @@ behavior_name = 'Two-armed Bandit'
 sess_ids = db_access.get_fp_protocol_subj_sess_ids('ClassicRLTasks', 2)
 
 # optionally limit sessions based on subject ids
-subj_ids = [179]
+subj_ids = [188] #[179, 207, 191, 182, 188]
 sess_ids = {k: v for k, v in sess_ids.items() if k in subj_ids}
 
+reload = False
 loc_db = db.LocalDB_BasicRLTasks('twoArmBandit')
-sess_data = loc_db.get_behavior_data(utils.flatten(sess_ids)) # reload=True
+sess_data = loc_db.get_behavior_data(utils.flatten(sess_ids), reload=reload)
 
 sess_data['cpoke_out_latency'] = sess_data['cpoke_out_time'] - sess_data['response_cue_time']
 
@@ -43,31 +45,13 @@ bah.get_rew_rate_hist(sess_data, n_back=n_back, kernel='uniform')
 # %% Get and process photometry data
 
 # get fiber photometry data
-fp_data = loc_db.get_sess_fp_data(utils.flatten(sess_ids)) # , reload=True
-# separate into different dictionaries
-implant_info = fp_data['implant_info']
-fp_data = fp_data['fp_data']
-
-iso = '420'
-lig = '490'
-
-for subj_id in sess_ids.keys():
-    for sess_id in sess_ids[subj_id]:
-        raw_signals = fp_data[subj_id][sess_id]['raw_signals']
-
-        fp_data[subj_id][sess_id]['processed_signals'] = {}
-
-        for region in raw_signals.keys():
-            raw_lig = raw_signals[region][lig]
-            raw_iso = raw_signals[region][iso]
-
-            fp_data[subj_id][sess_id]['processed_signals'][region] = fpah.get_all_processed_signals(raw_lig, raw_iso)
+reload = False
+fp_data, implant_info = fpah.load_fp_data(loc_db, sess_ids, reload=reload)
 
 # %% Observe the full signals
 
-sub_signal = [] # sub signal time limits in seconds
 filter_outliers = True
-save_plots = True
+save_plots = False
 show_plots = False
 
 for subj_id in sess_ids.keys():
@@ -78,23 +62,30 @@ for subj_id in sess_ids.keys():
         # Get the block transition trial start times
         trial_start_ts = sess_fp['trial_start_ts'][:-1]
         block_start_times = trial_start_ts[trial_data['block_trial'] == 1]
-        #block_rewards = trial_data['reward_volume'][trial_data['block_trial'] == 1]
 
-        if len(sub_signal) > 0:
-            fig = fpah.view_processed_signals(sess_fp['processed_signals'], sess_fp['time'],
-                                        title='Full Signals - Session {}'.format(sess_id),
-                                        vert_marks=block_start_times, filter_outliers=filter_outliers,
-                                        t_min=sub_signal[0], t_max=sub_signal[1], dec=1)
-        else:
-            fig = fpah.view_processed_signals(sess_fp['processed_signals'], sess_fp['time'],
-                                        title='Full Signals - Session {}'.format(sess_id), #. Block Rewards: {}'.format(sess_id, ', '.join([str(r) for r in block_rewards]
-                                        vert_marks=block_start_times, filter_outliers=filter_outliers)
+        fig = fpah.view_processed_signals(sess_fp['processed_signals'], sess_fp['time'],
+                                    title='Full Signals - Subject {}, Session {}'.format(subj_id, sess_id),
+                                    vert_marks=block_start_times, filter_outliers=filter_outliers)
 
         if save_plots:
             fpah.save_fig(fig, fpah.get_figure_save_path(behavior_name, subj_id, 'sess_{}'.format(sess_id)))
 
         if not show_plots:
             plt.close(fig)
+
+
+# %% Observe any sub-signals
+
+# sess_id = 101926
+# sub_signal = [542, 545]
+# filter_outliers = True
+
+# subj_id = [i for i,s in sess_ids.items() if sess_id in s][0]
+# sess_fp = fp_data[subj_id][sess_id]
+# _ = fpah.view_processed_signals(sess_fp['processed_signals'], sess_fp['time'],
+#                             title='Sub Signal - Subject {}, Session {}'.format(subj_id, sess_id),
+#                             filter_outliers=filter_outliers,
+#                             t_min=sub_signal[0], t_max=sub_signal[1], dec=1)
 
 # %% Get all aligned/sorted stacked signals
 
@@ -136,6 +127,8 @@ norm_cue_poke_out_pct = 0.2 # % of bins for cue to poke out or poke out to cue, 
 
 for subj_id in sess_ids.keys():
     for sess_id in sess_ids[subj_id]:
+        print('Processing session {} for subject {}...'.format(sess_id, subj_id))
+        start = time.perf_counter()
 
         trial_data = sess_data[sess_data['sessid'] == sess_id]
         resp_sel = (trial_data['hit'] == True)
@@ -725,113 +718,7 @@ for subj_id in sess_ids.keys():
                         align_dict[sess_id][signal_type][region][side_type+'_stay_prev_unrewarded'] = mat[prev_unrewarded[sel] & stays[sel] & side_sel,:]
                         align_dict[sess_id][signal_type][region][side_type+'_switch_prev_unrewarded'] = mat[prev_unrewarded[sel] & switches[sel] & side_sel,:]
 
-#%% Plot Alignment Results for single sessions
-
-# title_suffix = '' #'420 Iso'
-# outlier_thresh = 8 # z-score threshold
-
-# for sess_id in sess_ids:
-#     for signal_type in signal_types:
-
-#         # get appropriate labels
-#         signal_type_title, signal_type_label = fpah.get_signal_type_labels(signal_type)
-
-#         if title_suffix != '':
-#             signal_type_title += ' - ' + title_suffix
-
-#         all_sub_titles = {'reward': 'Rewarded', 'noreward': 'Unrewarded', 'reward_stay': 'Stay | Reward',
-#                           'noreward_stay': 'Stay | No reward', 'reward_switch': 'Switch | Reward', 'noreward_switch': 'Switch | No reward',
-#                           'stay_rewarded': 'Rewarded Stay', 'stay_unrewarded': 'Unrewarded Stay',
-#                           'switch_rewarded': 'Rewarded Switch', 'switch_unrewarded': 'Unrewarded Switch',
-#                           'left': 'Left Choice', 'right': 'Right Choice', 'left_stay': 'Left Stay', 'left_switch': 'Left Switch',
-#                           'right_stay': 'Right Stay', 'right_switch': 'Right Switch',
-#                           'left_stay_rewarded': 'Rewarded Left Stay', 'left_stay_unrewarded': 'Unrewarded Left Stay',
-#                           'left_switch_rewarded': 'Rewarded Left Switch', 'left_switch_unrewarded': 'Unrewarded Left Switch',
-#                           'right_stay_rewarded': 'Rewarded Right Stay', 'right_stay_unrewarded': 'Unrewarded Right Stay',
-#                           'right_switch_rewarded': 'Rewarded Right Switch', 'right_switch_unrewarded': 'Unrewarded Right Switch'}
-
-#         for p in choice_probs:
-#             all_sub_titles.update({p: '{:.0f}% Choice'.format(p)})
-
-#         for br in block_rates:
-#             all_sub_titles.update({br: 'Block Reward Rate: {}%'.format(br)})
-
-#         fpah.plot_aligned_signals(resp_outcome[sess_id][signal_type], resp_outcome['t'], 'Response Aligned - {} (session {})'.format(signal_type_title, sess_id),
-#                              all_sub_titles, 'Time from response poke (s)', signal_type_label, outlier_thresh=outlier_thresh,
-#                              trial_markers=block_trans_idxs)
-
-#         fpah.plot_aligned_signals(reward_outcome[sess_id][signal_type], reward_outcome['t'], 'Reward Aligned - {} (session {})'.format(signal_type_title, sess_id),
-#                              all_sub_titles, 'Time from reward (s)', signal_type_label, outlier_thresh=outlier_thresh,
-#                              trial_markers=block_trans_idxs)
-
-#         fpah.plot_aligned_signals(resp_reward_pchoice[sess_id][signal_type], resp_reward_pchoice['t'], 'Rewarded Response by Choice Reward Probability - {} (session {})'.format(signal_type_title, sess_id),
-#                               all_sub_titles, 'Time from reponse poke (s)', signal_type_label, outlier_thresh=outlier_thresh,
-#                               trial_markers=block_trans_idxs)
-
-#         fpah.plot_aligned_signals(resp_noreward_pchoice[sess_id][signal_type], resp_noreward_pchoice['t'], 'Unrewarded Response by Choice Reward Probability - {} (session {})'.format(signal_type_title, sess_id),
-#                               all_sub_titles, 'Time from reponse poke (s)', signal_type_label, outlier_thresh=outlier_thresh,
-#                               trial_markers=block_trans_idxs)
-
-#         fpah.plot_aligned_signals(cpoke_in_br[sess_id][signal_type], cpoke_in_br['t'], 'Center Poke In by Block Rate - {} (session {})'.format(signal_type_title, sess_id),
-#                               all_sub_titles, 'Time from poke in (s)', signal_type_label, outlier_thresh=outlier_thresh,
-#                               trial_markers=block_trans_idxs)
-
-#         fpah.plot_aligned_signals(cpoke_out_br[sess_id][signal_type], cpoke_out_br['t'], 'Center Poke Out by Block Rate - {} (session {})'.format(signal_type_title, sess_id),
-#                               all_sub_titles, 'Time from poke out (s)', signal_type_label, outlier_thresh=outlier_thresh,
-#                               trial_markers=block_trans_idxs)
-
-#         fpah.plot_aligned_signals(cue_br[sess_id][signal_type], cue_br['t'], 'Response Cue by Block Rate - {} (session {})'.format(signal_type_title, sess_id),
-#                               all_sub_titles, 'Time from response cue (s)', signal_type_label, outlier_thresh=outlier_thresh,
-#                               trial_markers=block_trans_idxs)
-
-#         fpah.plot_aligned_signals(resp_choice_prev_outcome[sess_id][signal_type], resp_choice_prev_outcome['t'], 'Response by Choice after Outcome - {} (session {})'.format(signal_type_title, sess_id),
-#                               all_sub_titles, 'Time from response (s)', signal_type_label, outlier_thresh=outlier_thresh,
-#                               trial_markers=block_trans_idxs)
-
-#         fpah.plot_aligned_signals(cpoke_in_choice_prev_outcome[sess_id][signal_type], cpoke_in_choice_prev_outcome['t'], 'Center Poke In by Future Choice after Outcome - {} (session {})'.format(signal_type_title, sess_id),
-#                               all_sub_titles, 'Time from poke in (s)', signal_type_label, outlier_thresh=outlier_thresh,
-#                               trial_markers=block_trans_idxs)
-
-#         fpah.plot_aligned_signals(cpoke_out_choice_prev_outcome[sess_id][signal_type], cpoke_out_choice_prev_outcome['t'], 'Center Poke Out by Future Choice after Outcome - {} (session {})'.format(signal_type_title, sess_id),
-#                               all_sub_titles, 'Time from poke out (s)', signal_type_label, outlier_thresh=outlier_thresh,
-#                               trial_markers=block_trans_idxs)
-
-#         fpah.plot_aligned_signals(cue_choice[sess_id][signal_type], cue_choice['t'], 'Response Cue by Choice - {} (session {})'.format(signal_type_title, sess_id),
-#                               all_sub_titles, 'Time from response cue (s)', signal_type_label, outlier_thresh=outlier_thresh,
-#                               trial_markers=block_trans_idxs)
-
-#         fpah.plot_aligned_signals(resp_choice[sess_id][signal_type], resp_choice['t'], 'Response by Choice - {} (session {})'.format(signal_type_title, sess_id),
-#                               all_sub_titles, 'Time from response (s)', signal_type_label, outlier_thresh=outlier_thresh,
-#                               trial_markers=block_trans_idxs)
-
-#         fpah.plot_aligned_signals(resp_choice_curr_outcome[sess_id][signal_type], resp_choice_curr_outcome['t'], 'Response by Choice and Outcome - {} (session {})'.format(signal_type_title, sess_id),
-#                               all_sub_titles, 'Time from response (s)', signal_type_label, outlier_thresh=outlier_thresh,
-#                               trial_markers=block_trans_idxs)
-
-#         fpah.plot_aligned_signals(cue_side[sess_id][signal_type], cue_side['t'], 'Response Cue by Side - {} (session {})'.format(signal_type_title, sess_id),
-#                               all_sub_titles, 'Time from cue (s)', signal_type_label, outlier_thresh=outlier_thresh,
-#                               trial_markers=block_trans_idxs)
-
-#         fpah.plot_aligned_signals(resp_side[sess_id][signal_type], resp_side['t'], 'Response by Side - {} (session {})'.format(signal_type_title, sess_id),
-#                               all_sub_titles, 'Time from response (s)', signal_type_label, outlier_thresh=outlier_thresh,
-#                               trial_markers=block_trans_idxs)
-
-#         fpah.plot_aligned_signals(cue_side_choice[sess_id][signal_type], cue_side_choice['t'], 'Response Cue by Side & Choice - {} (session {})'.format(signal_type_title, sess_id),
-#                               all_sub_titles, 'Time from cue (s)', signal_type_label, outlier_thresh=outlier_thresh,
-#                               trial_markers=block_trans_idxs)
-
-#         fpah.plot_aligned_signals(resp_side_choice[sess_id][signal_type], resp_side_choice['t'], 'Response by Side & Choice - {} (session {})'.format(signal_type_title, sess_id),
-#                               all_sub_titles, 'Time from response (s)', signal_type_label, outlier_thresh=outlier_thresh,
-#                               trial_markers=block_trans_idxs)
-
-#         fpah.plot_aligned_signals(cue_side_choice_outcome[sess_id][signal_type], cue_side_choice_outcome['t'], 'Response Cue by Side, Choice & Outcome - {} (session {})'.format(signal_type_title, sess_id),
-#                               all_sub_titles, 'Time from cue (s)', signal_type_label, outlier_thresh=outlier_thresh,
-#                               trial_markers=block_trans_idxs)
-
-#         fpah.plot_aligned_signals(resp_side_choice_outcome[sess_id][signal_type], resp_side_choice_outcome['t'], 'Response by Side, Choice & Outcome - {} (session {})'.format(signal_type_title, sess_id),
-#                               all_sub_titles, 'Time from response (s)', signal_type_label, outlier_thresh=outlier_thresh,
-#                               trial_markers=block_trans_idxs)
-
+        print('  Finished in {:.1f} s'.format(time.perf_counter()-start))
 
 # %% Set up average plot options
 
@@ -889,7 +776,7 @@ right_left = {'DMS': {'loc': 'upper right'}, 'PL': {'loc': 'upper left'}}
 right_right = {'DMS': {'loc': 'upper right'}, 'PL': {'loc': 'upper right'}}
 all_legend_params = {Align.cport_on: {'DMS': {'loc': 'upper left'}, 'PL': None}, Align.cpoke_in: right_right,
                      Align.early_cpoke_in: right_right, Align.cue: left_left, Align.cpoke_out: left_left, Align.early_cpoke_out: left_left,
-                     Align.resp: right_right, Align.cue_poke_resp: right_left, Align.poke_cue_resp: right_left}
+                     Align.resp: left_left, Align.cue_poke_resp: right_left, Align.poke_cue_resp: right_left}
 
 def save_plot(fig, plot_name):
     if save_plots and not plot_name is None:
@@ -915,11 +802,14 @@ def plot_avg_signals(align, plot_groups, group_labels, plot_titles, gen_title, x
     if legend_params is None:
         legend_params = all_legend_params[align]
 
-    fig = fpah.plot_avg_signals(plot_groups, group_labels, mat, regions, t, gen_title.format(align_title), plot_titles, x_label, signal_label, xlims_dict,
+    fig, plotted = fpah.plot_avg_signals(plot_groups, group_labels, mat, regions, t, gen_title.format(align_title), plot_titles, x_label, signal_label, xlims_dict,
                                 dashlines=dashlines, legend_params=legend_params, group_colors=group_colors, use_se=use_se, ph=ph, pw=pw)
 
-    if not gen_plot_name is None:
+    if plotted and not gen_plot_name is None:
         save_plot(fig, gen_plot_name.format(align))
+
+    if not plotted:
+        plt.close(fig)
 
 # %% Choice, side, and prior reward groupings for multiple alignment points
 
@@ -945,10 +835,10 @@ plot_groups = [['prev_rewarded', 'prev_unrewarded'],
                ['stay_prev_rewarded', 'switch_prev_rewarded', 'stay_prev_unrewarded', 'switch_prev_unrewarded'],
                ['contra_prev_rewarded', 'ipsi_prev_rewarded', 'contra_prev_unrewarded', 'ipsi_prev_unrewarded']]
 group_labels = {'prev_rewarded': 'Reward', 'prev_unrewarded': 'No Reward',
-                'stay_prev_rewarded': 'Stay | Reward', 'switch_prev_rewarded': 'Switch | Reward',
-                'stay_prev_unrewarded': 'Stay | No Reward', 'switch_prev_unrewarded': 'Switch | No Reward',
-                'contra_prev_rewarded': 'Contra | Reward', 'ipsi_prev_rewarded': 'Ipsi | Reward',
-                'contra_prev_unrewarded': 'Contra | No Reward', 'ipsi_prev_unrewarded': 'Ipsi | No Reward'}
+                'stay_prev_rewarded': 'Stay | Rew', 'switch_prev_rewarded': 'Switch | Rew',
+                'stay_prev_unrewarded': 'Stay | No Rew', 'switch_prev_unrewarded': 'Switch | No Rew',
+                'contra_prev_rewarded': 'Contra | Rew', 'ipsi_prev_rewarded': 'Ipsi | Rew',
+                'contra_prev_unrewarded': 'Contra | No Rew', 'ipsi_prev_unrewarded': 'Ipsi | No Rew'}
 plot_titles = ['Prior Outcome', 'Prior Outcome/Choice', 'Prior Outcome/Side']
 gen_title = 'Prior Outcome by Choice or Side Aligned to {}'
 gen_plot_name = '{}_prev_outcome_choice_side'
@@ -986,14 +876,14 @@ for align in aligns:
 
 # %% Groupings by previous side choice and previous reward
 
-plot_groups = [['contra', 'ipsi'], ['prev_contra', 'prev_ipsi'],
-               ['contra_prev_rewarded', 'ipsi_prev_rewarded', 'contra_prev_unrewarded', 'ipsi_prev_unrewarded'],
-               ['prev_contra_prev_rewarded', 'prev_ipsi_prev_rewarded', 'prev_contra_prev_unrewarded', 'prev_ipsi_prev_unrewarded']]
+plot_groups = [['prev_contra', 'prev_ipsi'], ['contra', 'ipsi'],
+               ['prev_contra_prev_rewarded', 'prev_ipsi_prev_rewarded', 'prev_contra_prev_unrewarded', 'prev_ipsi_prev_unrewarded'],
+               ['contra_prev_rewarded', 'ipsi_prev_rewarded', 'contra_prev_unrewarded', 'ipsi_prev_unrewarded']]
 group_labels = {'contra': 'Contra', 'ipsi': 'Ipsi', 'prev_contra': 'Prev Contra', 'prev_ipsi': 'Prev Ipsi',
-                'contra_prev_rewarded': 'Contra | Reward', 'ipsi_prev_rewarded': 'Ipsi | Reward',
-                'contra_prev_unrewarded': 'Contra | No Reward', 'ipsi_prev_unrewarded': 'Ipsi | No Reward',
-                'prev_contra_prev_rewarded': 'Prev Rewarded Contra', 'prev_ipsi_prev_rewarded': 'Prev Rewarded Ipsi',
-                'prev_contra_prev_unrewarded': 'Prev Unrewarded Contra', 'prev_ipsi_prev_unrewarded': 'Prev Unrewarded Ipsi'}
+                'contra_prev_rewarded': 'Contra | Rew', 'ipsi_prev_rewarded': 'Ipsi | Rew',
+                'contra_prev_unrewarded': 'Contra | No Rew', 'ipsi_prev_unrewarded': 'Ipsi | No Rew',
+                'prev_contra_prev_rewarded': 'Prev Rew Contra', 'prev_ipsi_prev_rewarded': 'Prev Rew Ipsi',
+                'prev_contra_prev_unrewarded': 'Prev Unrew Contra', 'prev_ipsi_prev_unrewarded': 'Prev Unrew Ipsi'}
 
 plot_titles = ['Prev Choice', 'Future Choice', 'Prev Outcome and Prev Choice', 'Prev Outcome and Future Choice']
 gen_title = 'Prior Outcome by Prior or Next Choice Aligned to {}'
@@ -1008,12 +898,12 @@ for align in aligns:
 # response, prior outcome and prior/current choice
 align = Align.resp
 
-plot_groups = [['contra_prev_rewarded', 'ipsi_prev_rewarded', 'contra_prev_unrewarded', 'ipsi_prev_unrewarded'],
-               ['prev_contra_prev_rewarded', 'prev_ipsi_prev_rewarded', 'prev_contra_prev_unrewarded', 'prev_ipsi_prev_unrewarded']]
-group_labels = {'contra_prev_rewarded': 'Contra | Reward', 'ipsi_prev_rewarded': 'Ipsi | Reward',
-                'contra_prev_unrewarded': 'Contra | No Reward', 'ipsi_prev_unrewarded': 'Ipsi | No Reward',
-                'prev_contra_prev_rewarded': 'Prev Rewarded Contra', 'prev_ipsi_prev_rewarded': 'Prev Rewarded Ipsi',
-                'prev_contra_prev_unrewarded': 'Prev Unrewarded Contra', 'prev_ipsi_prev_unrewarded': 'Prev Unrewarded Ipsi'}
+plot_groups = [['prev_contra_prev_rewarded', 'prev_ipsi_prev_rewarded', 'prev_contra_prev_unrewarded', 'prev_ipsi_prev_unrewarded'],
+               ['contra_prev_rewarded', 'ipsi_prev_rewarded', 'contra_prev_unrewarded', 'ipsi_prev_unrewarded'],]
+group_labels = {'contra_prev_rewarded': 'Contra | Rew', 'ipsi_prev_rewarded': 'Ipsi | Rew',
+                'contra_prev_unrewarded': 'Contra | No Rew', 'ipsi_prev_unrewarded': 'Ipsi | No Rew',
+                'prev_contra_prev_rewarded': 'Prev Rew Contra', 'prev_ipsi_prev_rewarded': 'Prev Rew Ipsi',
+                'prev_contra_prev_unrewarded': 'Prev Unrew Contra', 'prev_ipsi_prev_unrewarded': 'Prev Unrew Ipsi'}
 
 plot_titles = ['Prev Outcome and Prev Choice', 'Prev Outcome and Current Choice']
 gen_title = 'Prior Outcome by Prior or Current Choice Aligned to {}'
@@ -1027,14 +917,14 @@ plot_groups = [['contra_rewarded_prev_rewarded', 'ipsi_rewarded_prev_rewarded', 
                ['contra_unrewarded_prev_rewarded', 'ipsi_unrewarded_prev_rewarded', 'contra_unrewarded_prev_unrewarded', 'ipsi_unrewarded_prev_unrewarded'],
                ['prev_contra_rewarded_prev_rewarded', 'prev_ipsi_rewarded_prev_rewarded', 'prev_contra_rewarded_prev_unrewarded', 'prev_ipsi_rewarded_prev_unrewarded'],
                ['prev_contra_unrewarded_prev_rewarded', 'prev_ipsi_unrewarded_prev_rewarded', 'prev_contra_unrewarded_prev_unrewarded', 'prev_ipsi_unrewarded_prev_unrewarded']]
-group_labels = {'contra_rewarded_prev_rewarded': 'Contra | Reward', 'ipsi_rewarded_prev_rewarded': 'Ipsi | Reward',
-                'contra_rewarded_prev_unrewarded': 'Contra | No Reward', 'ipsi_rewarded_prev_unrewarded': 'Ipsi | No Reward',
-                'contra_unrewarded_prev_rewarded': 'Contra | Reward', 'ipsi_unrewarded_prev_rewarded': 'Ipsi | Reward',
-                'contra_unrewarded_prev_unrewarded': 'Contra | No Reward', 'ipsi_unrewarded_prev_unrewarded': 'Ipsi | No Reward',
-                'prev_contra_rewarded_prev_rewarded': 'Prev Rewarded Contra', 'prev_ipsi_rewarded_prev_rewarded': 'Prev Rewarded Ipsi',
-                'prev_contra_rewarded_prev_unrewarded': 'Prev Unrewarded Contra', 'prev_ipsi_rewarded_prev_unrewarded': 'Prev Unrewarded Ipsi',
-                'prev_contra_unrewarded_prev_rewarded': 'Prev Rewarded Contra', 'prev_ipsi_unrewarded_prev_rewarded': 'Prev Rewarded Ipsi',
-                'prev_contra_unrewarded_prev_unrewarded': 'Prev Unrewarded Contra', 'prev_ipsi_unrewarded_prev_unrewarded': 'Prev Unrewarded Ipsi'}
+group_labels = {'contra_rewarded_prev_rewarded': 'Contra | Rew', 'ipsi_rewarded_prev_rewarded': 'Ipsi | Rew',
+                'contra_rewarded_prev_unrewarded': 'Contra | No Rew', 'ipsi_rewarded_prev_unrewarded': 'Ipsi | No Rew',
+                'contra_unrewarded_prev_rewarded': 'Contra | Rew', 'ipsi_unrewarded_prev_rewarded': 'Ipsi | Rew',
+                'contra_unrewarded_prev_unrewarded': 'Contra | No Rew', 'ipsi_unrewarded_prev_unrewarded': 'Ipsi | No Rew',
+                'prev_contra_rewarded_prev_rewarded': 'Prev Rew Contra', 'prev_ipsi_rewarded_prev_rewarded': 'Prev Rew Ipsi',
+                'prev_contra_rewarded_prev_unrewarded': 'Prev Unrew Contra', 'prev_ipsi_rewarded_prev_unrewarded': 'Prev Unrew Ipsi',
+                'prev_contra_unrewarded_prev_rewarded': 'Prev Rew Contra', 'prev_ipsi_unrewarded_prev_rewarded': 'Prev Rew Ipsi',
+                'prev_contra_unrewarded_prev_unrewarded': 'Prev Unrew Contra', 'prev_ipsi_unrewarded_prev_unrewarded': 'Prev Unrew Ipsi'}
 
 plot_titles = ['Rewarded by Previous Outcome/Choice', 'Unrewarded by Previous Outcome/Choice', 'Rewarded Choice by Previous Outcome', 'Unrewarded Choice by Previous Outcome']
 gen_title = 'Prev & Current Outcome by Prev or Next Choice Aligned to {}'
@@ -1051,8 +941,8 @@ align = Align.resp
 plot_groups = [['rewarded', 'unrewarded'],
                ['rewarded_prev_rewarded', 'rewarded_prev_unrewarded', 'unrewarded_prev_rewarded', 'unrewarded_prev_unrewarded']]
 group_labels = {'rewarded': 'Rewarded', 'unrewarded': 'Unrewarded',
-                'rewarded_prev_rewarded': 'Rewarded | Reward', 'rewarded_prev_unrewarded': 'Rewarded | No Reward',
-                'unrewarded_prev_rewarded': 'Unrewarded | Reward', 'unrewarded_prev_unrewarded': 'Unrewarded | No Reward'}
+                'rewarded_prev_rewarded': 'Rew | Rew', 'rewarded_prev_unrewarded': 'Rew | No Rew',
+                'unrewarded_prev_rewarded': 'Unrew | Rew', 'unrewarded_prev_unrewarded': 'Unrew | No Rew'}
 
 plot_titles = ['Current Outcome', 'Current & Prior Outcome']
 gen_title = 'Current & Prior Outcome Aligned to {}'
@@ -1065,12 +955,12 @@ plot_avg_signals(align, plot_groups, group_labels, plot_titles, gen_title, gen_p
 plot_groups = [['contra_rewarded', 'ipsi_rewarded', 'contra_unrewarded', 'ipsi_unrewarded'],
                ['contra_rewarded_prev_rewarded', 'ipsi_rewarded_prev_rewarded', 'contra_rewarded_prev_unrewarded', 'ipsi_rewarded_prev_unrewarded'],
                ['contra_unrewarded_prev_rewarded', 'ipsi_unrewarded_prev_rewarded', 'contra_unrewarded_prev_unrewarded', 'ipsi_unrewarded_prev_unrewarded']]
-group_labels = {'contra_rewarded': 'Rewarded Contra', 'ipsi_rewarded': 'Rewarded Ipsi',
-                'contra_unrewarded': 'Unrewarded Contra', 'ipsi_unrewarded': 'Unrewarded Ipsi',
-                'contra_rewarded_prev_rewarded': 'Contra | Reward', 'ipsi_rewarded_prev_rewarded': 'Ipsi | Reward',
-                'contra_rewarded_prev_unrewarded': 'Contra | No Reward', 'ipsi_rewarded_prev_unrewarded': 'Ipsi | No Reward',
-                'contra_unrewarded_prev_rewarded': 'Contra | Reward', 'ipsi_unrewarded_prev_rewarded': 'Ipsi | Reward',
-                'contra_unrewarded_prev_unrewarded': 'Contra | No Reward', 'ipsi_unrewarded_prev_unrewarded': 'Ipsi | No Reward'}
+group_labels = {'contra_rewarded': 'Rew Contra', 'ipsi_rewarded': 'Rew Ipsi',
+                'contra_unrewarded': 'Unrew Contra', 'ipsi_unrewarded': 'Unrew Ipsi',
+                'contra_rewarded_prev_rewarded': 'Contra | Rew', 'ipsi_rewarded_prev_rewarded': 'Ipsi | Rew',
+                'contra_rewarded_prev_unrewarded': 'Contra | No Rew', 'ipsi_rewarded_prev_unrewarded': 'Ipsi | No Rew',
+                'contra_unrewarded_prev_rewarded': 'Contra | Rew', 'ipsi_unrewarded_prev_rewarded': 'Ipsi | Rew',
+                'contra_unrewarded_prev_unrewarded': 'Contra | No Rew', 'ipsi_unrewarded_prev_unrewarded': 'Ipsi | No Rew'}
 
 plot_titles = ['Side/Outcome', 'Rewarded Side by Prior Outcome', 'Unrewarded Side by Prior Outcome']
 gen_title = 'Current & Prior Outcome by Choice Side Aligned to {}'
@@ -1083,12 +973,12 @@ plot_avg_signals(align, plot_groups, group_labels, plot_titles, gen_title, gen_p
 plot_groups = [['stay_rewarded', 'switch_rewarded', 'stay_unrewarded', 'switch_unrewarded'],
                ['stay_rewarded_prev_rewarded', 'switch_rewarded_prev_rewarded', 'stay_rewarded_prev_unrewarded', 'switch_rewarded_prev_unrewarded'],
                ['stay_unrewarded_prev_rewarded', 'switch_unrewarded_prev_rewarded', 'stay_unrewarded_prev_unrewarded', 'switch_unrewarded_prev_unrewarded']]
-group_labels = {'stay_rewarded': 'Rewarded Stay', 'switch_rewarded': 'Rewarded Switch',
-                'stay_unrewarded': 'Unrewarded Stay', 'switch_unrewarded': 'Unrewarded Switch',
-                'stay_rewarded_prev_rewarded': 'Stay | Reward', 'switch_rewarded_prev_rewarded': 'Switch | Reward',
-                'stay_rewarded_prev_unrewarded': 'Stay | No Reward', 'switch_rewarded_prev_unrewarded': 'Switch | No Reward',
-                'stay_unrewarded_prev_rewarded': 'Stay | Reward', 'switch_unrewarded_prev_rewarded': 'Switch | Reward',
-                'stay_unrewarded_prev_unrewarded': 'Stay | No Reward', 'switch_unrewarded_prev_unrewarded': 'Switch | No Reward'}
+group_labels = {'stay_rewarded': 'Rew Stay', 'switch_rewarded': 'Rew Switch',
+                'stay_unrewarded': 'Unrew Stay', 'switch_unrewarded': 'Unrew Switch',
+                'stay_rewarded_prev_rewarded': 'Stay | Rew', 'switch_rewarded_prev_rewarded': 'Switch | Rew',
+                'stay_rewarded_prev_unrewarded': 'Stay | No Rew', 'switch_rewarded_prev_unrewarded': 'Switch | No Rew',
+                'stay_unrewarded_prev_rewarded': 'Stay | Rew', 'switch_unrewarded_prev_rewarded': 'Switch | Rew',
+                'stay_unrewarded_prev_unrewarded': 'Stay | No Rew', 'switch_unrewarded_prev_unrewarded': 'Switch | No Rew'}
 
 plot_titles = ['Choice/Outcome', 'Rewarded Choice by Prior Outcome', 'Unrewarded Choice by Prior Outcome']
 gen_title = 'Current & Prior Outcome by Choice Aligned to {}'
@@ -1102,10 +992,10 @@ plot_groups = [['contra_rewarded', 'ipsi_rewarded', 'contra_unrewarded', 'ipsi_u
                ['stay_rewarded', 'switch_rewarded', 'stay_unrewarded', 'switch_unrewarded'],
                ['contra_stay_rewarded', 'contra_switch_rewarded', 'ipsi_stay_rewarded', 'ipsi_switch_rewarded'],
                ['contra_stay_unrewarded', 'contra_switch_unrewarded', 'ipsi_stay_unrewarded', 'ipsi_switch_unrewarded']]
-group_labels = {'contra_rewarded': 'Rewarded Contra', 'ipsi_rewarded': 'Rewarded Ipsi',
-                'contra_unrewarded': 'Unrewarded Contra', 'ipsi_unrewarded': 'Unrewarded Ipsi',
-                'stay_rewarded': 'Rewarded Stay', 'switch_rewarded': 'Rewarded Switch',
-                'stay_unrewarded': 'Unrewarded Stay', 'switch_unrewarded': 'Unrewarded Switch',
+group_labels = {'contra_rewarded': 'Rew Contra', 'ipsi_rewarded': 'Rew Ipsi',
+                'contra_unrewarded': 'Unrew Contra', 'ipsi_unrewarded': 'Unrew Ipsi',
+                'stay_rewarded': 'Rew Stay', 'switch_rewarded': 'Rew Switch',
+                'stay_unrewarded': 'Unrew Stay', 'switch_unrewarded': 'Unrew Switch',
                 'contra_stay_rewarded': 'Contra Stay', 'contra_stay_unrewarded': 'Contra Stay',
                 'contra_switch_rewarded': 'Contra Switch', 'contra_switch_unrewarded': 'Contra Switch',
                 'ipsi_stay_rewarded': 'Ipsi Stay', 'ipsi_stay_unrewarded': 'Ipsi Stay',
@@ -1145,12 +1035,12 @@ align = Align.resp
 plot_groups = [['rewarded_future_stay', 'rewarded_future_switch', 'unrewarded_future_stay', 'unrewarded_future_switch'],
                ['contra_rewarded_future_stay', 'contra_rewarded_future_switch', 'ipsi_rewarded_future_stay', 'ipsi_rewarded_future_switch'],
                ['contra_unrewarded_future_stay', 'contra_unrewarded_future_switch', 'ipsi_unrewarded_future_stay', 'ipsi_unrewarded_future_switch']]
-group_labels = {'rewarded_future_stay': 'Stay | Reward', 'rewarded_future_switch': 'Switch | Reward',
-                'unrewarded_future_stay': 'Stay | No Reward', 'unrewarded_future_switch': 'Switch | No Reward',
-                'contra_rewarded_future_stay': 'Stay | Rewarded Contra', 'contra_rewarded_future_switch': 'Switch | Rewarded Contra',
-                'ipsi_rewarded_future_stay': 'Stay | Rewarded Ipsi', 'ipsi_rewarded_future_switch': 'Switch | Rewarded Ipsi',
-                'contra_unrewarded_future_stay': 'Stay | Unrewarded Contra', 'contra_unrewarded_future_switch': 'Switch | Unrewarded Contra',
-                'ipsi_unrewarded_future_stay': 'Stay | Unrewarded Ipsi', 'ipsi_unrewarded_future_switch': 'Switch | Unrewarded Ipsi'}
+group_labels = {'rewarded_future_stay': 'Stay | Rew', 'rewarded_future_switch': 'Switch | Rew',
+                'unrewarded_future_stay': 'Stay | No Rew', 'unrewarded_future_switch': 'Switch | No Rew',
+                'contra_rewarded_future_stay': 'Stay | Rew Contra', 'contra_rewarded_future_switch': 'Switch | Rew Contra',
+                'ipsi_rewarded_future_stay': 'Stay | Rew Ipsi', 'ipsi_rewarded_future_switch': 'Switch | Rew Ipsi',
+                'contra_unrewarded_future_stay': 'Stay | Unrew Contra', 'contra_unrewarded_future_switch': 'Switch | Unrew Contra',
+                'ipsi_unrewarded_future_stay': 'Stay | Unrew Ipsi', 'ipsi_unrewarded_future_switch': 'Switch | Unrew Ipsi'}
 
 plot_titles = ['Outcome/Future Choice', 'Rewarded Side by Future Choice', 'Unrewarded Side by Future Choice']
 gen_title = 'Current Outcome by Future Choice Aligned to {}'
@@ -1402,7 +1292,6 @@ for align in aligns:
 
 # block rates and choice probabilities at cue and response
 aligns = [Align.cue, Align.cpoke_out, Align.resp]
-legend_params = {'DMS': {'loc': 'upper left', 'ncols': 2}, 'PL': {'loc': 'upper right', 'ncols': 2}}
 
 gen_plot_groups = ['choice_block_{}', 'choice_block_{}_contra', 'choice_block_{}_ipsi']
 plot_groups = [[group.format(cp) for cp in choice_block_probs] for group in gen_plot_groups]
@@ -1413,7 +1302,7 @@ gen_title = 'Block and Choice Reward Probabilities Grouped by Choice Side Aligne
 gen_plot_name = '{}_choice_block_prob_side'
 
 for align in aligns:
-    plot_avg_signals(align, plot_groups, group_labels, plot_titles, gen_title, gen_plot_name=gen_plot_name, legend_params=legend_params)
+    plot_avg_signals(align, plot_groups, group_labels, plot_titles, gen_title, gen_plot_name=gen_plot_name)
 
 
 # block rates and choice probabilities at response by outcome
@@ -1432,7 +1321,7 @@ plot_titles = ['Rewarded', 'Unrewarded']
 gen_title = 'Block and Choice Reward Probabilities Grouped by Outcome Aligned to {}'
 gen_plot_name = '{}_choice_block_prob_outcome'
 
-plot_avg_signals(align, plot_groups, group_labels, plot_titles, gen_title, gen_plot_name=gen_plot_name, legend_params=legend_params)
+plot_avg_signals(align, plot_groups, group_labels, plot_titles, gen_title, gen_plot_name=gen_plot_name)
 
 
 # by outcome and choice side
@@ -1443,7 +1332,7 @@ plot_titles = ['Rewarded Contra Choice', 'Unrewarded Contra Choice', 'Rewarded I
 gen_title = 'Block and Choice Reward Probabilities Grouped by Choice Side/Outcome Aligned to {}'
 gen_plot_name = '{}_choice_block_prob_side_outcome'
 
-plot_avg_signals(align, plot_groups, group_labels, plot_titles, gen_title, gen_plot_name=gen_plot_name, legend_params=legend_params)
+plot_avg_signals(align, plot_groups, group_labels, plot_titles, gen_title, gen_plot_name=gen_plot_name)
 
 
 # rewarded choice probability normalized to the activity at the time of the response poke
@@ -1470,7 +1359,14 @@ for g in utils.flatten(plot_groups):
     act = act - act[:,center_idx][:,None]
     norm_mat[region][g] = act
 
-fig = fpah.plot_avg_signals(plot_groups, group_labels, norm_mat, [region], t, title, plot_titles, x_label, 'Shifted Z-scored ΔF/F', xlims,
-                            dashlines=dashlines, legend_params=legend_params, use_se=use_se, ph=ph*1.25, pw=pw)
+fig, _ = fpah.plot_avg_signals(plot_groups, group_labels, norm_mat, [region], t, title, plot_titles, x_label, 'Shifted Z-scored ΔF/F', xlims,
+                            dashlines=dashlines, use_se=use_se, ph=ph*1.25, pw=pw)
 
 save_plot(fig, plot_name)
+
+# %% Clear variables
+
+import gc
+
+del cport_on_mats, cpoke_in_mats, early_cpoke_in_mats, cpoke_out_mats, early_cpoke_out_mats, cue_mats, resp_mats, cue_poke_resp_mats, poke_cue_resp_mats, all_mats
+gc.collect()
