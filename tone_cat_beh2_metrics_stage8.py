@@ -25,6 +25,7 @@ plot_bail = False
 
 stage = 8
 active_subjects_only = False
+n_back = 2
 
 subject_info = db_access.get_active_subj_stage('ToneCatDelayResp2')
 if active_subjects_only:
@@ -33,10 +34,11 @@ else:
     subject_info = subject_info[subject_info['stage'] >= stage]
 
 subj_ids = subject_info['subjid']
+subj_ids = 188
 
 # get session ids
 sess_ids = db_access.get_subj_sess_ids(subj_ids, stage_num=stage)
-sess_ids = bah.limit_sess_ids(sess_ids, 5)
+sess_ids = bah.limit_sess_ids(sess_ids, n_back)
 
 # get trial information
 loc_db = db.LocalDB_ToneCatDelayResp()  # reload=True

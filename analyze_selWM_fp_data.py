@@ -17,23 +17,22 @@ import fp_analysis_helpers as fpah
 from fp_analysis_helpers import Alignment as Align
 import numpy as np
 import matplotlib.pyplot as plt
-import pickle
 import copy
 
 # %% Load behavior data
 
 # used for saving plots
 behavior_name = 'SelWM - Two Tones'
-sess_ids = db_access.get_fp_protocol_subj_sess_ids('ToneCatDelayResp', 8)
+sess_ids = db_access.get_fp_data_sess_ids(protocol='ToneCatDelayResp', stage_num=8)
 
 # behavior_name = 'SelWM - Grow Nosepoke'
-# sess_ids = db_access.get_fp_protocol_subj_sess_ids('ToneCatDelayResp2', 7)
+# sess_ids = db_access.get_fp_sess_ids(protocol='ToneCatDelayResp2', stage_num=7)
 
 # behavior_name = 'SelWM - Grow Delay'
-# sess_ids = db_access.get_fp_protocol_subj_sess_ids('ToneCatDelayResp2', 9)
+# sess_ids = db_access.get_fp_sess_ids(protocol='ToneCatDelayResp2', stage_num=9)
 
 # behavior_name = 'SelWM - Two Tones'
-# sess_ids = db_access.get_fp_protocol_subj_sess_ids('ToneCatDelayResp2', 10)
+# sess_ids = db_access.get_fp_sess_ids(protocol='ToneCatDelayResp2', stage_num=10)
 
 # optionally limit sessions based on subject ids
 subj_ids = [179]

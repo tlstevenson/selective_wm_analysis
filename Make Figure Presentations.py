@@ -6,6 +6,7 @@ Created on Sat Jun 29 23:59:38 2024
 """
 
 # %%
+import init
 import os.path as path
 import fp_analysis_helpers as fpah
 from fp_analysis_helpers import Alignment as Align
@@ -25,16 +26,20 @@ import pyutils.utils as utils
 # fpah.generate_figure_ppt(path.join(fpah.get_base_figure_save_path(), 'SelWM - Grow Delay - all'), group_by=['behavior', 'alignment', 'filename', 'subject'], behaviors='SelWM - Grow Delay')
 # fpah.generate_figure_ppt(path.join(fpah.get_base_figure_save_path(), 'SelWM - Grow Nosepoke - all'), group_by=['behavior', 'alignment', 'filename', 'subject'], behaviors='SelWM - Grow Nosepoke')
 # fpah.generate_figure_ppt(path.join(fpah.get_base_figure_save_path(), 'SelWM - Two Tones - all'), group_by=['behavior', 'alignment', 'filename', 'subject'], behaviors='SelWM - Two Tones')
-fpah.generate_figure_ppt(path.join(fpah.get_base_figure_save_path(), 'Two-armed Bandit - all'), group_by=['behavior', 'alignment', 'filename', 'subject'], behaviors='Two-armed Bandit')
-fpah.generate_figure_ppt(path.join(fpah.get_base_figure_save_path(), 'Intertemporal Choice - all'), group_by=['behavior', 'alignment', 'filename', 'subject'], behaviors='Intertemporal Choice')
+# fpah.generate_figure_ppt(path.join(fpah.get_base_figure_save_path(), 'Two-armed Bandit - all'), group_by=['behavior', 'alignment', 'filename', 'subject'], behaviors='Two-armed Bandit')
+# fpah.generate_figure_ppt(path.join(fpah.get_base_figure_save_path(), 'Intertemporal Choice - all'), group_by=['behavior', 'alignment', 'filename', 'subject'], behaviors='Intertemporal Choice')
 # fpah.generate_figure_ppt(path.join(fpah.get_base_figure_save_path(), 'Foraging - all'), group_by=['behavior', 'alignment', 'filename', 'subject'], behaviors='Foraging')
 # fpah.generate_figure_ppt(path.join(fpah.get_base_figure_save_path(), 'Operant Conditioning - all'), group_by=['behavior', 'alignment', 'filename', 'subject'], behaviors='Operant Pavlovian Conditioning')
 
 # By Alignment across all subjects and behaviors are adjacent
-for a in Align:
-    fpah.generate_figure_ppt(path.join(fpah.get_base_figure_save_path(), '{} - all by subj'.format(fpah.get_align_title(a))), group_by=['alignment', 'subject', 'behavior', 'filename'], alignments = a)
-    fpah.generate_figure_ppt(path.join(fpah.get_base_figure_save_path(), '{} - all by beh filename'.format(fpah.get_align_title(a))), group_by=['alignment', 'behavior', 'filename', 'subject'], alignments = a)
+# for a in Align:
+#     fpah.generate_figure_ppt(path.join(fpah.get_base_figure_save_path(), '{} - all by subj'.format(fpah.get_align_title(a))), group_by=['alignment', 'subject', 'behavior', 'filename'], alignments = a)
+#     fpah.generate_figure_ppt(path.join(fpah.get_base_figure_save_path(), '{} - all by beh filename'.format(fpah.get_align_title(a))), group_by=['alignment', 'behavior', 'filename', 'subject'], alignments = a)
 
+# By subject across all behaviors and alignments
+subjects = [179, 180, 182, 188, 191, 202, 207]
+for sub in subjects:
+    fpah.generate_figure_ppt(path.join(fpah.get_base_figure_save_path(), '{}'.format(sub)), group_by=['subject', 'alignment', 'filename', 'behavior'], subjects = sub)
 
 #%%
 interest_fnames = {
@@ -62,3 +67,14 @@ fpah.generate_figure_ppt(path.join(fpah.get_base_figure_save_path(), 'Interestin
 
 fpah.generate_figure_ppt(path.join(fpah.get_base_figure_save_path(), 'Interesting groupings by filename'),
                          group_by=['alignment', 'behavior', 'filename', 'subject'], alignments=alignments, filenames=utils.flatten(interest_fnames))
+
+# %%
+
+fpah.generate_figure_ppt(path.join(fpah.get_base_figure_save_path(), 'Power Spectra'),
+                         group_by=['behavior', 'subject', 'filename'], behaviors='Power Spectra', alignments='')
+
+fpah.generate_figure_ppt(path.join(fpah.get_base_figure_save_path(), 'Reward Responses - masked'),
+                         group_by=['behavior', 'subject', 'filename'], behaviors='Reward Comparison', alignments='')
+
+fpah.generate_figure_ppt(path.join(fpah.get_base_figure_save_path(), 'Response Cue Responses - masked'),
+                         group_by=['behavior', 'subject', 'filename'], behaviors='Response Cue Comparison', alignments='')

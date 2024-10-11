@@ -26,14 +26,14 @@ import copy
 behavior_name = 'Foraging'
 
 # get all session ids for given protocol
-sess_ids = db_access.get_fp_protocol_subj_sess_ids('ClassicRLTasks', 4)
+sess_ids = db_access.get_fp_data_sess_ids(protocol='ClassicRLTasks', stage_num=4)
 
 # optionally limit sessions based on subject ids
-subj_ids = [191]
-sess_ids = {k: v for k, v in sess_ids.items() if k in subj_ids}
+#subj_ids = [191]
+#sess_ids = {k: v for k, v in sess_ids.items() if k in subj_ids}
 
 loc_db = db.LocalDB_BasicRLTasks('foraging')
-sess_data = loc_db.get_behavior_data(utils.flatten(sess_ids)) # reload=True
+sess_data = loc_db.get_behavior_data(utils.flatten(sess_ids), reload=True) # reload=True
 
 # fix for bug with persisting response and reward time on older versions of protocol
 sess_data.loc[~sess_data['hit'], ['response_time', 'reward_time']] = np.nan
@@ -73,9 +73,9 @@ for subj_id in sess_ids.keys():
 
 # %% Observe any sub-signals
 
-# tmp_sess_id = {191: [102620]}
-# tmp_fp_data, tmp_implant_info = fpah.load_fp_data(loc_db, tmp_sess_id)
-# sub_signal = [0, np.inf] # [2200, 2600] #
+# tmp_sess_id = {202: [101864]}
+# #tmp_fp_data, tmp_implant_info = fpah.load_fp_data(loc_db, tmp_sess_id, iso_lpf=1)
+# sub_signal = [0, np.inf] # [400, 600] #
 # filter_outliers = True
 
 # subj_id = list(tmp_sess_id.keys())[0]

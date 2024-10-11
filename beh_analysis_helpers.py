@@ -159,7 +159,7 @@ def plot_rate_heatmap(rate_dict, column_key, column_name, row_key, row_name, ax=
 def get_rew_rate_hist(sess_data, n_back=5, kernel='uniform'):
 
     hist_cols = ['rew_rate_hist_all', 'rew_rate_hist_left_all', 'rew_rate_hist_right_all',
-                   'rew_rate_hist_left_only', 'rew_rate_hist_right_only']
+                 'rew_rate_hist_left_only', 'rew_rate_hist_right_only']
 
     for col in hist_cols:
         sess_data[col] = None

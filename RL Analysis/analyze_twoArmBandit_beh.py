@@ -588,7 +588,7 @@ for subj_id in subj_ids:
             choice_outcome = choices.copy()
             # reformat choices to be -1/+1 for right/left predictors
             choices[choices == 0] = -1
-            # create win-stay/lose_switch predictors
+            # create win-stay/lose_switch predictors of -1/+1 based on choice and outcome (-1 for rewarded/right or unrewarded/left and vice versa)
             winstay = rewarded.copy()
             winstay[winstay == 0] = -1
             winstay = winstay * choices

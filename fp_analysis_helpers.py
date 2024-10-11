@@ -10,15 +10,19 @@ import pyutils.utils as utils
 from sys_neuro_tools import plot_utils, fp_utils
 import numpy as np
 import pandas as pd
-from enum import Enum
+from enum import StrEnum
 import matplotlib.pyplot as plt
 import scipy.signal as sig
+from scipy.optimize import curve_fit
 import os.path as path
 import os
 from glob import glob
 from pptx import Presentation
 from pptx.enum.text import PP_ALIGN
 from pptx.util import Inches, Pt
+import time
+import copy
+import warnings
 
 # %% trial start timestamps
 
@@ -32,7 +36,8 @@ from pptx.util import Inches, Pt
 
 # Some sessions have poor signal quality due to patch cord connection issues, so this function is used to exclude fp signal and behavioral data from analyses
 # for such sessions, specify time ranges to include in seconds
-__sess_exclusions = {101853: {'PL': [0,832]},
+__sess_exclusions = {96556: {'PL': [0,3871]},
+                     101853: {'PL': [0,832]},
                      101906: {'PL': [0,1072], 'DMS': [0,2188]},
                      102186: {'PL': [[0,349], [350,1901]]},
                      102235: {'PL': [[0,57], [57.5,3659], [3659.5]]}, #, 'DMS': [[0,3659], [3659.5]]},
@@ -55,45 +60,54 @@ __sess_exclusions = {101853: {'PL': [0,832]},
                      102367: {'PL': [0,382], 'DMS': [0,382]}
                     }
 
-__sess_ignore = [101581]
+__sess_ignore = [100323, 101581]
 
-# %% Loading and plotting methods
+# choose 405 over 420 when there are sessions with both for 3.6
+preferred_isos = {182: ['405', '420'], 202: ['405', '420'], 179: ['420', '405'],
+                  180: ['420', '405'], 188: ['420', '405'], 191: ['420', '405'], 207: ['420', '405']}
 
-def load_fp_data(loc_db, sess_ids, isos=None, ligs=None, reload=False):
+# %% Loading methods
+
+def load_fp_data(loc_db, sess_ids, isos=None, ligs=None, reload=False, fit_baseline=True, lig_lpf=10, iso_lpf=1):
     ''' Loads and processes fiber photometry data, optionally choosing which wavelengths are ligand and isosbsestic.'''
 
-    # check to see if any sessions should just be ignored
-    for subj_id in sess_ids.keys():
-        ignore_exists = np.array([i in __sess_ignore for i in sess_ids[subj_id]])
-        sess_ids[subj_id] = np.array(sess_ids[subj_id])
-        sess_ids[subj_id] = sess_ids[subj_id][~ignore_exists]
+    start = time.perf_counter()
 
     # get fiber photometry data
     fp_data = loc_db.get_sess_fp_data(utils.flatten(sess_ids), reload=reload)
+
+    print('Retreived FP data for {} session(s) in {:.1f} s'.format(len(utils.flatten(sess_ids)), time.perf_counter()-start))
+
     # separate into different dictionaries
     implant_info = fp_data['implant_info']
     fp_data = fp_data['fp_data']
 
-    if isos is None:
-        isos = np.array(['420', '405'])
-    elif not utils.is_list(isos):
-        isos = np.array([isos])
-
     if ligs is None:
-        ligs = np.array(['490', '465'])
+        ligs = ['490', '465']
     elif not utils.is_list(ligs):
-        ligs = np.array([ligs])
+        ligs = [ligs]
 
+    ligs = np.array(ligs)
+
+    # process the signals
     for subj_id in sess_ids.keys():
+        
+        if isos is None:
+            subj_isos = preferred_isos[subj_id]
+        elif not utils.is_list(isos):
+            subj_isos = [isos]
+            
+        subj_isos = np.array(subj_isos)
+        
         for sess_id in sess_ids[subj_id]:
-
-            raw_signals = fp_data[subj_id][sess_id]['raw_signals']
 
             fp_data[subj_id][sess_id]['processed_signals'] = {}
 
+            raw_signals = fp_data[subj_id][sess_id]['raw_signals']
+
             for region in raw_signals.keys():
                 lig_sel = np.array([k in raw_signals[region].keys() for k in ligs])
-                iso_sel = np.array([k in raw_signals[region].keys() for k in isos])
+                iso_sel = np.array([k in raw_signals[region].keys() for k in subj_isos])
 
                 if sum(lig_sel) > 1:
                     lig = ligs[0]
@@ -104,25 +118,33 @@ def load_fp_data(loc_db, sess_ids, isos=None, ligs=None, reload=False):
                     raise Exception('No ligand wavelength found')
 
                 if sum(iso_sel) > 1:
-                    iso = isos[0]
-                    print('Found {} matching ligand wavelengths. Choosing {} nm'.format(sum(iso_sel), isos[0]))
+                    iso = subj_isos[0]
+                    print('Found {} matching iso wavelengths. Choosing {} nm'.format(sum(iso_sel), subj_isos[0]))
                 elif sum(iso_sel) == 1:
-                    iso = isos[iso_sel][0]
+                    iso = subj_isos[iso_sel][0]
                 else:
                     raise Exception('No isosbestic wavelength found')
 
                 raw_lig = raw_signals[region][lig]
                 raw_iso = raw_signals[region][iso]
 
+                start = time.perf_counter()
+
                 fp_data[subj_id][sess_id]['processed_signals'][region] = get_all_processed_signals(raw_lig, raw_iso,
                                                                                                    t=fp_data[subj_id][sess_id]['time'],
                                                                                                    sess_id=sess_id, region=region,
-                                                                                                   trial_start_ts=fp_data[subj_id][sess_id]['trial_start_ts'])
+                                                                                                   trial_start_ts=fp_data[subj_id][sess_id]['trial_start_ts'],
+                                                                                                   fit_baseline=fit_baseline,
+                                                                                                   lig_lpf=lig_lpf, iso_lpf=iso_lpf)
+
+                print('  Processed FP data in {:.1f} s'.format(time.perf_counter()-start))
+
 
     return fp_data, implant_info
 
 
-def get_all_processed_signals(raw_lig, raw_iso, t, sess_id=None, region=None, trial_start_ts=None):
+def get_all_processed_signals(raw_lig, raw_iso, t, sess_id=None, region=None, trial_start_ts=None, fit_baseline=True,
+                              lig_lpf=10, iso_lpf=1, filter_dropout_outliers=True):
     ''' Gets all possible processed signals and intermediaries for the given raw signals.
         Will check to see if any signals should be excluded. Also will also optionally exclude signals before and after the behavior.'''
 
@@ -139,103 +161,136 @@ def get_all_processed_signals(raw_lig, raw_iso, t, sess_id=None, region=None, tr
     dff_iso = empty_signal.copy()
     dff_iso_baseline = empty_signal.copy()
 
-    sr = 1/np.mean(np.diff(t))
+    # if we are to ignore this session, just leave all processed signals as nan
+    if sess_id is None or not sess_id in __sess_ignore:
 
-    if not trial_start_ts is None and not t is None:
-        start_ts_idx = np.argmin(np.abs(t - trial_start_ts[0]))
-        end_ts_idx = np.argmin(np.abs(t - trial_start_ts[-1]))
-    else:
-        start_ts_idx = 0
-        end_ts_idx = len(raw_lig)
+        sr = 1/np.mean(np.diff(t))
 
-    # In order to exclude parts of the signal, need to pass in the time, session id, and region
-    if not sess_id is None and not region is None and sess_id in __sess_exclusions.keys() and region in __sess_exclusions[sess_id].keys():
-
-        t_ranges = __sess_exclusions[sess_id][region]
-
-        if not utils.is_list(t_ranges[0]):
-            t_ranges = [t_ranges]
-
-    else:
-        t_ranges = [[t[0], t[-1]]]
-
-    # process each time range independently
-    for t_range in t_ranges:
-        start_idx = np.argmin(np.abs(t - t_range[0]))
-        if len(t_range) == 1:
-            # go to the end of the signal
-            end_idx = len(t)
+        if not trial_start_ts is None and not t is None:
+            start_ts_idx = np.argmin(np.abs(t - trial_start_ts[0]))
+            # end the signal a little past the last trial start timestamp (which is sent before the trial interrupted when ending the recording)
+            end_ts_idx = np.argmin(np.abs(t - trial_start_ts[-1] - 20))
         else:
-            end_idx = np.argmin(np.abs(t - t_range[1]))
+            start_ts_idx = 0
+            end_ts_idx = len(raw_lig)
 
-        if start_idx < start_ts_idx:
-            start_idx = start_ts_idx
+        # In order to exclude parts of the signal, need to pass in the time, session id, and region
+        if not sess_id is None and not region is None and sess_id in __sess_exclusions.keys() and region in __sess_exclusions[sess_id].keys():
 
-        if end_idx > end_ts_idx:
-            end_idx = end_ts_idx
+            t_ranges = __sess_exclusions[sess_id][region]
 
-        sub_raw_lig = raw_lig[start_idx:end_idx]
-        sub_raw_iso = raw_iso[start_idx:end_idx]
+            if not utils.is_list(t_ranges[0]):
+                t_ranges = [t_ranges]
 
-        # handle nan values so the filtering works correctly
-        # Since we don't want to just remove the nans, first interpolate them
-        lig_nans = np.isnan(sub_raw_lig)
-        iso_nans = np.isnan(sub_raw_iso)
+        else:
+            t_ranges = [[t[0], t[-1]]]
 
-        if any(lig_nans):
-            sub_raw_lig = pd.Series(sub_raw_lig).interpolate(method='spline', order=2, limit_direction='both').to_numpy()
+        # process each time range independently
+        for t_range in t_ranges:
+            start_idx = np.argmin(np.abs(t - t_range[0]))
+            if len(t_range) == 1:
+                # go to the end of the signal
+                end_idx = len(t)
+            else:
+                end_idx = np.argmin(np.abs(t - t_range[1]))
 
-        if any(iso_nans):
-            sub_raw_iso = pd.Series(sub_raw_iso).interpolate(method='spline', order=2, limit_direction='both').to_numpy()
+            if start_idx < start_ts_idx:
+                start_idx = start_ts_idx
 
-        sub_filt_lig = fp_utils.filter_signal(sub_raw_lig, 10, sr)
-        sub_filt_iso = fp_utils.filter_signal(sub_raw_iso, 2, sr)
+            if end_idx > end_ts_idx:
+                end_idx = end_ts_idx
 
-        if any(lig_nans):
-            sub_raw_lig[lig_nans] = np.nan
+            sub_raw_lig = raw_lig[start_idx:end_idx]
+            sub_raw_iso = raw_iso[start_idx:end_idx]
 
-        if any(iso_nans):
-            sub_raw_iso[iso_nans] = np.nan
+            if filter_dropout_outliers:
+                # since dropouts have a high frequency component, use a highpass filter to find any outliers
+                hpf_lig = utils.z_score(fp_utils.filter_signal(sub_raw_lig, 50, sr, filter_type='highpass'))
+                hpf_iso = utils.z_score(fp_utils.filter_signal(sub_raw_iso, 50, sr, filter_type='highpass'))
+                lig_sel = np.abs(hpf_lig) >= 15
+                iso_sel = np.abs(hpf_iso) >= 15
+                drop_sel = lig_sel | iso_sel
 
-        # isosbestic correction
-        sub_dff_iso, sub_fitted_iso = fp_utils.calc_iso_dff(sub_filt_lig, sub_filt_iso, t[start_idx:end_idx])
+                filtered = False
+                outlier_filtered_lig = sub_raw_lig.copy()
+                outlier_filtered_iso = sub_raw_iso.copy()
+                if sum(drop_sel) > 1:
+                    # find start and end of each dropout and set all intervening values to nan
+                    drop_idxs = np.flatnonzero(drop_sel)
+                    first_idx = drop_idxs[0]
+                    while first_idx < drop_idxs[-1]:
+                        # find end of dropout as last threshold cross within time interval
+                        last_idx = drop_idxs[(drop_idxs >= first_idx) & (drop_idxs < first_idx+5*sr)][-1]
 
-        sub_empty_signal = np.full_like(sub_raw_lig, np.nan)
-        sub_baseline_lig = sub_empty_signal.copy()
-        sub_baseline_iso = sub_empty_signal.copy()
-        sub_baseline_corr_lig = sub_empty_signal.copy()
-        sub_baseline_corr_iso = sub_empty_signal.copy()
-        sub_fitted_baseline_iso = sub_empty_signal.copy()
-        sub_dff_iso_baseline = sub_empty_signal.copy()
+                        outlier_filtered_lig[first_idx:last_idx+1] = np.nan
+                        outlier_filtered_iso[first_idx:last_idx+1] = np.nan
+                        remaining_idxs = drop_idxs[drop_idxs > last_idx]
+                        if len(remaining_idxs) > 0:
+                            first_idx = remaining_idxs[0]
+                        else:
+                            break
 
-        # Try hybrid approach with baseline correction to approximate photobleaching before calculating dF/F
-        try:
-            sub_baseline_lig = fp_utils.fit_baseline(sub_filt_lig)
-            sub_baseline_iso = fp_utils.fit_baseline(sub_filt_iso)
+                    filtered = True
 
-            # first subtract the baseline fit to each signal to correct for photobleaching
-            sub_baseline_corr_lig = sub_filt_lig - sub_baseline_lig
-            sub_baseline_corr_iso = sub_filt_iso - sub_baseline_iso
+                if filtered:
+                    print('Session {} had dropout outliers in {}'.format(sess_id, region))
+                    # fig, axs = plt.subplots(2,1, sharex=True)
+                    # axs[0].plot(t[start_idx:end_idx], sub_raw_lig)
+                    # axs[0].plot(t[start_idx:end_idx], outlier_filtered_lig)
+                    # axs[1].plot(t[start_idx:end_idx], sub_raw_iso)
+                    # axs[1].plot(t[start_idx:end_idx], outlier_filtered_iso)
+                    # fig.suptitle('Session {} - {}'.format(sess_id, region))
 
-            # scale the isosbestic signal to best fit the ligand-dependent signal
-            sub_fitted_baseline_iso = fp_utils.fit_signal(sub_baseline_corr_iso, sub_baseline_corr_lig, t[start_idx:end_idx])
+                    # e=1
 
-            # then use the baseline corrected signals to calculate dF, which is a residual fluorescence
-            sub_dff_iso_baseline = ((sub_baseline_corr_lig - sub_fitted_baseline_iso)/sub_baseline_lig)*100
+                sub_raw_lig = outlier_filtered_lig
+                sub_raw_iso = outlier_filtered_iso
 
-        except RuntimeError as error:
-            print(str(error))
 
-        filtered_lig[start_idx:end_idx] = sub_filt_lig
-        filtered_iso[start_idx:end_idx] = sub_filt_iso
-        baseline_lig[start_idx:end_idx] = sub_baseline_lig
-        baseline_iso[start_idx:end_idx] = sub_baseline_iso
-        baseline_corr_lig[start_idx:end_idx] = sub_baseline_corr_lig
-        baseline_corr_iso[start_idx:end_idx] = sub_baseline_corr_iso
-        fitted_iso[start_idx:end_idx] = sub_fitted_iso
-        fitted_baseline_corr_iso[start_idx:end_idx] = sub_fitted_baseline_iso
-        dff_iso[start_idx:end_idx] = sub_dff_iso
-        dff_iso_baseline[start_idx:end_idx] = sub_dff_iso_baseline
+            sub_filt_lig = fp_utils.filter_signal(sub_raw_lig, lig_lpf, sr)
+            sub_filt_iso = fp_utils.filter_signal(sub_raw_iso, iso_lpf, sr)
+
+            # isosbestic correction
+            sub_dff_iso, sub_fitted_iso = fp_utils.calc_iso_dff(sub_filt_lig, sub_filt_iso, t[start_idx:end_idx])
+
+            sub_empty_signal = np.full_like(sub_raw_lig, np.nan)
+            sub_baseline_lig = sub_empty_signal.copy()
+            sub_baseline_iso = sub_empty_signal.copy()
+            sub_baseline_corr_lig = sub_empty_signal.copy()
+            sub_baseline_corr_iso = sub_empty_signal.copy()
+            sub_fitted_baseline_iso = sub_empty_signal.copy()
+            sub_dff_iso_baseline = sub_empty_signal.copy()
+
+            if fit_baseline:
+
+                # Try hybrid approach with baseline correction to approximate photobleaching before calculating dF/F
+                try:
+                    sub_baseline_lig = fp_utils.fit_baseline(sub_filt_lig)
+                    sub_baseline_iso = fp_utils.fit_baseline(sub_filt_iso)
+
+                    # first subtract the baseline fit to each signal to correct for photobleaching
+                    sub_baseline_corr_lig = sub_filt_lig - sub_baseline_lig
+                    sub_baseline_corr_iso = sub_filt_iso - sub_baseline_iso
+
+                    # scale the isosbestic signal to best fit the ligand-dependent signal
+                    sub_fitted_baseline_iso = fp_utils.fit_signal(sub_baseline_corr_iso, sub_baseline_corr_lig, t[start_idx:end_idx])
+
+                    # then use the baseline corrected signals to calculate dF, which is a residual fluorescence
+                    sub_dff_iso_baseline = ((sub_baseline_corr_lig - sub_fitted_baseline_iso)/sub_baseline_lig)*100
+
+                except RuntimeError as error:
+                    print(str(error))
+
+            filtered_lig[start_idx:end_idx] = sub_filt_lig
+            filtered_iso[start_idx:end_idx] = sub_filt_iso
+            baseline_lig[start_idx:end_idx] = sub_baseline_lig
+            baseline_iso[start_idx:end_idx] = sub_baseline_iso
+            baseline_corr_lig[start_idx:end_idx] = sub_baseline_corr_lig
+            baseline_corr_iso[start_idx:end_idx] = sub_baseline_corr_iso
+            fitted_iso[start_idx:end_idx] = sub_fitted_iso
+            fitted_baseline_corr_iso[start_idx:end_idx] = sub_fitted_baseline_iso
+            dff_iso[start_idx:end_idx] = sub_dff_iso
+            dff_iso_baseline[start_idx:end_idx] = sub_dff_iso_baseline
 
     return {'raw_lig': raw_lig,
             'raw_iso': raw_iso,
@@ -252,6 +307,219 @@ def get_all_processed_signals(raw_lig, raw_iso, t, sess_id=None, region=None, tr
             'dff_iso_baseline': dff_iso_baseline,
             'z_dff_iso_baseline': utils.z_score(dff_iso_baseline)}
 
+# %% Analysis Methods
+exp_decay_form = lambda t, a, tau, b: a*np.exp(-t/tau) + b
+exp_decay_bounds = ([     0,      0, -np.inf],
+                    [np.inf, np.inf,  np.inf])
+
+def calc_peak_properties(signal, t, filter_params={}, peak_find_params={}, fit_decay=True):
+    if len(signal) == 0:
+        return {}
+           
+    dt = np.nanmean(np.diff(t))
+    
+    # read params
+    filt = filter_params.get('filter', True)
+    use_filt_signal = filter_params.get('use_filt_signal_props', False)
+    cutoff_f = filter_params.get('cutoff_f', 10)
+    peak_tmax = peak_find_params.get('peak_tmax', np.median(t))
+    tau_tmax = peak_find_params.get('tau_tmax', t[-1])
+    min_dist = peak_find_params.get('min_dist', 0)
+    peak_edge_buffer = peak_find_params.get('peak_edge_buffer', 2*dt)
+    peak_edge_buffer = int(np.ceil(peak_edge_buffer/dt))
+
+    # smooth signal by filtering
+    if filt:
+        filt_signal = fp_utils.filter_signal(signal, cutoff_f, 1/dt)
+    else:
+        filt_signal = signal
+
+    # fill nans so peak finding doesn't have issues
+    filt_signal = fp_utils.fill_signal_nans(filt_signal)
+    
+    if use_filt_signal:
+        peak_prop_signal = filt_signal
+    else:
+        peak_prop_signal = signal
+
+    t0_idx = np.argmin(np.abs(t))
+
+    peak_tmax_idx = np.argmin(np.abs(t - peak_tmax))
+    tau_tmax_idx = np.argmin(np.abs(t - tau_tmax))
+    
+    if ((fit_decay and np.sum(np.isnan(signal[t0_idx:tau_tmax_idx])) > 0.25*(tau_tmax_idx - t0_idx)) or
+       (not fit_decay and np.sum(np.isnan(signal[t0_idx:peak_tmax_idx])) > 0.25*(peak_tmax_idx - t0_idx))):
+        return {}
+
+    min_peak_dist_idxs = int(min_dist/dt)
+
+    all_peaks, _ = sig.find_peaks(filt_signal)
+
+    peak_idx = None
+    if len(all_peaks) > 0:
+        peaks = all_peaks[(all_peaks > t0_idx) & (all_peaks < peak_tmax_idx)]
+        if len(peaks) > 0:
+            # prioritize peaks in the middle of the range
+            middle_peaks = peaks[(peaks > t0_idx + peak_edge_buffer) & (peaks < peak_tmax_idx - peak_edge_buffer)]
+            if len(middle_peaks) > 0:
+                peak_idx = middle_peaks[np.argmax(peak_prop_signal[middle_peaks])]
+            else:
+                peak_idx = peaks[np.argmax(peak_prop_signal[peaks])]
+
+    if peak_idx is None:
+        return {}
+
+    valleys, _ = sig.find_peaks(-filt_signal)
+
+    peak_right_idx = None
+    peak_left_idx = None
+    if len(valleys) > 0:
+        left_valleys = valleys[valleys < peak_idx-min_peak_dist_idxs]
+        right_valleys = valleys[(valleys > peak_idx+min_peak_dist_idxs) & (valleys < tau_tmax_idx)]
+
+        if len(left_valleys) > 0:
+            peak_left_idx = left_valleys[-1]
+            
+            # if there is a sub-peak between the max peak and t=0 that would shorten the calculated peak magnitude, 
+            # move the peak edge to the next valley until that valley is lower than t=0
+            i = -2
+            while peak_prop_signal[t0_idx] < peak_prop_signal[peak_left_idx] and len(left_valleys) >= abs(i):
+                peak_left_idx = left_valleys[i]
+                i -= 1
+
+        if len(right_valleys) > 0:
+            peak_right_idx = right_valleys[0]
+
+    if peak_left_idx is None:
+        peak_left_idx = t0_idx
+
+    if peak_right_idx is None:
+        peak_right_idx = np.argmin(peak_prop_signal[peak_idx:tau_tmax_idx]) + peak_idx
+
+    if peak_right_idx >= tau_tmax_idx:
+        peak_right_idx = tau_tmax_idx
+        lowest_side_idx = peak_left_idx
+    else:
+        idxs = np.array([peak_left_idx, peak_right_idx])
+        lowest_side_idx = idxs[np.argmin(peak_prop_signal[idxs])]
+        
+    peak_height = peak_prop_signal[peak_idx] - peak_prop_signal[lowest_side_idx]
+    peak_time = t[peak_idx]
+
+    # manually find peak width
+    peak_width_y = peak_prop_signal[peak_idx] - peak_height*0.5
+    y_sel = np.flatnonzero(peak_prop_signal < peak_width_y)
+    left_idxs = y_sel[(y_sel < peak_idx) & (y_sel > peak_left_idx)]
+    right_idxs = y_sel[(y_sel > peak_idx) & (y_sel < peak_right_idx)]
+
+    if len(left_idxs) > 0:
+        left_idx = left_idxs[-1]
+    else:
+        left_idx = peak_left_idx
+
+    if len(right_idxs) > 0:
+        right_idx = right_idxs[0]
+    else:
+        right_idx = peak_right_idx
+
+    peak_width_left = t[left_idx]
+    peak_width_right = t[right_idx]
+    peak_width = peak_width_right - peak_width_left
+
+    #     # get peak height and width with peak finding routines
+    #     # need to pass in all peak indexes for algorithm to work properly
+    #     all_peaks_peak_idx = np.argmin(np.abs(all_peaks - peak_idx))
+    #     peak_heights, peak_left_idxs, peak_right_idxs = sig.peak_prominences(avg_signal, all_peaks)
+    #     peak_left_idx = peak_left_idxs[all_peaks_peak_idx]
+    #     peak_right_idx = peak_right_idxs[all_peaks_peak_idx]
+    #     if peak_right_idx > tau_tmax_idx:
+    #         peak_right_idx = tau_tmax_idx
+    #         lowest_side_idx = peak_left_idx
+    #     else:
+    #         # overwrite peak height with the height from the lowest peak edge
+    #         idxs = np.array([peak_left_idx, peak_right_idx])
+    #         lowest_side_idx = idxs[np.argmin(avg_signal[idxs])]
+
+    #     peak_heights[all_peaks_peak_idx] = avg_signal[peak_idx] - avg_signal[lowest_side_idx]
+    #     peak_widths, peak_widths_y, peak_widths_left, peak_widths_right = sig.peak_widths(avg_signal, all_peaks, rel_height=0.5,
+    #                                                                                      prominence_data=(peak_heights, peak_left_idxs, peak_right_idxs))
+    #     peak_height = peak_heights[all_peaks_peak_idx]
+    #     peak_width = peak_widths[all_peaks_peak_idx]*dt
+    #     peak_width_y = peak_widths_y[all_peaks_peak_idx]
+    #     peak_width_left = peak_widths_left[all_peaks_peak_idx]*dt + t[0]
+    #     peak_width_right = peak_widths_right[all_peaks_peak_idx]*dt + t[0]
+
+
+    # if np.random.random() < 0.01: # or peak_height < 0
+        # _, ax = plt.subplots(1,1)
+        # ax.plot(t, signal)
+        # ax.plot(t, filt_signal)
+        # plot_utils.plot_dashlines([0, peak_tmax], ax=ax)
+        # ax.plot(t[peak_idx], peak_prop_signal[peak_idx], marker=7, markersize=10, color='C1')
+        # ax.vlines(t[peak_idx], peak_prop_signal[peak_idx]-peak_height, peak_prop_signal[peak_idx], color='C2', linestyles='dashed')
+        # ax.plot([t[peak_left_idx], t[peak_right_idx]], [peak_prop_signal[peak_left_idx], peak_prop_signal[peak_right_idx]], color='C2')
+        # ax.hlines(peak_width_y, peak_width_left, peak_width_right, color='C3')
+
+    # fit exponential decay to falling peak
+    if fit_decay:
+        # add a few extra data points to help the fit be an actual decay
+        decay_end_idx = int(peak_idx + 1.2*(peak_right_idx - peak_idx))
+        sub_signal = peak_prop_signal[peak_idx:decay_end_idx]
+        # fix baseline to be the bottom of the peak
+        sub_bounds = copy.copy(exp_decay_bounds)
+        decay_baseline = np.min(sub_signal)
+        sub_bounds[0][-1] = decay_baseline-0.01 # this needs to be slightly smaller than the upper bound
+        sub_bounds[1][-1] = decay_baseline
+        decay_params = curve_fit(exp_decay_form, t[peak_idx:decay_end_idx] - peak_time, sub_signal, bounds=sub_bounds)[0]
+        decay_form = exp_decay_form
+        decay_tau = decay_params[1]
+    else:
+        decay_tau = np.nan
+        decay_form = lambda x: np.nan
+        decay_params = []
+
+    return {'peak_time': peak_time, 'peak_height': peak_height, 'peak_width': peak_width,
+            'peak_width_info': {'y': peak_width_y, 't_lims': [peak_width_left, peak_width_right]},
+            'peak_end_time': t[peak_right_idx], 'decay_tau': decay_tau, 'decay_params': decay_params, 'decay_form': decay_form}
+
+
+def calc_iqr_multiple(table, group_by_cols, parameters):
+    table = table.copy()
+    if not utils.is_list(group_by_cols):
+        group_by_cols = [group_by_cols]
+
+    if not utils.is_list(parameters):
+        parameters = [parameters]
+
+    iqr_mult_keys = {param: 'iqr_mult_' + param for param in parameters}
+    # initialize iqr columns
+    for param in parameters:
+        if not iqr_mult_keys[param] in table:
+            table[iqr_mult_keys[param]] = np.nan
+
+    groupings = table[group_by_cols].drop_duplicates().to_numpy()
+    for group in groupings:
+        sel = np.all(np.array([(table[group_col] == group_val) for group_col, group_val in zip(group_by_cols, group)]), axis=0)
+
+        sub_table = table.loc[sel]
+        for param in parameters:
+            # with warnings.catch_warnings():
+            #     warnings.simplefilter('error')
+            #     try:
+            q1, q3 = np.nanquantile(sub_table[param], [0.25, 0.75])
+                # except:
+                #     e=1
+            iqr = q3 - q1
+            below_sel = sub_table[param] < q1
+            above_sel = sub_table[param] > q3
+            sub_table.loc[below_sel, iqr_mult_keys[param]] = (sub_table.loc[below_sel, param] - q1)/iqr
+            sub_table.loc[above_sel, iqr_mult_keys[param]] = (sub_table.loc[above_sel, param] - q3)/iqr
+
+        table.loc[sel, iqr_mult_keys.values()] = sub_table[iqr_mult_keys.values()]
+
+    return table
+
+# %% Plotting Methods
 
 def view_processed_signals(processed_signals, t, dec=10, title='Full Signals', vert_marks=[],
                            filter_outliers=False, pos_outlier_zthresh=15, neg_outlier_zthresh=-5, t_min=0, t_max=np.inf):
@@ -293,12 +561,10 @@ def view_processed_signals(processed_signals, t, dec=10, title='Full Signals', v
 
         # plot raw signals and baseline
         ax = axs[i,0]
-        prop_cycle = plt.rcParams['axes.prop_cycle']
-        colors = prop_cycle.by_key()['color']
-        l3 = ax.plot(t, sub_signals['raw_iso'][::dec], label='Raw Iso', color=colors[1], alpha=0.5)
-        l4 = ax.plot(t, sub_signals['baseline_iso'][::dec], '--', label='Iso Baseline', color=colors[1])
-        l1 = ax.plot(t, sub_signals['raw_lig'][::dec], label='Raw Lig', color=colors[0], alpha=0.5)
-        l2 = ax.plot(t, sub_signals['baseline_lig'][::dec], '--', label='Lig Baseline', color=colors[0])
+        l3 = ax.plot(t, sub_signals['raw_iso'][::dec], label='Raw Iso', color='C1', alpha=0.5)
+        l4 = ax.plot(t, sub_signals['baseline_iso'][::dec], '--', label='Iso Baseline', color='C1')
+        l1 = ax.plot(t, sub_signals['raw_lig'][::dec], label='Raw Lig', color='C0', alpha=0.5)
+        l2 = ax.plot(t, sub_signals['baseline_lig'][::dec], '--', label='Lig Baseline', color='C0')
         plot_utils.plot_dashlines(vert_marks, ax=ax)
         ax.set_title(gen_sub_title.format('Raw Signals'))
         ax.set_xlabel('Time (s)')
@@ -333,13 +599,12 @@ def view_processed_signals(processed_signals, t, dec=10, title='Full Signals', v
 
         # plot iso dFF and baseline corrected dFF
         ax = axs[n_panel_stacks+i,1]
-        l2 = ax.plot(filt_t, sub_signals['dff_iso_baseline'][::dec][filt_sel], label='Baseline Corrected ΔF/F', color=colors[1], alpha=0.5)
-        l1 = ax.plot(filt_t, sub_signals['dff_iso'][::dec][filt_sel], label='Iso ΔF/F', color=colors[0], alpha=0.5)
+        l2 = ax.plot(filt_t, sub_signals['dff_iso_baseline'][::dec][filt_sel], label='Baseline Corrected ΔF/F', color='C1', alpha=0.5)
+        l1 = ax.plot(filt_t, sub_signals['dff_iso'][::dec][filt_sel], label='Iso ΔF/F', color='C0', alpha=0.5)
         plot_utils.plot_dashlines(vert_marks, ax=ax)
         ax.set_title(gen_sub_title.format('Iso Corrected Ligand Signals'))
         ax.set_xlabel('Time (s)')
         ax.set_ylabel('% ΔF/F')
-        ax.tick_params(axis='y', labelcolor=color1)
         ax.xaxis.set_tick_params(which='both', labelbottom=True)
         ls = [l1[0], l2[0]]
         labs = [l.get_label() for l in ls]
@@ -499,9 +764,9 @@ def plot_avg_signals(plot_groups, group_labels, data_mat_dict, regions, t, title
                     if len(act) > 0:
                         plotted = True
                         if not group_colors is None:
-                            plot_utils.plot_psth(np.nanmean(act, axis=0)[t_sel], t[t_sel], calc_error(act)[t_sel], ax, label=group_labels[group], color=group_colors[k])
+                            plot_utils.plot_psth(t[t_sel], np.nanmean(act, axis=0)[t_sel], calc_error(act)[t_sel], ax, label=group_labels[group], color=group_colors[k])
                         else:
-                            plot_utils.plot_psth(np.nanmean(act, axis=0)[t_sel], t[t_sel], calc_error(act)[t_sel], ax, label=group_labels[group])
+                            plot_utils.plot_psth(t[t_sel], np.nanmean(act, axis=0)[t_sel], calc_error(act)[t_sel], ax, label=group_labels[group])
 
             if j == 0:
                 ax.set_ylabel(y_label)
@@ -521,36 +786,43 @@ def plot_avg_signals(plot_groups, group_labels, data_mat_dict, regions, t, title
 def get_signal_type_labels(signal_type):
     ''' Get signal titles and labels based on the type of signal '''
     match signal_type:
-        case 'dff_iso':
-            title = 'Isosbestic Normalized'
-            ax_label = 'ΔF/F'
-        case 'z_dff_iso':
-            title = 'Isosbestic Normalized'
-            ax_label = 'Z-scored ΔF/F'
-        case 'dff_baseline':
-            title = 'Baseline Normalized'
-            ax_label = 'ΔF/F'
-        case 'z_dff_baseline':
-            title = 'Baseline Normalized'
-            ax_label = 'Z-scored ΔF/F'
-        case 'df_baseline_iso':
-            title = 'Baseline-Subtracted Isosbestic Residuals'
-            ax_label = 'ΔF residuals'
-        case 'z_df_baseline_iso':
-            title = 'Baseline-Subtracted Isosbestic Residuals'
-            ax_label = 'Z-scored ΔF residuals'
+        case 'raw_lig':
+            title = 'Raw Ligand Signal'
+            ax_label = 'Signal (V)'
+        case 'raw_iso':
+            title = 'Raw Isosbestic Signal'
+            ax_label = 'Signal (V)'
+        case 'filtered_lig':
+            title = 'Filtered Ligand Signal'
+            ax_label = 'Signal (V)'
+        case 'filtered_iso':
+            title = 'Filtered Isosbestic Signal'
+            ax_label = 'Signal (V)'
         case 'baseline_corr_lig':
             title = 'Baseline-Subtracted Ligand Signal'
             ax_label = 'ΔF'
         case 'baseline_corr_iso':
             title = 'Baseline-Subtracted Isosbestic Signal'
             ax_label = 'ΔF'
-        case 'raw_lig':
-            title = 'Raw Ligand Signal'
-            ax_label = 'ΔF/F' if trial_normalize else 'V'
-        case 'raw_iso':
-            title = 'Raw Isosbestic Signal'
-            ax_label = 'ΔF/F' if trial_normalize else 'V'
+        case 'fitted_iso':
+            title = 'Fitted Isosbestic Signal'
+            ax_label = 'Signal (V)'
+        case 'fitted_baseline_corr_iso':
+            title = 'Fitted Baseline-Subtracted Isosbestic Signal'
+            ax_label = 'ΔF'
+        case 'dff_iso':
+            title = 'Isosbestic Normalized Signal'
+            ax_label = '% dF/F'
+        case 'z_dff_iso':
+            title = 'Z-scored Isosbestic Normalized Signal'
+            ax_label = 'Z-scored dF/F'
+        case 'dff_iso_baseline':
+            title = 'Baseline-Subtracted Isosbestic Normalized Signal'
+            ax_label = '% dF/F'
+        case 'z_dff_iso_baseline':
+            title = 'Z-scored Baseline-Subtracted Isosbestic Normalized Signal'
+            ax_label = 'Z-scored dF/F'
+
 
     return title, ax_label
 
@@ -559,23 +831,47 @@ def get_implant_side_type(side, implant_side):
     return 'ipsi' if implant_side == side else 'contra'
 
 
-def plot_power_spectra(signal, dt, f_max=40, title=''):
+def plot_power_spectra(signals, dt, f_max=20, title='', log_x=True, signal_names=None):
     #signal = signal - np.mean(signal)
     # ps = np.abs(np.fft.rfft(signal))**2
     # freqs = np.fft.rfftfreq(signal.size, dt)
+    n_sigs = len(signals)
 
-    freqs, ps = sig.welch(signal, fs = 1/dt, nperseg = round(1/dt)*60, scaling='spectrum')
+    if signal_names is None:
+        signal_names = ['' for i in range(n_sigs)]
 
-    #freqs, ps = sig.periodogram(signal, fs = 1/dt, scaling='spectrum')
-    # same as FFT but simpler
+    fig, ax = plt.subplots(1)
 
-    _, ax = plt.subplots(1)
-    ax.plot(freqs, ps)
+    if log_x:
+        x_lims = [0.001, f_max]
+    else:
+        x_lims = [0, f_max]
+
+    for i in range(n_sigs):
+        signal = signals[i]
+
+        # get rid of nans
+        tmp_sig = signal[~np.isnan(signal)]
+
+        freqs, ps = sig.welch(tmp_sig, fs = 1/dt, nperseg = round(1/dt)*30, scaling='density')
+
+        #freqs, ps = sig.periodogram(signal, fs = 1/dt, scaling='spectrum')
+        # same as FFT but simpler
+
+        freq_sel = (freqs > x_lims[0]) & (freqs < x_lims[1])
+
+        ax.plot(freqs[freq_sel], ps[freq_sel], label=signal_names[i])
+
     ax.set_yscale('log')
-    #ax.set_xscale('log')
-    #ax.set_xlim([0.01, f_max])
-    ax.set_xlim([1, f_max])
+    if log_x:
+        ax.set_xscale('log')
+
+    ax.set_xlabel('Frequency (Hz)')
+    ax.set_ylabel('Power Spectral Density (V^2/Hz)')
     ax.set_title(title)
+    ax.legend()
+
+    return fig
 
 
 def remove_outliers(mat, outlier_thresh):
@@ -600,6 +896,7 @@ def stack_fp_mats(mat_dict, regions, sess_ids, subjects, signal_type, filter_out
                 if filter_outliers:
                     mat = remove_outliers(mat, outlier_thresh)
 
+                # TODO: This does not work for multiple subjects
                 stacked_mats[region][group] = mat
 
     return stacked_mats
@@ -616,9 +913,11 @@ def stack_fp_mats(mat_dict, regions, sess_ids, subjects, signal_type, filter_out
 #     return data_dict
 
 
+
+
 # %% Alignment Helpers
 
-class Alignment(str, Enum):
+class Alignment(StrEnum):
     cport_on = 'cport_on'
     cpoke_in = 'cpoke_in'
     early_cpoke_in = 'early_cpoke_in'
@@ -704,6 +1003,9 @@ def save_fig(fig, save_path, format='png', **kwargs):
 
     if not format in save_path:
         save_path += '.' + format
+        
+    if format == 'svg':
+        plt.rcParams["svg.fonttype"] = 'none'
 
     fig.savefig(save_path, **kwargs)
 
@@ -871,14 +1173,16 @@ def __add_ppt_slides_recursive(prs, group_by, behaviors, subjects, alignments, f
             # Note: at the lowest level there will be one element for each of the grouping arguments
             match group:
                 case 'behavior':
-                    image_files = glob(get_figure_save_path(level_group, subjects, alignments+'_'+filenames+'.*'))
+                    image_files = glob(get_figure_save_path(level_group, subjects, alignments+'*'+filenames+'.*'))
                 case 'subject':
-                    image_files = glob(get_figure_save_path(behaviors, level_group, alignments+'_'+filenames+'.*'))
+                    image_files = glob(get_figure_save_path(behaviors, level_group, alignments+'*'+filenames+'.*'))
                 case 'alignment':
-                    image_files = glob(get_figure_save_path(behaviors, subjects, level_group+'_'+filenames+'.*'))
+                    image_files = glob(get_figure_save_path(behaviors, subjects, level_group+'*'+filenames+'.*'))
                 case 'filename':
-                    image_files = glob(get_figure_save_path(behaviors, subjects, alignments+'_'+level_group+'.*'))
+                    image_files = glob(get_figure_save_path(behaviors, subjects, alignments+'*'+level_group+'.*'))
 
+            # TODO: Only match exact filenames, not any pattern match
+            # The tradeoff is having the * in the search to match files without an alignment. So perhaps just switch on whether there is an alignment or not
             image_files = sorted(image_files)
             level_titles_copy = level_titles.copy()
             level_titles_copy.append(level_group_labels[i])
@@ -944,7 +1248,7 @@ def __check_images_exist(behaviors, subjects, alignments, filenames, count_thres
         for s in subjects:
             for a in alignments:
                 for f in filenames:
-                    files = glob(path.join(get_base_figure_save_path(), b, s, a+'_'+f+'.*'))
+                    files = glob(path.join(get_base_figure_save_path(), b, s, a+'*'+f+'.*'))
                     if len(files) > 0:
                         file_count += 1
                     if file_count > count_thresh:

@@ -26,7 +26,7 @@ import copy
 behavior_name = 'Operant Pavlovian Conditioning'
 
 # get all session ids for given protocol
-sess_ids = db_access.get_fp_protocol_subj_sess_ids('ClassicRLTasks', 1)
+sess_ids = db_access.get_fp_data_sess_ids(protocol='ClassicRLTasks', stage_num=1)
 
 # optionally limit sessions based on subject ids
 subj_ids = [202]

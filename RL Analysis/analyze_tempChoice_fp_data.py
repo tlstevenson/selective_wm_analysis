@@ -26,7 +26,7 @@ import copy
 behavior_name = 'Intertemporal Choice'
 
 # get all session ids for given protocol
-sess_ids = db_access.get_fp_protocol_subj_sess_ids('ClassicRLTasks', 3)
+sess_ids = db_access.get_fp_data_sess_ids(protocol='ClassicRLTasks', stage_num=3)
 # optionally limit sessions based on subject ids
 subj_ids = [179]
 sess_ids = {k: v for k, v in sess_ids.items() if k in subj_ids}
