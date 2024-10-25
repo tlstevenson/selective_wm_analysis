@@ -515,8 +515,6 @@ for subj_id in subj_ids:
     ax.set_title('Low Choice Sequence Lengths')
     ax.set_xlim(0, low_max)
 
-
-
     # Simple Summary
     _, ax = plt.subplots(1, 1, figsize=(4,3))
     plot_utils.plot_x0line(ax=ax)

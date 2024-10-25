@@ -24,11 +24,11 @@ rl_loc_db = rl_db.LocalDB_BasicRLTasks('twoArmBandit')
 
 sess_ids = {180: [101447]}
 #sess_ids = {191: [101617]}
-#sess_ids = {202: [101071]}
-fp_data, implant_info = fpah.load_fp_data(wm_loc_db, sess_ids)
+#sess_ids = {207: [100752]}
+fp_data, implant_info = fpah.load_fp_data(wm_loc_db, sess_ids, iso_lpf=10)
 sess_data = wm_loc_db.get_behavior_data(utils.flatten(sess_ids))
-# fp_data, implant_info = fpah.load_fp_data(rl_loc_db, sess_ids)
-# sess_data = rl_loc_db.get_behavior_data(utils.flatten(sess_ids))
+#fp_data, implant_info = fpah.load_fp_data(rl_loc_db, sess_ids)
+#sess_data = rl_loc_db.get_behavior_data(utils.flatten(sess_ids))
 
 # %% define plotting routine
 
@@ -100,22 +100,23 @@ for subj_id in subj_ids:
 # %% Create cleaned up example data plot
 loc_db = wm_db.LocalDB_ToneCatDelayResp()
 
+# subj_id = 207
+# sess_id = 100752
 subj_id = 180
 sess_id = 101447
 sess_ids = {subj_id: [sess_id]}
-fp_data, implant_info = fpah.load_fp_data(loc_db, sess_ids)
-sess_data = loc_db.get_behavior_data(sess_id)
-t_range = [0, np.inf]#[1155, 1195] # [1150, 1250] # [0, np.inf] #
-region = 'DMS'
-signal_type = 'dff_iso'
-dec = 10
-
 sess_fp = fp_data[subj_id][sess_id]
-t = sess_fp['time']
-signal = sess_fp['processed_signals'][region][signal_type]
-filt_signal = fp_utils.filter_signal(signal, 5, 1/sess_fp['dec_info']['decimated_dt'])
-
 trial_data = sess_data[sess_data['sessid'] == sess_id]
+t_range = [2730, 2770] #[1155, 1195] #[0, np.inf] # [1150, 1250] #  #[1420, 1470]
+regions = ['DMS', 'PL']
+signal_type = 'dff_iso'
+dec = 1
+filt_f = {'DMS': 8, 'PL': 4}
+
+region_colors = {'DMS': '#53C43B', 'PL': '#BB6ED8'}
+
+t = sess_fp['time']
+
 trial_start_ts = sess_fp['trial_start_ts'][:-1]
 cue_ts = trial_start_ts + trial_data['response_cue_time']
 reward_ts = trial_start_ts + trial_data['reward_time']
@@ -125,20 +126,27 @@ lines_dict = {'Response Cue': cue_ts, 'Reward Delivery': reward_ts}
 
 t_sel = (t > t_range[0]) & (t < t_range[1])
 
-fig, ax = plt.subplots(1, 1, layout='constrained', figsize=[6,4])
+fig, axs = plt.subplots(len(regions), 1, layout='constrained', figsize=[6,4*len(regions)], sharex=True)
 
-ax.plot(t[t_sel][::dec], filt_signal[t_sel][::dec], label='_')
+axs = np.array(axs).reshape((len(regions)))
 
-for j, (name, lines) in enumerate(lines_dict.items()):
-    lines = lines[(lines > t_range[0]) & (lines < t_range[1])]
-    ax.vlines(lines, 0, 1, label=name, color='C'+str(j+1), linestyles='dashed', transform=ax.get_xaxis_transform())
+for i, region in enumerate(regions):
+    signal = sess_fp['processed_signals'][region][signal_type]
+    filt_signal = fp_utils.filter_signal(signal, filt_f[region], 1/sess_fp['dec_info']['decimated_dt'])
+    
+    ax = axs[i]
+    ax.plot(t[t_sel][::dec], filt_signal[t_sel][::dec], label='_', color=region_colors[region])
+    
+    for j, (name, lines) in enumerate(lines_dict.items()):
+        lines = lines[(lines > t_range[0]) & (lines < t_range[1])]
+        ax.vlines(lines, 0, 1, label=name, color='C'+str(j+1), linestyles='dashed', transform=ax.get_xaxis_transform())
+    
+    _, y_label = fpah.get_signal_type_labels(signal_type)
+    ax.set_ylabel(y_label)
+    ax.set_xlabel('Time (s)')
+    ax.legend()
 
-_, y_label = fpah.get_signal_type_labels(signal_type)
-ax.set_ylabel(y_label)
-ax.set_xlabel('Time (s)')
-ax.legend()
-
-fpah.save_fig(fig, fpah.get_figure_save_path('Example Signals', '', region), format='pdf')
+fpah.save_fig(fig, fpah.get_figure_save_path('Example Signals', '', '_'.join(regions)), format='pdf')
 
 # %%
 regions = ['PL', 'DMS']

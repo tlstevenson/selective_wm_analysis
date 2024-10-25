@@ -19,6 +19,7 @@ from sys_neuro_tools import plot_utils, fp_utils
 import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 from matplotlib.gridspec import GridSpec
+from matplotlib.colors import LinearSegmentedColormap
 import pandas as pd
 import pickle
 import os.path as path
@@ -27,10 +28,10 @@ from scipy import stats
 import copy
 import warnings
 
-from statsmodels.formula.api import ols
 from statsmodels.stats.anova import anova_lm
 import statsmodels.api as sm
 import statsmodels.formula.api as smf
+import statsmodels.stats.multitest as smm
 
 
 # %% Declare subject information
@@ -67,6 +68,10 @@ else:
                                 for sessid in sess_ids[subjid]} 
                        for subjid in subj_ids}
                        
+ignored_signals = {'PL': [96556, 101853, 101906, 101958, 102186, 102235, 102288, 102604],
+                   'DMS': [96556, 102604]}
+
+ignored_subjects = [182] # [179]
 
 # %% Build signal matrices aligned to alignment points
 
@@ -87,20 +92,35 @@ for subj_id in subj_ids:
 
         for signal_type in signal_types:
             for align in alignments:
+                match align:
+                    case Align.cue:
+                        align_ts = cue_ts
+                        # mask out reward
+                        reward_ts_mask = reward_ts.to_numpy(copy=True)
+                        reward_ts_mask[~trial_data['rewarded']] = np.nan
+                        if np.isnan(reward_ts_mask[-1]):
+                            reward_ts_mask[-1] = np.inf
+                        reward_ts_mask = pd.Series(reward_ts_mask).bfill().to_numpy()
+                        
+                        mask_lims = np.hstack((np.full_like(align_ts, 0)[:, None], reward_ts_mask[:, None]))
+                        
+                    case Align.reward:
+                        align_ts = reward_ts
+                        # mask out next reward
+                        next_reward_ts = reward_ts[1:].to_numpy(copy=True)
+                        next_reward_ts[~trial_data['rewarded'][1:]] = np.nan
+                        next_reward_ts = pd.Series(np.append(next_reward_ts, np.inf))
+                        next_reward_ts = next_reward_ts.bfill().to_numpy()
+
+                        mask_lims = np.hstack((np.zeros_like(align_ts)[:, None], next_reward_ts[:, None]))
+                
                 for region in fp_data['processed_signals'].keys():
                     if region in regions:
                         signal = fp_data['processed_signals'][region][signal_type]
 
-                        match align:
-                            case Align.cue:
-                                align_ts = cue_ts
-                                
-                            case Align.reward:
-                                align_ts = reward_ts
-
                         lims = xlims[region]
                         
-                        mat, t = fp_utils.build_signal_matrix(signal, ts, align_ts, -lims[0], lims[1])
+                        mat, t = fp_utils.build_signal_matrix(signal, ts, align_ts, -lims[0], lims[1], mask_lims=mask_lims)
                         aligned_signals[subj_id][sess_id][signal_type][align][region] = mat
 
 aligned_signals['t'] = {region: [] for region in regions}
@@ -116,11 +136,6 @@ with open(save_path, 'wb') as f:
                              'xlims': xlims}}, f)
 
 # %% Analyze aligned signals
-
-ignored_signals = {'PL': [96556, 101853, 101906, 101958, 102186, 102235, 102288, 102604],
-                   'DMS': [96556, 102604]}
-
-ignored_subjects = [182] # [179]
 
 rew_hist_n_back = 10
 rew_rate_n_back = 3
@@ -173,6 +188,8 @@ for subj_id in subj_ids:
         responded = ~np.isnan(trial_data['response_time']).to_numpy()
         rew_hist = pd.cut(trial_data['rew_rate_hist_all'], rew_hist_bins)
         choice = trial_data['choice']
+        
+        resp_rewarded = rewarded[responded]
 
         for signal_type in signal_types:
             if not signal_type in aligned_signals[subj_id][sess_id]:
@@ -193,7 +210,9 @@ for subj_id in subj_ids:
                     # calculate peak properties on a trial-by-trial basis
                     if analyze_peaks:
                         contra_choices = choice_side == 'contra'
+                        contra_choices = contra_choices[responded]
                         
+                        resp_idx = 0
                         for i in range(mat.shape[0]):
                             if responded[i]:
                                 metrics = fpah.calc_peak_properties(mat[i,:], t_r, 
@@ -201,15 +220,15 @@ for subj_id in subj_ids:
                                                                     peak_find_params=peak_find_props[align][region],
                                                                     fit_decay=False)
                                 
-                                if i < rew_hist_n_back:
-                                    buffer = np.full(rew_hist_n_back-i, False)
-                                    rew_hist_vec = np.flip(np.concatenate((buffer, rewarded[:i])))
-                                    contra_hist_vec = np.flip(np.concatenate((buffer, contra_choices[:i])))
-                                    ipsi_hist_vec = np.flip(np.concatenate((buffer, ~contra_choices[:i])))
+                                if resp_idx < rew_hist_n_back:
+                                    buffer = np.full(rew_hist_n_back-resp_idx, False)
+                                    rew_hist_vec = np.flip(np.concatenate((buffer, resp_rewarded[:resp_idx])))
+                                    contra_hist_vec = np.flip(np.concatenate((buffer, contra_choices[:resp_idx])))
+                                    ipsi_hist_vec = np.flip(np.concatenate((buffer, ~contra_choices[:resp_idx])))
                                 else:
-                                    rew_hist_vec = np.flip(rewarded[i-rew_hist_n_back:i])
-                                    contra_hist_vec = np.flip(contra_choices[i-rew_hist_n_back:i])
-                                    ipsi_hist_vec = np.flip(~contra_choices[i-rew_hist_n_back:i])
+                                    rew_hist_vec = np.flip(resp_rewarded[resp_idx-rew_hist_n_back:resp_idx])
+                                    contra_hist_vec = np.flip(contra_choices[resp_idx-rew_hist_n_back:resp_idx])
+                                    ipsi_hist_vec = np.flip(~contra_choices[resp_idx-rew_hist_n_back:resp_idx])
     
                                 peak_metrics.append(dict([('subj_id', subj_id), ('sess_id', sess_id), ('signal_type', signal_type), 
                                                          ('align', align.name), ('region', region), ('trial', i),
@@ -217,6 +236,8 @@ for subj_id in subj_ids:
                                                          ('side', choice_side[i]), ('rew_hist', rew_hist_vec),
                                                          ('contra_hist', contra_hist_vec), ('ipsi_hist', ipsi_hist_vec),
                                                          *metrics.items()]))
+                                
+                                resp_idx += 1
                     
                     # normalize all grouped matrices to the pre-event signal of the lowest reward rate
                     baseline_mat = mat[(rew_hist == rew_hist_bins[0]) & responded,:]
@@ -279,9 +300,107 @@ group_labels_dict.update({'rew_hist_{}_{}_{}'.format(rew_hist_bin_strs[rew_bin],
                 for side_type, side_label in side_labels.items()
                 for rk, rv in rew_labels.items()})
 
-# %% Plot average traces for the groups
-plot_regions = ['DMS']
+# %% Plot average traces across all groups
+plot_regions = ['DMS', 'PL']
 plot_aligns = [Align.cue, Align.reward]
+plot_signals = ['z_dff_iso']
+
+all_color = '#08AB36'
+rew_color = '#BC141A'
+unrew_color = '#1764AB'
+
+separate_outcome = False
+
+if separate_outcome:
+    gen_groups = {Align.cue: {'rewarded': 'rew_hist_{}_rewarded', 'unrewarded': 'rew_hist_{}_unrewarded'},
+                  Align.reward: {'rewarded': 'rew_hist_{}_rewarded', 'unrewarded': 'rew_hist_{}_unrewarded'}}
+    group_labels = {'rewarded': 'Rewarded', 'unrewarded': 'Unrewarded'}
+
+    colors = {'rewarded': rew_color, 'unrewarded': unrew_color}
+else:
+    gen_groups = {Align.cue: {'all': 'rew_hist_{}'},
+                  Align.reward: {'all': 'rew_hist_{}_rewarded'}}
+    group_labels = {'all': '_'}
+
+    colors = {'all': all_color}
+    
+groups = {a: {k: [v.format(rew_hist_bin_strs[rew_bin]) for rew_bin in rew_hist_bins] for k, v in gen_groups[a].items()} for a in plot_aligns}
+
+cue_to_reward = np.nanmedian(sess_data['reward_time'] - sess_data['response_cue_time'])
+
+plot_lims = {Align.cue: {'DMS': [-0.1,0.8], 'PL': [-1,8]},
+             Align.reward: {'DMS': [-0.1,1.2], 'PL': [-1,12]}}
+
+width_ratios = [np.diff(plot_lims[align]['DMS'])[0] for align in plot_aligns]
+#width_ratios = [2,10.5]
+#width_ratios = [0.7,0.9]
+
+n_rows = len(plot_regions)
+n_cols = len(plot_aligns)
+t = aligned_signals['t']
+x_label = 'Time (s)'
+
+for signal_type in plot_signals:
+    signal_title, y_label = fpah.get_signal_type_labels(signal_type)
+    
+    fig, axs = plt.subplots(n_rows, n_cols, layout='constrained', figsize=(5*n_cols, 4*n_rows), sharey='row', width_ratios=width_ratios)
+    
+    if n_rows == 1 and n_cols == 1:
+        axs = np.array(axs)
+
+    axs = axs.reshape((n_rows, n_cols))
+    
+    fig.suptitle(signal_title)
+    
+    plot_name = '{}_all_trials_outcome_{}'.format('_'.join(plot_aligns), signal_type)
+
+    for i, region in enumerate(plot_regions):
+        for j, align in enumerate(plot_aligns):
+            match align:
+                case Align.cue:
+                    title = 'Response Cue'
+                    
+                case Align.reward:
+                    title = 'Reward Delivery'
+
+            ax = axs[i,j]
+            
+            region_signals = stacked_signals[signal_type][align][region]
+            t_r = t[region]
+            
+            # normalize to pre-cue levels on a trial-by-trial basis
+            cue_signals = stacked_signals[signal_type][Align.cue][region]
+            baseline_sel = (t_r >= -0.1) & (t_r < 0)
+            
+            for key, stack_groups in groups[align].items():
+                stacked_signal = np.zeros((0,len(t_r)))
+                
+                for group in stack_groups:
+                    baseline = np.nanmean(cue_signals[group][:,baseline_sel], axis=1)[:,None]
+                    stacked_signal = np.vstack((stacked_signal, region_signals[group] - baseline))
+
+                t_sel = (t_r > plot_lims[align][region][0]) & (t_r < plot_lims[align][region][1])
+                error = calc_error(stacked_signal, True)
+                
+                plot_utils.plot_psth(t_r[t_sel], np.nanmean(stacked_signal, axis=0)[t_sel], error[t_sel], ax, label=group_labels[key], color=colors[key], plot_x0=False)
+    
+            ax.set_title('{} {}'.format(region, title))
+            plot_utils.plot_dashlines(0, ax=ax)
+    
+            if j == 0:
+                ax.set_ylabel(y_label)
+            #else:
+                # ax.yaxis.set_tick_params(which='both', labelleft=True)
+            ax.legend(loc='upper right')
+
+            ax.set_xlabel(x_label)
+            
+        fpah.save_fig(fig, fpah.get_figure_save_path('Two-armed Bandit', 'Reward History', plot_name), format='pdf')
+
+# %% Plot average traces by reward history
+plot_regions = ['PL'] #'DMS', 
+plot_aligns = [Align.cue, Align.reward] #
+plot_signal_types = ['z_dff_iso']
 
 #gen_groups = {Align.cue: ['rew_hist_{}_rewarded', 'rew_hist_{}_unrewarded'], Align.reward: ['rew_hist_{}_rewarded', 'rew_hist_{}_unrewarded']}
 gen_groups = {Align.cue: ['rew_hist_{}'], Align.reward: ['rew_hist_{}_rewarded', 'rew_hist_{}_unrewarded']}
@@ -294,21 +413,23 @@ rew_hist_unrew_colors = plt.cm.Blues(np.linspace(0.4,1,len(rew_hist_bins)))
 #colors = {Align.cue: np.vstack((rew_hist_rew_colors, rew_hist_unrew_colors)), Align.reward: np.vstack((rew_hist_rew_colors, rew_hist_unrew_colors))}
 colors = {Align.cue: rew_hist_all_colors, Align.reward: np.vstack((rew_hist_rew_colors, rew_hist_unrew_colors))}
 
-plot_lims = {Align.cue: {'DMS': [-0.1,0.6], 'PL': [-1,1]},
-             Align.reward: {'DMS': [-0.1,0.8], 'PL': [-0.5,10]}}
+plot_lims = {Align.cue: {'DMS': [-0.1,0.5], 'PL': [-1,1]},
+             Align.reward: {'DMS': [-0.2,1], 'PL': [-0.5,10]}}
 
-#width_ratios = [2,10.5]
-width_ratios = [0.7,0.9]
+#width_ratios = [1,2]
+#width_ratios = [0.7,0.9]
+#width_ratios = [1]
+width_ratios = [np.diff(plot_lims[Align.cue][plot_regions[0]])[0], np.diff(plot_lims[Align.reward][plot_regions[0]])[0]]
 
 n_rows = len(plot_regions)
 n_cols = len(plot_aligns)
 t = aligned_signals['t']
 x_label = 'Time (s)'
 
-for signal_type in signal_types:
+for signal_type in plot_signal_types:
     signal_title, y_label = fpah.get_signal_type_labels(signal_type)
     
-    fig, axs = plt.subplots(n_rows, n_cols, layout='constrained', figsize=(7, 4*n_rows), sharey='row', width_ratios=width_ratios)
+    fig, axs = plt.subplots(n_rows, n_cols, layout='constrained', figsize=(5*n_cols, 3.5*n_rows), sharey='row', width_ratios=width_ratios)
     
     if n_rows == 1 and n_cols == 1:
         axs = np.array(axs)
@@ -317,7 +438,7 @@ for signal_type in signal_types:
     
     fig.suptitle(signal_title)
     
-    plot_name = '{}_reward_hist_{}_back_{}'.format('_'.join(plot_aligns), rew_rate_n_back, signal_type)
+    plot_name = 'reward_hist_{}_back_{}_{}_{}'.format(rew_rate_n_back, signal_type, '_'.join(plot_aligns), '_'.join(plot_regions))
 
     for i, region in enumerate(plot_regions):
         for j, align in enumerate(plot_aligns):
@@ -356,8 +477,9 @@ for signal_type in signal_types:
         fpah.save_fig(fig, fpah.get_figure_save_path('Two-armed Bandit', 'Reward History', plot_name), format='pdf')
         
 # %% Plot average traces for the groups by side
-plot_regions = ['DMS']
+plot_regions = ['DMS'] #, 'PL'
 plot_aligns = [Align.cue, Align.reward]
+plot_signal_types = ['z_dff_iso']
 
 #gen_groups = {Align.cue: ['rew_hist_{}_rewarded_{}', 'rew_hist_{}_unrewarded_{}'], Align.reward: ['rew_hist_{}_rewarded_{}', 'rew_hist_{}_unrewarded_{}']}
 gen_groups = {Align.cue: ['rew_hist_{}_{}'], Align.reward: ['rew_hist_{}_rewarded_{}', 'rew_hist_{}_unrewarded_{}']}
@@ -369,35 +491,35 @@ rew_hist_unrew_colors = plt.cm.Blues(np.linspace(0.4,1,len(rew_hist_bins)))
 #colors = {Align.cue: np.vstack((rew_hist_rew_colors, rew_hist_unrew_colors)), Align.reward: np.vstack((rew_hist_rew_colors, rew_hist_unrew_colors))}
 colors = {Align.cue: rew_hist_all_colors, Align.reward: np.vstack((rew_hist_rew_colors, rew_hist_unrew_colors))}
 
-plot_lims = {Align.cue: {'DMS': [-0.1,0.6], 'PL': [-1,1]},
-             Align.reward: {'DMS': [-0.1,0.8], 'PL': [-0.5,10]}}
+plot_lims = {Align.cue: {'DMS': [-0.1,0.6], 'PL': [-1,8]},
+             Align.reward: {'DMS': [-0.1,1], 'PL': [-1,12]}}
 
+width_ratios = [np.diff(plot_lims[Align.cue][plot_regions[0]])[0], np.diff(plot_lims[Align.reward][plot_regions[0]])[0]]
 #width_ratios = [2,10.5]
-width_ratios = [0.7,0.9]
+#width_ratios = [0.7,0.9]
 
-n_rows = len(plot_regions)
 n_cols = len(plot_aligns)
 t = aligned_signals['t']
 x_label = 'Time (s)'
 
-for signal_type in signal_types:
+# plot each side on its own row and alignment in its own column. Each region gets its own figure
+
+for signal_type in plot_signal_types:
     signal_title, y_label = fpah.get_signal_type_labels(signal_type)
     
-    for side_type in sides:
-        groups = {a: [group.format(rew_hist_bin_strs[rew_bin], side_type) for group in gen_groups[a] for rew_bin in rew_hist_bins] for a in plot_aligns}
-    
-        fig, axs = plt.subplots(n_rows, n_cols, layout='constrained', figsize=(7, 4*n_rows), sharey='row', width_ratios=width_ratios)
+    for region in plot_regions:
+
+        fig, axs = plt.subplots(2, n_cols, layout='constrained', figsize=(5*n_cols, 7), sharey=True, width_ratios=width_ratios)
+
+        axs = np.array(axs).reshape((2, n_cols))
         
-        if n_rows == 1 and n_cols == 1:
-            axs = np.array(axs)
-    
-        axs = axs.reshape((n_rows, n_cols))
+        fig.suptitle('{} {}'.format(region, signal_title))
         
-        fig.suptitle('{} {}'.format(side_type, signal_title))
-        
-        plot_name = '{}_reward_hist_{}_back_{}_{}'.format('_'.join(plot_aligns), rew_rate_n_back, side_type, signal_type)
+        plot_name = 'side_reward_hist_{}_back_{}_{}_{}'.format(rew_rate_n_back, signal_type, region, '_'.join(plot_aligns))
     
-        for i, region in enumerate(plot_regions):
+        for i, side_type in enumerate(sides):
+            groups = {a: [group.format(rew_hist_bin_strs[rew_bin], side_type) for group in gen_groups[a] for rew_bin in rew_hist_bins] for a in plot_aligns}
+            
             for j, align in enumerate(plot_aligns):
                 match align:
                     case Align.cue:
@@ -477,9 +599,16 @@ for subj_id in sub_subj_ids:
             
 # %% prep peak properties for analysis
 
+parameter_titles = {'peak_time': 'Time to Peak', 'peak_height': 'Peak Amplitude',
+                    'peak_width': 'Peak Width', 'decay_tau': 'Decay τ'}
+parameter_labels = {'peak_time': 'Time to Peak (s)', 'peak_height': 'Peak Amplitude ({})',
+                    'peak_width': 'Peak FWHM (s)', 'decay_tau': 'Decay τ (s)'}
+align_labels = {'cue': 'Response Cue', 'reward': 'Reward Delivery'}
+
 # make subject ids categories
 peak_metrics['subj_id'] = peak_metrics['subj_id'].astype('category')
 peak_metrics['rew_hist_bin_label'] = peak_metrics['rew_hist_bin'].apply(lambda x: bin_labels[x])
+peak_metrics['align_label'] = peak_metrics['align'].apply(lambda x: align_labels[x])
 
 ignore_outliers = True
 outlier_thresh = 10
@@ -621,40 +750,107 @@ for signal_type in signal_types:
             ax.legend(patches, subj_order, loc='center', frameon=False, title='Subjects')
             ax.set_axis_off()
 
+# %% make peak property comparison figures comparing regions at cue and reward
 
-# %% make combined comparison figures per peak property
+parameters = ['peak_height', 'peak_width'] # 'peak_time', 'decay_tau']
+
+regions = ['DMS', 'PL']
+region_colors = ['#53C43B', '#BB6ED8']
+plot_aligns = ['Response Cue', 'Reward Delivery']
+subj_ids = np.unique(filt_peak_metrics['subj_id'])
+plot_signals = ['dff_iso']
+
+# have same jitter for each subject
+noise = 0.075
+n_neg = int(np.floor(len(subj_ids)/2))
+n_pos = int(np.ceil(len(subj_ids)/2))
+jitters = np.concatenate([np.random.uniform(-1, -0.1, n_neg), np.random.uniform(0.1, 1, n_pos)]) * noise
+
+for signal_type in plot_signals:
+    signal_label, y_label = fpah.get_signal_type_labels(signal_type)
+    
+    peak_sel = filt_peak_metrics['signal_type'] == signal_type
+    # only show rewarded peaks for reward delivery
+    peak_sel = peak_sel & ((filt_peak_metrics['align'] == Align.cue) | ((filt_peak_metrics['align'] == Align.reward) & filt_peak_metrics['rewarded']))
+    
+    sub_peak_metrics = filt_peak_metrics[peak_sel]
+    
+    # Compare responses across regions grouped by alignment
+    fig, axs = plt.subplots(1, len(parameters), figsize=(4*len(parameters), 4), layout='constrained')
+    axs = np.array(axs).reshape((len(parameters)))
+    
+    for i, param in enumerate(parameters):
+        ax = axs[i]
+        ax.set_title(parameter_titles[param])
+
+        subj_avgs = sub_peak_metrics.groupby(['subj_id', 'region', 'align_label']).agg({param: np.nanmean}).reset_index()
+    
+        # plot sensor averages in boxplots
+        sb.boxplot(data=sub_peak_metrics, x='align_label', y=param, hue='region', palette=region_colors,
+                   order=plot_aligns, hue_order=regions, ax=ax, showfliers=False)
+        if param == 'peak_height':
+            ax.set_ylabel(parameter_labels[param].format(y_label))
+        else:
+            ax.set_ylabel(parameter_labels[param])
+        ax.set_xlabel('')
+        ax.set_yscale('log')
+    
+        # add subject averages for each alignment with lines connecting them
+        dodge = 0.2
+
+        for j, align in enumerate(plot_aligns):
+            x = np.array([j - dodge, j + dodge])
+    
+            for subj_id, jitter in zip(subj_ids, jitters):
+                subj_avg = subj_avgs[(subj_avgs['subj_id'] == subj_id) & (subj_avgs['align_label'] == align)]
+    
+                y = [subj_avg.loc[subj_avg['region'] == r, param] for r in regions]
+    
+                ax.plot(x+jitter, y, color='black', marker='o', linestyle='dashed', alpha=0.75)
+                
+        # set y max to be a multiple of 10
+        y_min, y_max = ax.get_ylim()
+        ax.set_ylim(y_min, utils.convert_to_multiple(y_max, 10, direction='up'))
+                
+    plot_name = 'cue_reward_peak_comp_{}_{}'.format('_'.join(parameters), signal_type)
+    fpah.save_fig(fig, fpah.get_figure_save_path('Two-armed Bandit', 'Reward History', plot_name), format='pdf')
+
+
+# %% make reward history comparison figures per peak property
 
 parameters = ['peak_height'] # 'peak_time', 'peak_height', 'peak_width', 'decay_tau'
-parameter_titles = {'peak_time': 'Time to Peak', 'peak_height': 'Peak Height',
-                    'peak_width': 'Peak Width', 'decay_tau': 'Decay τ'}
-parameter_labels = {'peak_time': 'Time to peak (s)', 'peak_height': 'Peak height ({})',
-                    'peak_width': 'Peak FWHM (s)', 'decay_tau': 'Decay τ (s)'}
 
 rew_hist_rew_colors = plt.cm.seismic(np.linspace(0.6,1,len(rew_hist_bins)))
 rew_hist_palette = sb.color_palette(rew_hist_rew_colors) 
 
-split_by_side = True
+plot_signals = ['z_dff_iso']
+plot_aligns = ['reward'] #'cue', 
+plot_regions = ['DMS', 'PL']
+
+split_by_side = False
 sides = ['contra', 'ipsi']
 n_regions = len(regions)
-align_order = ['cue', 'reward']
-n_aligns = len(align_order)
+
+n_aligns = len(plot_aligns)
 align_labels = {'cue': 'Response Cue', 'reward': 'Reward Delivery'}
 hatch_order = ['//\\\\', '']
 line_order = ['dashed', 'solid']
 
-for signal_type in signal_types:
+for signal_type in plot_signals:
     signal_label, y_label = fpah.get_signal_type_labels(signal_type)
     
     for param in parameters:
         
-        plot_name = '{}_reward_hist_{}_{}_back_{}'.format('_'.join(align_order), param, rew_rate_n_back, signal_type)
+        plot_name = '{}_reward_hist_{}_{}_back_{}'.format('_'.join(plot_aligns), param, rew_rate_n_back, signal_type)
     
         # Compare responses across alignments grouped by region
         fig, axs = plt.subplots(n_regions, n_aligns, figsize=(4*n_aligns, 4*n_regions), layout='constrained', sharey='row')
         fig.suptitle('{}, {}'.format(parameter_titles[param], signal_label))
+        
+        axs = np.array(axs).reshape((n_regions, n_aligns))
     
-        for i, region in enumerate(regions):
-            for j, align in enumerate(align_order):
+        for i, region in enumerate(plot_regions):
+            for j, align in enumerate(plot_aligns):
                 peak_sel = (filt_peak_metrics['align'] == align) & (filt_peak_metrics['signal_type'] == signal_type) & (filt_peak_metrics['region'] == region)
     
                 match align:
@@ -729,9 +925,11 @@ for signal_type in signal_types:
 # look at each region and property separately
 parameters = ['peak_height'] # ['peak_time', 'peak_height', 'peak_width', 'decay_tau'] #
 regions = ['DMS', 'PL']
-aligns = [Align.cue, Align.reward]
+aligns = [Align.reward] #Align.cue, 
 signals = ['dff_iso']
 include_side = False
+use_bins_as_cats = True # whether to use the bin labels as categories or regressors
+print_fit_results = False
 
 for signal_type in signals:
     signal_label, y_label = fpah.get_signal_type_labels(signal_type)
@@ -756,10 +954,14 @@ for signal_type in signals:
                 # drop nans
                 region_metrics = region_metrics[~np.isnan(region_metrics[param])]
                 
+                #NOTE: mixed effects models fit a common variance for a zero-mean gaussian distribution
+                # for all random effects where the individual random effect estimates are drawn from that distribution
+                # thus adding both a subject and side term to the variance means that separate variances will be fit for those random effects across all groups
                 if include_side:
-                    vc_form={'subj_id': '0 + C(subj_id)', 'side': '0 + C(side)'}
+                    # if subj_id is not specified, will fit two means per subject, one for each side which does slightly worse than fitting the subject average in addition to any variability based on side
+                    vc_form={'subj_id': '1', 'side': '0 + C(side)'} 
                 else:
-                    vc_form={'subj_id': '0 + C(subj_id)'}
+                    vc_form={'subj_id': '1'} #same as 0 + C(subj_id)
         
                 # group_lm = ols(param+' ~ C(group_label)', data=region_metrics).fit()
                 # subj_lm = ols(param+' ~ C(subj_id)', data=region_metrics).fit()
@@ -783,24 +985,57 @@ for signal_type in signals:
                 
                 # Create N mixed effects models where the first reward history group is rotated to compare it with all other groups
                 rew_hist_groups = np.unique(region_metrics['rew_hist_bin_label'])
-                rew_hist_vals = region_metrics['rew_hist_bin_label'].to_numpy()
                 param_vals = region_metrics[param].to_numpy()
                 subj_id_vals = region_metrics['subj_id'].to_numpy()
                 side_vals = region_metrics['side'].to_numpy()
                 
-                for first_group in rew_hist_groups:
-                    group_mapping = {first_group: '0'}
-                    for other_group in rew_hist_groups[~np.isin(rew_hist_groups, first_group)]:
-                        group_mapping.update({other_group: 'bin_'+other_group})
+                if use_bins_as_cats:
+                    p_vals = []
+                    for i, first_group in enumerate(rew_hist_groups):
+                        group_mapping = {first_group: '0'}
+                        for other_group in rew_hist_groups[~np.isin(rew_hist_groups, first_group)]:
+                            group_mapping.update({other_group: 'bin_'+other_group})
+                            
+                        rew_hist_vals = region_metrics['rew_hist_bin_label'].apply(lambda x: group_mapping[x])
                         
-                    group_vals = np.array([group_mapping[g] for g in rew_hist_vals])
-                    
-                    model_data = pd.DataFrame.from_dict({'val': param_vals, 'subj_id': subj_id_vals, 'group': group_vals, 'side': side_vals})
+                        model_data = pd.DataFrame.from_dict({param: param_vals, 'subj_id': subj_id_vals, 'group': rew_hist_vals, 'side': side_vals})
+    
+                        mem = sm.MixedLM.from_formula(param+' ~ C(group)', groups='subj_id', data=model_data, missing='drop', vc_formula=vc_form).fit() #vc_formula=vc_form, 
+                        
+                        # get the group comparison p-values
+                        p_val_sel = mem.pvalues.index.str.contains('C(group)', regex=False)
+                        group_p_vals = mem.pvalues[p_val_sel]
+                        group_p_vals.index = first_group+' -> '+group_p_vals.index
+                        # only save the unique comparisons
+                        p_vals.append(group_p_vals.iloc[i:])
 
-                    mem = sm.MixedLM.from_formula('val ~ C(group)', groups='subj_id', vc_formula=vc_form, data=model_data, missing='drop')
+                        if print_fit_results:
+                            print('{}: {} {}, {}-aligned Mixed-effects Model, \'{}\' group compared against other groups:\n {}\n'.format(
+                                   param, signal_type, region, align, first_group, mem.summary()))
+                            print('Random Effects:\n{}\n'.format(mem.random_effects))
+                            
+                    p_vals = pd.concat(p_vals)
+                    reject, _, _, corrected_alpha = smm.multipletests(p_vals, alpha=0.05, method='bonferroni')
+                    p_vals = pd.DataFrame(p_vals).rename(columns={0: 'p_val'})
+                    p_vals['reject null'] = reject
+                    p_vals['corrected alpha'] = corrected_alpha
+                    
+                    print('{}: {} {}, {}-aligned pairwise group comparison p-values:\n {}\n'.format(
+                           param, signal_type, region, align, p_vals))
+                else:
+                    group_mapping = {g: i for i, g in enumerate(rew_hist_groups)}
+                    rew_hist_vals = region_metrics['rew_hist_bin_label'].apply(lambda x: group_mapping[x])
+                    model_data = pd.DataFrame.from_dict({param: param_vals, 'subj_id': subj_id_vals, 'group': rew_hist_vals, 'side': side_vals})
+
+                    mem = sm.MixedLM.from_formula(param+' ~ group', groups='subj_id', data=model_data, missing='drop', vc_formula=vc_form).fit() #vc_formula=vc_form, 
+                    
+                    if print_fit_results:
+                        print('{}: {} {}, {}-aligned Mixed-effects Model, linear regression on rew history bin #:\n {}\n'.format(
+                               param, signal_type, region, align, mem.summary()))
+                        print('Random Effects:\n{}\n'.format(mem.random_effects))
                         
-                    print('{}: {} {}, {}-aligned Mixed-effects Model, \'{}\' group compared against other groups:\n {}\n'.format(
-                           param, signal_type, region, align, first_group, mem.fit().summary()))
+                    print('{}: {} {}, {}-aligned slope regression p-values:\n {}\n'.format(
+                           param, signal_type, region, align, mem.pvalues))
                     
                 
 # %% perform n-back regression on peak height
@@ -808,104 +1043,641 @@ for signal_type in signals:
 # look at each region and property separately
 parameters = ['peak_height'] # ['peak_time', 'peak_height', 'peak_width', 'decay_tau'] #
 regions = ['DMS', 'PL']
-aligns = [Align.cue, Align.reward]
-signals = ['z_dff_iso'] # 'dff_iso', 
+aligns = [Align.reward] #Align.cue, 
+signals = ['dff_iso', 'z_dff_iso'] # 'dff_iso', 'z_dff_iso'
 
 include_current_side = False
-include_side_reward_hist = True
+include_side_reward_interaction = False
+include_stay_switch = False
 fit_subj_separate = False
-lim_n_back = 4 # rew_hist_n_back
+plot_trial_0 = False
+normalize_coeffs = True
+print_fit_results = False
+plot_fit_results = True
+plot_regions_same_axis = True
+use_ci_errors = False
 
-for signal_type in signals:
-    signal_label, y_label = fpah.get_signal_type_labels(signal_type)
+lim_n_back_fits = [6] #np.arange(0,11) # rew_hist_n_back
+lim_n_back_plot = 4
+
+# define reusable plotting routine
+fmt = {'fmt': '-'}
+def plot_coeffs(coeffs, errors, ax, include_label=True, label_prefix='', fmt=fmt):
     
-    for param in parameters:
+    x = np.arange(lim_n_back_plot+1)
+    
+    if not plot_trial_0:
+        x = x[x != 0]
+    
+    if include_side_reward_interaction:
+
+        contra_labels = []
+        ipsi_labels = []
+        if plot_trial_0:
+            if include_current_side:
+                contra_labels.append('contra choice')
+                ipsi_labels.append('ipsi choice')
+            else:
+                contra_labels.append('all choices')
+                ipsi_labels.append('all choices')
+        
+        contra_labels.extend(['contra, reward ({})'.format(i) for i in range(-1, -lim_n_back_plot-1, -1)])
+        ipsi_labels.extend(['ipsi, reward ({})'.format(i) for i in range(-1, -lim_n_back_plot-1, -1)])
+        
+        contra_params = params[contra_labels].to_numpy()
+        contra_errors = errors[contra_labels].to_numpy()
+        ipsi_params = params[ipsi_labels].to_numpy()
+        ipsi_errors = errors[ipsi_labels].to_numpy()
+        
+        if 'color' in fmt:
+            c = fmt.pop('color')
+            first_color = c
+            second_color = c
+        else:
+            first_color = 'C0'
+            second_color = 'C1'
+            
+        if include_label:
+            ax.errorbar(x, contra_params, yerr=contra_errors, label='{}Reward History before Contra Choices'.format(label_prefix), color=first_color, **fmt)
+            ax.errorbar(x, ipsi_params, yerr=ipsi_errors, label='{}Reward History before Ipsi Choices'.format(label_prefix), color=second_color, **fmt)
+        else:
+            ax.errorbar(x, contra_params, yerr=contra_errors, label='_', color=first_color, **fmt)
+            ax.errorbar(x, ipsi_params, yerr=ipsi_errors, label='_', color=second_color, **fmt)
+        
+    else:
+        labels = []
+        
+        if plot_trial_0:
+            if include_current_side:
+                
+                if 'color' in fmt:
+                    c = fmt.pop('color')
+                    first_color = c
+                    second_color = c
+                    next_color = c
+                else:
+                    first_color = 'C0'
+                    second_color = 'C1'
+                    next_color = 'C2'
+                
+                contra_params = params['contra choice']
+                contra_errors = errors['contra choice'].to_numpy()
+                ipsi_params = params['ipsi choice']
+                ipsi_errors = errors['ipsi choice'].to_numpy()
+                
+                if include_label:
+                    ax.errorbar(0, contra_params, yerr=contra_errors, label='{}Contra Choice'.format(label_prefix), color=first_color, **fmt)
+                    ax.errorbar(0, ipsi_params, yerr=ipsi_errors, label='{}Ipsi Choice'.format(label_prefix), color=second_color, **fmt)
+                else:
+                    ax.errorbar(0, contra_params, yerr=contra_errors, label='_', color=first_color, **fmt)
+                    ax.errorbar(0, ipsi_params, yerr=ipsi_errors, label='_', color=second_color, **fmt)
+
+                x = x[x != 0]
+            else:
+                labels.append('all choices')
+                if 'color' in fmt:
+                    c = fmt.pop('color')
+                    next_color = c
+                else:
+                    next_color = 'C0'
+        else:
+            if 'color' in fmt:
+                c = fmt.pop('color')
+                next_color = c
+            else:
+                next_color = 'C0'
+        
+        labels.extend(['reward ({})'.format(i) for i in range(-1, -lim_n_back_plot-1, -1)])
+        plot_params = params[labels].to_numpy()
+        plot_errors = errors[labels].to_numpy()
+        
+        if include_label:
+            ax.errorbar(x, plot_params, yerr=plot_errors, label='{}Reward History'.format(label_prefix), color=next_color, **fmt)
+        else:
+            ax.errorbar(x, plot_params, yerr=plot_errors, label='_', color=next_color, **fmt)
+            
+    ax.set_xticks(x)
+
+# define method to normalize coefficients based on maximum value to compute percent change from maximum
+def norm_coeffs(coeffs, errors):
+    max_coeff = coeffs.max()
+    coeffs = coeffs/max_coeff * 100
+    errors = errors/max_coeff * 100
+    
+    return coeffs, errors
+
+peak_metric_subjs = np.unique(filt_peak_metrics['subj_id'])
+all_loglike = {s: {p: {r: {a: [] for a in aligns} for r in regions} for p in parameters} for s in signals}
+subj_loglike = {s: {p: {r: {a: [[] for subj in peak_metric_subjs] for a in aligns} for r in regions} for p in parameters} for s in signals}
+
+for lim_n_back_fit in lim_n_back_fits:        
+    # build predictor matrix labels
+    if include_current_side:
+        predictor_labels = ['contra choice', 'ipsi choice']
+    else:
+        predictor_labels = ['all choices']
+    
+    if include_side_reward_interaction:
+        predictor_labels.extend(['contra, reward ({})'.format(i) for i in range(-1, -lim_n_back_fit-1, -1)])
+        predictor_labels.extend(['ipsi, reward ({})'.format(i) for i in range(-1, -lim_n_back_fit-1, -1)])
+    else:
+        predictor_labels.extend(['reward ({})'.format(i) for i in range(-1, -lim_n_back_fit-1, -1)])
+    
+    for signal_type in signals:
+        signal_label, y_label = fpah.get_signal_type_labels(signal_type)
+        
+        for param in parameters:
+            
+            all_params = {r: {a: {'params': [], 'cis': [], 'ses': []} for a in aligns} for r in regions}
+            subj_params = {r: {a: {'params': [], 'cis': [], 'ses': []} for a in aligns} for r in regions}
+            
+            for region in regions:
+                for align in aligns:
+                    
+                    match align:
+                        case Align.cue:
+                            region_metrics = filt_peak_metrics[(filt_peak_metrics['region'] == region) & (filt_peak_metrics['align'] == align) 
+                                                          & (filt_peak_metrics['signal_type'] == signal_type)]
+                        case Align.reward:
+                            # only show rewarded peaks heights in reward alignment
+                            region_metrics = filt_peak_metrics[(filt_peak_metrics['region'] == region) & (filt_peak_metrics['align'] == align) 
+                                                          & (filt_peak_metrics['signal_type'] == signal_type) & filt_peak_metrics['rewarded']]
+                            
+                    # drop nans
+                    region_metrics = region_metrics[~np.isnan(region_metrics[param])]
+    
+                    param_vals = region_metrics[param].reset_index(drop=True)
+                    
+                    # build predictor matrix
+                    if include_current_side:
+                        predictor_vals = np.hstack([region_metrics['side'].to_numpy()[:,None] == 'contra', region_metrics['side'].to_numpy()[:,None] == 'ipsi'])
+                    else:
+                        predictor_vals = np.full((len(param_vals), 1), 1)
+                    
+                    if include_side_reward_interaction:
+                        predictor_vals = np.hstack([predictor_vals, np.vstack(region_metrics.apply(lambda r: (r['side'] == 'contra') * np.array(r['rew_hist'][:lim_n_back_fit]), axis=1))])
+                        predictor_vals = np.hstack([predictor_vals, np.vstack(region_metrics.apply(lambda r: (r['side'] == 'ipsi') * np.array(r['rew_hist'][:lim_n_back_fit]), axis=1))])
+                    else:
+                        predictor_vals = np.hstack([predictor_vals, np.vstack(region_metrics['rew_hist'].apply(lambda x: x[:lim_n_back_fit]))])
+                    
+                    predictors = pd.DataFrame(predictor_vals.astype(int), columns=predictor_labels)
+    
+                    mem = sm.MixedLM(param_vals, predictors, groups=region_metrics['subj_id']).fit()
+                    if print_fit_results:
+                        print('{}: {} {}, {}-aligned All Subjects Mixed-effects Regression Results:\n{}\n'.format(param, signal_type, region, align, mem.summary()))
+                        print('Random Effects:\n{}\n'.format(mem.random_effects))
+                        
+                    print('{}: {} {}, {}-aligned All Subjects p-values:\n {}\n'.format(
+                           param, signal_type, region, align, mem.pvalues))
+                    
+                    all_params[region][align]['params'] = mem.params
+                    all_params[region][align]['cis'] = mem.conf_int(0.05)
+                    all_params[region][align]['se'] = mem.bse
+                    
+                    all_loglike[signal_type][param][region][align].append(mem.llf)
+                    
+                    if fit_subj_separate:
+                        for k, subj_id in enumerate(peak_metric_subjs):
+                            subj_sel = region_metrics['subj_id'].to_numpy() == subj_id
+        
+                            mem = sm.OLS(param_vals[subj_sel], predictors.loc[subj_sel,:]).fit()
+                            if print_fit_results:
+                                print('{}: {} {}, {}-aligned Subject {} OLS Regression Results:\n{}\n'.format(param, signal_type, region, align, subj_id, mem.summary()))
+                                
+                            print('{}: {} {}, {}-aligned Subject {} p-values:\n {}\n'.format(
+                                   param, signal_type, region, align, subj_id, mem.pvalues))
+                            
+                            subj_params[region][align]['params'].append(mem.params)
+                            subj_params[region][align]['cis'].append(mem.conf_int(0.05))
+                            subj_params[region][align]['se'].append(mem.bse)
+                            
+                            subj_loglike[signal_type][param][region][align][k].append(mem.llf)
+                            
+            if plot_fit_results:
+                if plot_regions_same_axis:
+                    fig, axs = plt.subplots(1, len(aligns), layout='constrained', figsize=(4*len(aligns), 3), sharey='row')
+                    axs = np.array(axs).reshape(len(aligns))
+                else:
+                    fig, axs = plt.subplots(len(regions), len(aligns), layout='constrained', figsize=(4*len(aligns), 3*len(regions)), sharey='row')
+                    axs = axs.reshape((len(regions), len(aligns)))
+                    
+                plot_name = '{}_{}_{}_{}_back_regression_{}'.format('_'.join(regions), '_'.join(aligns), param, lim_n_back_plot, signal_type)
+                
+                for i, region in enumerate(regions):
+                    for j, align in enumerate(aligns):
+                        if plot_regions_same_axis:
+                            ax = axs[j]
+                            ax.set_title('{}-aligned'.format(align))
+                            region_colors = ['C0', 'C1']
+                        else:
+                            ax = axs[i, j]
+                            ax.set_title('{}, {}-aligned'.format(region, align))
+                        plot_utils.plot_dashlines(0, dir='h', ax=ax)
+                        
+                        if fit_subj_separate:
+                            for k in range(len(peak_metric_subjs)):
+                                params = subj_params[region][align]['params'][k]
+                                if use_ci_errors:
+                                    # cis are symmetric, so only find the difference to the upper bound
+                                    errors = subj_params[region][align]['cis'][k][1] - params
+                                else:
+                                    errors = subj_params[region][align]['se'][k]
+                                
+                                if normalize_coeffs:
+                                    params, errors = norm_coeffs(params, errors)
+                                
+                                if plot_regions_same_axis:
+                                    plot_coeffs(params, errors, ax, include_label=False, label_prefix=region+' ', fmt={**fmt, 'alpha': 0.4, 'capsize': 0, 'color': region_colors[i]})
+                                else:
+                                    plot_coeffs(params, errors, ax, include_label=False, fmt={**fmt, 'alpha': 0.4, 'capsize': 0})
+        
+                        params = all_params[region][align]['params']
+                        if use_ci_errors:
+                            # cis are symmetric, so only find the difference to the upper bound
+                            errors = all_params[region][align]['cis'][1] - params
+                        else:
+                            errors = all_params[region][align]['se']
+                        
+                        if normalize_coeffs:
+                            params, errors = norm_coeffs(params, errors)
+                            
+                        if plot_regions_same_axis:
+                            plot_coeffs(params, errors, ax, label_prefix=region+' ', fmt={**fmt, 'alpha': 1, 'capsize': 3, 'capthick': 2, 'linewidth': 2, 'color': region_colors[i]})
+                        else:
+                            plot_coeffs(params, errors, ax, fmt={**fmt, 'alpha': 1, 'capsize': 3, 'capthick': 2, 'linewidth': 2})
+                        
+                        plot_utils.show_axis_labels(ax)
+                        if normalize_coeffs:
+                            ax.set_ylabel('% Max Coefficient ({})'.format(y_label))
+                        else:
+                            ax.set_ylabel('Regression Coefficient ({})'.format(y_label))
+                        ax.set_xlabel('Trials Back')
+                        ax.legend(loc='best')
+                        
+                fpah.save_fig(fig, fpah.get_figure_save_path('Two-armed Bandit', 'Reward History', plot_name), format='pdf')
+
+# plot log likelihood values based on the number of trials back
+if len(lim_n_back_fits) > 1:
+    for signal_type in signals:
+        for param in parameters:
+            
+            fig, axs = plt.subplots(len(regions), len(aligns), layout='constrained', figsize=(4*len(aligns), 3*len(regions)))
+            axs = axs.reshape((len(regions), len(aligns)))
+
+            fig.suptitle('Log Likelihood By Trials Back.\nCurrent Choice Side: {}. Side/History Interaction: {}'.format(include_current_side, include_side_reward_interaction))
+            
+            for i, region in enumerate(regions):
+                for j, align in enumerate(aligns):
+                    ax = axs[i, j]
+                    ax.set_title('{}, {}-aligned'.format(region, align))
+                    
+                    if fit_subj_separate:
+                        for k in range(len(peak_metric_subjs)):
+                            llhs = subj_loglike[signal_type][param][region][align][k]
+                            llhs = llhs/-np.max(llhs)
+                            ax.plot(lim_n_back_fits, llhs, alpha=0.5, color='gray')
+                            
+                    llhs = all_loglike[signal_type][param][region][align]
+                    if fit_subj_separate:
+                        llhs = llhs/-np.max(llhs)
+                        ax.set_ylabel('Normalized Log Likelihood')
+                    else:
+                        ax.set_ylabel('Log Likelihood')
+                        
+                    ax.plot(lim_n_back_fits, llhs, color='C0')
+                    ax.set_xlabel('Regression Trials Back')
+    
+                
+# %% Perform reward history regression over time
+
+regions = ['DMS', 'PL']
+aligns = [Align.cue, Align.reward] #
+signals = ['z_dff_iso']
+included_subjs = np.array(subj_ids)[~np.isin(subj_ids, ignored_subjects)]
+
+hist_n_back = 5
+
+include_current_side = False
+include_stay_switch = False
+include_side_reward_interaction = False
+analyze_meta_subj = True
+
+# first build predictor and response matrices
+t = aligned_signals['t']
+    
+subj_stacked_signals = {subj_id: {s: {a: {r: np.zeros((0, len(t[r]))) for r in regions} 
+                                      for a in aligns} 
+                                  for s in signals}
+                        for subj_id in included_subjs}
+
+subj_predictors = {subj_id: [] for subj_id in included_subjs}
+
+for subj_id in included_subjs:
+    for sess_id in sess_ids[subj_id]:
+        
+        # build predictor matrix by trial
+        trial_data = sess_data[sess_data['sessid'] == sess_id]
+        responded = ~np.isnan(trial_data['response_time']).to_numpy()
+        rewarded = trial_data['rewarded'].to_numpy()[responded].astype(int)
+        choice = trial_data['choice'].to_numpy()[responded]
+        switches = np.concatenate(([False], choice[:-1] != choice[1:])).astype(int)
+        rew_hist = pd.cut(trial_data['rew_rate_hist_all'], rew_hist_bins)
+
+        # make buffered predictors to be able to go n back
+        buff_reward = np.concatenate((np.full((hist_n_back), 0), rewarded, [0]))
+        
+        # stack buffered choices and rewards back in time
+        preds = {'reward ({})'.format(i-hist_n_back): buff_reward[i:-hist_n_back+i-1] for i in range(hist_n_back, -1, -1)}
+        if include_current_side:
+            preds.update({'choice': choice})
+        
+        if include_stay_switch:
+            preds.update({'switch': switches})
+            
+        subj_predictors[subj_id].append(pd.DataFrame(preds))
+            
         for region in regions:
+            t_r = t[region]
+            
+            if sess_id in ignored_signals[region]:
+                continue
+
+            for signal_type in signals:
+                if not signal_type in aligned_signals[subj_id][sess_id]:
+                    continue
+                for align in aligns:
+                    if not align in aligned_signals[subj_id][sess_id][signal_type]:
+                        continue
+            
+                    mat = aligned_signals[subj_id][sess_id][signal_type][align][region]
+                    
+                    # normalize all grouped matrices to the pre-event signal of the lowest reward rate
+                    baseline_mat = mat[(rew_hist == rew_hist_bins[0]) & responded,:]
+                    if baseline_mat.shape[0] > 0:
+                        baseline_sel = (t_r >= -0.1) & (t_r < 0)
+                        baseline = np.nanmean(baseline_mat[:,baseline_sel])
+                    else:
+                        baseline = 0
+                        
+                    mat = mat - baseline
+                    
+                    subj_stacked_signals[subj_id][signal_type][align][region] = np.vstack((subj_stacked_signals[subj_id][signal_type][align][region], mat[responded,:]))
+            
+    subj_predictors[subj_id] = pd.concat(subj_predictors[subj_id])
+    
+# if analyzing meta subject, create new subject entry with everything stacked
+if analyze_meta_subj:
+    subj_predictors['all'] = {r: [] for r in regions}
+    subj_stacked_signals['all'] = {s: {a: {r: [] for r in regions} 
+                                       for a in aligns} 
+                                   for s in signals}
+    
+    for signal_type in signals:
+        for align in aligns:
+            for region in regions:
+                subj_stacked_signals['all'][signal_type][align][region] = np.vstack([subj_stacked_signals[subj_id][signal_type][align][region] for subj_id in included_subjs])
+
+# perform regression over time
+
+# define method to perform the regression
+def regress_over_time(signals, predictors):
+    params = []
+    ci_lower = []
+    ci_upper = []
+    se = []
+    p_vals = []
+    for i in range(signals.shape[1]):
+        t_sig = signals[:,i]
+        # remove trials with nans at this time step
+        rem_nan_sel = ~np.isnan(t_sig)
+        mem = sm.OLS(t_sig[rem_nan_sel], predictors[rem_nan_sel]).fit()
+        params.append(mem.params.to_dict())
+        cis = mem.conf_int(0.05)
+        ci_lower.append(cis[0].to_dict())
+        ci_upper.append(cis[1].to_dict())
+        se.append(mem.bse.to_dict())
+        p_vals.append(mem.pvalues.to_dict())
+        
+    return {'params': pd.DataFrame(params), 
+            'ci_lower': pd.DataFrame(ci_lower), 
+            'ci_upper': pd.DataFrame(ci_upper),
+            'se': pd.DataFrame(se),
+            'p_vals': pd.DataFrame(p_vals)}
+    
+reg_params = {subj_id: {s: {r: {a: {} for a in aligns} 
+                            for r in regions} 
+                        for s in signals}
+              for subj_id in subj_predictors.keys()}
+
+for subj_id in included_subjs:
+    for region in regions:
+        pred_mat = subj_predictors[subj_id].copy()
+        
+        if include_current_side:
+            region_side = implant_info[subj_id][region]['side']
+            choice_side = pred_mat['choice'].apply(lambda x: fpah.get_implant_side_type(x, region_side))
+            contra_choice = choice_side == 'contra'
+            pred_mat['contra choice'] = contra_choice.astype(int)
+            pred_mat['ipsi choice'] = (~contra_choice).astype(int)
+            pred_mat = pred_mat.drop('choice', axis=1)
+        else:
+            pred_mat['intercept'] = 1
+        
+        # need to do this here since animals' implants are on different sides
+        if analyze_meta_subj:
+            subj_predictors['all'][region].append(pred_mat)
+
+        for signal_type in signals:
             for align in aligns:
                 
-                match align:
-                    case Align.cue:
-                        region_metrics = filt_peak_metrics[(filt_peak_metrics['region'] == region) & (filt_peak_metrics['align'] == align) 
-                                                      & (filt_peak_metrics['signal_type'] == signal_type)]
-                    case Align.reward:
-                        # only show rewarded peaks heights in reward alignment
-                        region_metrics = filt_peak_metrics[(filt_peak_metrics['region'] == region) & (filt_peak_metrics['align'] == align) 
-                                                      & (filt_peak_metrics['signal_type'] == signal_type) & filt_peak_metrics['rewarded']]
-                        
-                # drop nans
-                region_metrics = region_metrics[~np.isnan(region_metrics[param])]
-                        
-                # build predictor matrix labels
-                if include_side_reward_hist:
-                    predictor_labels = ['rewarded contra ({})'.format(i) for i in range(-1, -lim_n_back-1, -1)]
-                    predictor_labels.extend(['rewarded ipsi ({})'.format(i) for i in range(-1, -lim_n_back-1, -1)])
-                else:
-                    predictor_labels = ['reward ({})'.format(i) for i in range(-1, -lim_n_back-1, -1)]
+                signal_mat = subj_stacked_signals[subj_id][signal_type][align][region]
+                 
+                reg_params[subj_id][signal_type][region][align] = regress_over_time(signal_mat, pred_mat)
                 
-                if include_current_side:
-                    predictor_labels.append('contra choice')
-                    
-                param_vals = region_metrics[param].reset_index(drop=True)
-                
-                # build predictor matrix
-                if include_side_reward_hist:
-                    predictor_vals = np.vstack(region_metrics.apply(lambda r: np.array(r['contra_hist'][:lim_n_back]) * np.array(r['rew_hist'][:lim_n_back]), axis=1))
-                    predictor_vals = np.hstack([predictor_vals, np.vstack(region_metrics.apply(lambda r: np.array(r['ipsi_hist'][:lim_n_back]) * np.array(r['rew_hist'][:lim_n_back]), axis=1))])
-                else:
-                    predictor_vals = np.vstack(region_metrics['rew_hist'].apply(lambda x: x[:lim_n_back]))
-                
-                if include_current_side:
-                    predictor_vals = np.hstack([predictor_vals, (region_metrics['side'].to_numpy()[:,None] == 'contra')])
-                    
-                predictors = pd.DataFrame(predictor_vals, columns=predictor_labels)
-                predictors = sm.add_constant(predictors)
+if analyze_meta_subj:
+    subj_id = 'all'
+    for region in regions:
+        pred_mat = pd.concat(subj_predictors[subj_id][region])
 
-                mem = sm.MixedLM(param_vals, predictors, groups=region_metrics['subj_id']).fit()
-                print('{}: {} {}, {}-aligned All Subjects Mixed-effects Regression Results:\n{}\n'.format(param, signal_type, region, align, mem.summary()))
+        for signal_type in signals:
+            for align in aligns:
                 
-                params = mem.params
-                cis = mem.conf_int(0.05)
+                signal_mat = subj_stacked_signals[subj_id][signal_type][align][region]
+                 
+                reg_params[subj_id][signal_type][region][align] = regress_over_time(signal_mat, pred_mat)
                 
-                if fit_subj_separate:
-                    for subj_id in np.unique(region_metrics['subj_id']):
-                        subj_sel = region_metrics['subj_id'].to_numpy() == subj_id
+# %% plot regression coefficients over time
+
+# Create the colormap
+#cmap = LinearSegmentedColormap.from_list('red_to_blue', [plt.cm.Reds(0.7), plt.cm.Blues(0.7)])
+cmap = LinearSegmentedColormap.from_list('red_to_blue', [plt.cm.Reds(0.7), plt.cm.Blues(0.7)])
+
+plot_signals = ['z_dff_iso']
+plot_regions = ['DMS', 'PL']
+plot_aligns = [Align.reward] #Align.cue, 
+
+plot_ind_subj = False
+plot_subj_average = False
+plot_meta_subj = True
+include_current_reward = True
+use_ci_errors = False
+plot_sig = True
+sig_lvl = 0.05
+
+lim_n_back = 4
+plot_group_labels = ['Reward History']
+if include_current_reward:
+    plot_groups = [['reward ({})'.format(i-lim_n_back) for i in range(lim_n_back, -1, -1)]]
+    #rew_colors = plt.cm.Reds(np.linspace(1,0.4,lim_n_back+1))
+    rew_colors = cmap(np.linspace(0,1,lim_n_back+1))
+else:
+    plot_groups = [['reward ({})'.format(i-lim_n_back) for i in range(lim_n_back-1, -1, -1)]]
+    #rew_colors = plt.cm.Reds(np.linspace(1,0.4,lim_n_back))
+    rew_colors = cmap(np.linspace(0,1,lim_n_back))
     
-                        mem = sm.OLS(param_vals[subj_sel], predictors.loc[subj_sel,:]).fit()
-                        print('{}: {} {}, {}-aligned Subject {} OLS Regression Results:\n{}\n'.format(param, signal_type, region, align, subj_id, mem.summary()))
+group_colors = [[c for c in rew_colors]]
 
+if include_current_side:
+    plot_group_labels.append('Choice Side')
+    plot_groups.append(['contra choice', 'ipsi choice'])
+    group_colors.append(['C0', 'C1'])
 
+if include_stay_switch:
+    plot_group_labels.append('Side Switch')
+    plot_groups.append(['switch'])
+    group_colors.append(['C0'])
+    
+plot_lims = {Align.cue: {'DMS': [-0.1,0.8], 'PL': [-1,8]},
+             Align.reward: {'DMS': [-0.2,1], 'PL': [-2,10]}}
 
-    # # plot regression coefficients over trials back
-    # fig, axs = plt.subplots(1, len(reg_groups), layout='constrained', figsize=(4*len(reg_groups), 4), sharey=True)
-    # fig.suptitle('Choice Regression Coefficients by Block Reward Rate (Rat {})'.format(subj_id))
+width_ratios = [np.diff(plot_lims[align]['DMS'])[0] for align in plot_aligns]
+    
+# define common plotting routine
+def plot_regress_over_time(params, t, plot_cols, ax, ci_lower=None, ci_upper=None, error=None, p_vals=None, t_sel=None, colors=None):
+    sig_y_dist = 0.03
+    if t_sel is None:
+        t_sel = np.full_like(t, True)
+    
+    line_colors = []
+    for i, col in enumerate(plot_cols):
+        vals = params[col].to_numpy()
+        if colors is None:
+            color = None
+        else:
+            color = colors[i]
+            
+        if not ci_lower is None and not ci_upper is None:
+            error = np.abs(np.vstack((ci_lower[col], ci_upper[col])) - vals[None,:])
+            line, _ = plot_utils.plot_psth(t[t_sel], vals[t_sel], error[:,t_sel], ax=ax, label=col, plot_x0=False, color=color)
+        elif not error is None:
+            line, _ = plot_utils.plot_psth(t[t_sel], vals[t_sel], error[col][t_sel], ax=ax, label=col, plot_x0=False, color=color)
+        else:
+            line, _ = plot_utils.plot_psth(t[t_sel], vals[t_sel], ax=ax, label=col, plot_x0=False, color=color)
+        
+        line_colors.append(line.get_color())
+        
+            
+    plot_utils.plot_dashlines(0, dir='v', ax=ax)
+    plot_utils.plot_dashlines(0, dir='h', ax=ax)
+    
+    # plot significance from 0    
+    if plot_sig:
+        y_min, y_max = ax.get_ylim()
+        y_offset = (y_max-y_min)*sig_y_dist
 
-    # x_vals = np.arange(n_back)+1
+        for i, col in enumerate(plot_cols):
+            # perform correction
+            reject, corrected_pvals, _, _  = smm.multipletests(p_vals[col][t_sel], alpha=0.05, method='fdr_bh')
+            sig_t = t[t_sel][reject]
+            ax.scatter(sig_t, np.full_like(sig_t, y_max+i*y_offset), color=line_colors[i], marker='.')
 
-    # for i, group in enumerate(reg_groups):
+    ax.set_xlabel('Time (s)')
+    ax.legend()
 
-    #     fit_res = reg_results[i]
-    #     params = fit_res.params
-    #     cis = fit_res.conf_int(0.05)
-
-    #     ax = axs[i]
-    #     ax.set_title('Block Rate: {}'.format(group))
-    #     plot_utils.plot_dashlines(0, dir='h', ax=ax)
-
-    #     # plot constant
-    #     key = 'const'
-    #     ax.errorbar(0, params[key], yerr=np.abs(cis.loc[key,:] - params[key]).to_numpy()[:,None], fmt='o', capsize=4, label='bias')
-
-    #     row_labels = params.index.to_numpy()
-    #     for j, pred_label in enumerate(label_list):
-    #         pred_label = pred_label.replace(' ({})', '')
-    #         pred_row_labels = [label for label in row_labels if pred_label == re.sub(r' \(.*\)', '', label)]
-
-    #         pred_params = params[pred_row_labels].to_numpy()
-    #         pred_cis = cis.loc[pred_row_labels,:].to_numpy()
-
-    #         ax.errorbar(x_vals, pred_params, yerr=np.abs(pred_cis - pred_params[:,None]).T, fmt='o-', capsize=4, label=pred_label)
-
-    #     if i == 0:
-    #         ax.set_ylabel('Regresssion Coefficient for Choosing Left')
-    #     ax.set_xlabel('Trials Back')
-    #     ax.legend(loc='best')
+n_rows = len(plot_regions)
+n_cols = len(plot_aligns)
+for plot_group, group_label, colors in zip(plot_groups, plot_group_labels, group_colors):
+    for signal_type in plot_signals:
+        signal_label, y_label = fpah.get_signal_type_labels(signal_type)
+        
+        if plot_ind_subj:
+            for subj_id in included_subjs:
+                fig, axs = plt.subplots(n_rows, n_cols, layout='constrained', figsize=(5*n_cols, 4*n_rows), width_ratios=width_ratios, sharey='row')
+                axs = np.array(axs).reshape((n_rows, n_cols))
+                
+                fig.suptitle('{} Regression, Subj {}, {}'.format(group_label, subj_id, signal_label))
+                
+                for i, region in enumerate(plot_regions):
+                    t_r = t[region]
+                    for j, align in enumerate(plot_aligns):
+                        ax = axs[i,j]
+                        
+                        subj_params = reg_params[subj_id][signal_type][region][align]
+                        t_sel = (t_r > plot_lims[align][region][0]) & (t_r < plot_lims[align][region][1])
+                        
+                        if use_ci_errors:
+                            plot_regress_over_time(subj_params['params'], t_r, plot_group, ax, 
+                                                   ci_lower=subj_params['ci_lower'], ci_upper=subj_params['ci_upper'], 
+                                                   p_vals=subj_params['p_vals'], t_sel=t_sel, colors=colors)
+                        else:
+                            plot_regress_over_time(subj_params['params'], t_r, plot_group, ax, 
+                                                   error=subj_params['se'], p_vals=subj_params['p_vals'], 
+                                                   t_sel=t_sel, colors=colors)   
+                        
+                        if j == 0:
+                            ax.set_ylabel('Coefficient ({})'.format(y_label))
+                        
+        if plot_subj_average:
+            fig, axs = plt.subplots(n_rows, n_cols, layout='constrained', figsize=(5*n_cols, 4*n_rows), width_ratios=width_ratios, sharey='row')
+            axs = np.array(axs).reshape((n_rows, n_cols))
+            fig.suptitle('{} Regression, Subject Avg, {}'.format(group_label, signal_label))
+            
+            for i, region in enumerate(plot_regions):
+                t_r = t[region]
+                for j, align in enumerate(plot_aligns):
+                    ax = axs[i,j]
+                    
+                    # average coefficients across subjects
+                    all_params = pd.concat([reg_params[subj_id][signal_type][region][align]['params'] for subj_id in included_subjs])
+                    param_avg = all_params.groupby(level=0).mean()
+                    param_se = all_params.groupby(level=0).std() / np.sqrt(len(included_subjs))
+                    
+                    t_sel = (t_r > plot_lims[align][region][0]) & (t_r < plot_lims[align][region][1])
+            
+                    plot_regress_over_time(param_avg, t_r, plot_group, ax, 
+                                           error=param_se, t_sel=t_sel, colors=colors)
+                    
+                    if j == 0:
+                        ax.set_ylabel('Coefficient ({})'.format(y_label))
+                        
+        if plot_meta_subj:
+            subj_id = 'all'
+            fig, axs = plt.subplots(n_rows, n_cols, layout='constrained', figsize=(5*n_cols, 4*n_rows), width_ratios=width_ratios, sharey='row')
+            axs = np.array(axs).reshape((n_rows, n_cols))
+            
+            fig.suptitle('{} Regression, Subj {}, {}'.format(group_label, subj_id, signal_label))
+            
+            for i, region in enumerate(plot_regions):
+                t_r = t[region]
+                for j, align in enumerate(plot_aligns):
+                    ax = axs[i,j]
+                    
+                    subj_params = reg_params[subj_id][signal_type][region][align]
+                    t_sel = (t_r > plot_lims[align][region][0]) & (t_r < plot_lims[align][region][1])
+                    
+                    if use_ci_errors:
+                        plot_regress_over_time(subj_params['params'], t_r, plot_group, ax, 
+                                               ci_lower=subj_params['ci_lower'], ci_upper=subj_params['ci_upper'], 
+                                               p_vals=subj_params['p_vals'], t_sel=t_sel, colors=colors)
+                    else:
+                        plot_regress_over_time(subj_params['params'], t_r, plot_group, ax, 
+                                               error=subj_params['se'], p_vals=subj_params['p_vals'], 
+                                               t_sel=t_sel, colors=colors)
+                    
+                    if j == 0:
+                        ax.set_ylabel('Coefficient ({})'.format(y_label))
+                        
+            plot_name = '{}_{}_time_regression_{}_{}'.format('_'.join(plot_regions), '_'.join(plot_aligns), group_label, signal_type)
+            fpah.save_fig(fig, fpah.get_figure_save_path('Two-armed Bandit', 'Reward History', plot_name), format='pdf')
+            
+            

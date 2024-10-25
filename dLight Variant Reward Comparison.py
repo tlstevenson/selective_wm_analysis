@@ -393,8 +393,8 @@ for variant, subjids in variant_subj.items():
 
 # %% Plot average across variants
 
-regions = ['DMS']
-alignments = [Align.cue, Align.reward]
+plot_regions = ['PL']
+plot_alignments = [Align.cue, Align.reward]
 
 grouping = 'trials' # 'behavior' #
 
@@ -402,9 +402,12 @@ stacked_signals = trial_stacked_signals
 
 plot_lims = {Align.cue: {'DMS': [-0.1,0.6], 'PL': [-1,1]},
              Align.reward: {'DMS': [-0.1,1], 'PL': [-0.5,10]}}
+region_colors = {'DMS': '#53C43B', 'PL': '#BB6ED8'}
+region_decrement = {'DMS': 1, 'PL': 2}
 
 #width_ratios = [2,10.5]
-width_ratios = [0.7,1.1]
+#width_ratios = [0.7,1.1]
+width_ratios = [np.diff(plot_lims[Align.cue][plot_regions[0]])[0], np.diff(plot_lims[Align.reward][plot_regions[0]])[0]]
 
 plot_name = '{}_cue_reward'.format('_'.join(regions))
 
@@ -413,13 +416,10 @@ n_cols = len(alignments)
 t = aligned_signals['t']
 
 fig, axs = plt.subplots(n_rows, n_cols, layout='constrained', figsize=(7, 4*n_rows), sharey='row', width_ratios=width_ratios)
-if n_rows == 1 and n_cols == 1:
-    axs = np.array(axs)
+axs = np.array(axs).reshape((n_rows, n_cols))
 
-axs = axs.reshape((n_rows, n_cols))
-
-for i, region in enumerate(regions):
-    for j, align in enumerate(alignments):
+for i, region in enumerate(plot_regions):
+    for j, align in enumerate(plot_alignments):
         ax = axs[i,j]
         
         match align:
@@ -435,7 +435,8 @@ for i, region in enumerate(regions):
         
         plot_utils.plot_dashlines(0, ax=ax)
 
-        plot_utils.plot_psth(t_r[t_sel], np.nanmean(act, axis=0)[t_sel], error[t_sel], ax, color='#08AB36')
+        dec = region_decrement[region]
+        plot_utils.plot_psth(t_r[t_sel][::dec], np.nanmean(act, axis=0)[t_sel][::dec], error[t_sel][::dec], ax, color=region_colors[region])
 
         ax.set_title('{} {}'.format(region, label))
         if j == 0:
@@ -647,11 +648,13 @@ for align in alignments:
 ignore_outliers = True
 outlier_thresh = 10
 
-parameters = ['peak_time', 'peak_height', 'peak_width', 'decay_tau']
+parameters = ['peak_width'] #['peak_time', 'peak_height', 'peak_width', 'decay_tau']
 parameter_titles = {'peak_time': 'Time to Peak', 'peak_height': 'Peak Amplitude',
                     'peak_width': 'Peak Width', 'decay_tau': 'Decay τ'}
 
 regions = ['DMS', 'PL']
+region_colors = {'DMS': '#53C43B', 'PL': '#BB6ED8'}
+region_palette = [region_colors[r] for r in regions]
 align_order = ['Response Cue', 'Reward Delivery']
 align_labels = {'cue': 'Response Cue', 'reward': 'Reward Delivery'}
 peak_metrics_df = sess_peak_metrics_df.copy()
@@ -663,7 +666,7 @@ for param in parameters:
     plot_name = 'cue_reward_peak_comp_{}'.format(param)
 
     # Compare responses across regions grouped by alignment
-    fig, ax = plt.subplots(1, 1, figsize=(4, 4), layout='constrained', sharey=True)
+    fig, ax = plt.subplots(1, 1, figsize=(3.5, 5), layout='constrained', sharey=True)
     fig.suptitle(parameter_titles[param])
 
     if ignore_outliers:
@@ -676,7 +679,7 @@ for param in parameters:
 
     # plot sensor averages in boxplots
     sb.boxplot(data=peak_metrics_df, x='align_label', y=param, hue='region',
-               order=align_order, hue_order=regions, ax=ax, showfliers=False)
+               order=align_order, hue_order=regions, ax=ax, showfliers=False, palette=region_palette)
     ax.set_ylabel(parameter_labels[param])
     ax.set_xlabel('')
     ax.set_yscale('log')
@@ -696,8 +699,7 @@ for param in parameters:
 
             y = [subj_avg.loc[subj_avg['region'] == r, param] for r in regions]
 
-            ax.plot(x+jitter, y, color='black', marker='o', linestyle='dashed', alpha=0.75)
-            
+            ax.plot(x+jitter, y, color='black', marker='o', linestyle='-', alpha=0.75)
 
     fpah.save_fig(fig, fpah.get_figure_save_path('Example Signals', '', plot_name), format='pdf')
 
