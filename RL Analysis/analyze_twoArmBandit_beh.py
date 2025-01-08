@@ -5,15 +5,16 @@ Script to investigate performance on the two-arm bandit task
 @author: tanner stevenson
 """
 
+
 # %% imports
 
-import init
-import pandas as pd
-from pyutils import utils
+import init    # when opening this file, add a breakpoint, debug line, remove the break point and then run the secion 
+import pandas as pd    # loading the library called panda. Can use it as pd 
+from pyutils import utils 
 from sys_neuro_tools import plot_utils
-import hankslab_db.basicRLtasks_db as db
+import hankslab_db.basicRLtasks_db as db 
 from hankslab_db import db_access
-import beh_analysis_helpers as bah
+import beh_analysis_helpers as bah  # this code (module) has a bunch of functions that help data processing
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
@@ -44,12 +45,17 @@ subj_ids = [179, 188, 191, 207, 182]
 # sess_ids = {k: v for k, v in sess_ids.items() if k in subj_ids}
 
 sess_ids = db_access.get_subj_sess_ids(subj_ids, protocol='ClassicRLTasks', stage_num=2)
+# . is used to used to access attributes (eg. methods, variables, or properties) inside db_access
+
+
 #sess_ids = bah.limit_sess_ids(sess_ids, 10)
 #sess_ids = {179: [95201, 95312, 95347]}
 
 # get trial information
 reload = False
 loc_db = db.LocalDB_BasicRLTasks('twoArmBandit')
+
+#using the function created in the db
 all_sess = loc_db.get_behavior_data(utils.flatten(sess_ids), reload=reload)
 
 # make sure RT column is filled in (it wasn't initially)
@@ -59,7 +65,7 @@ all_sess['cpoke_out_latency'] = all_sess['cpoke_out_time'] - all_sess['response_
 # %% TRIAL COUNTS
 
 # aggregate count tables into dictionary
-count_columns = ['side_prob', 'block_prob', 'high_side']
+count_columns = ['side_prob', 'block_prob', 'high_side']  # this seems to simply create a table 
 column_titles = ['Side Probability (L/R)', 'Block Probabilities', 'High Side']
 count_dict = bah.get_count_dict(all_sess, 'subjid', count_columns, normalize=False)
 count_dict_pct = bah.get_count_dict(all_sess, 'subjid', count_columns, normalize=True)
