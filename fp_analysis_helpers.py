@@ -315,6 +315,8 @@ exp_decay_bounds = ([     0,      0, -np.inf],
 def calc_peak_properties(signal, t, filter_params={}, peak_find_params={}, fit_decay=True):
     if len(signal) == 0:
         return {}
+    
+    signal = signal.copy()
            
     dt = np.nanmean(np.diff(t))
     
@@ -325,6 +327,7 @@ def calc_peak_properties(signal, t, filter_params={}, peak_find_params={}, fit_d
     peak_tmax = peak_find_params.get('peak_tmax', np.median(t))
     tau_tmax = peak_find_params.get('tau_tmax', t[-1])
     min_dist = peak_find_params.get('min_dist', 0)
+    lim_peak_width_to_edges = peak_find_params.get('lim_peak_width_to_edges', True)
     peak_edge_buffer = peak_find_params.get('peak_edge_buffer', 2*dt)
     peak_edge_buffer = int(np.ceil(peak_edge_buffer/dt))
 
@@ -335,12 +338,15 @@ def calc_peak_properties(signal, t, filter_params={}, peak_find_params={}, fit_d
         filt_signal = signal
 
     # fill nans so peak finding doesn't have issues
-    filt_signal = fp_utils.fill_signal_nans(filt_signal)
+    filt_signal, nan_idxs = fp_utils.fill_signal_nans(filt_signal)
     
     if use_filt_signal:
         peak_prop_signal = filt_signal
     else:
         peak_prop_signal = signal
+        
+    # fill nans again so that masked signals properly handle peak limits
+    peak_prop_signal[nan_idxs] = np.nan
 
     t0_idx = np.argmin(np.abs(t))
 
@@ -394,14 +400,14 @@ def calc_peak_properties(signal, t, filter_params={}, peak_find_params={}, fit_d
         peak_left_idx = t0_idx
 
     if peak_right_idx is None:
-        peak_right_idx = np.argmin(peak_prop_signal[peak_idx:tau_tmax_idx]) + peak_idx
+        peak_right_idx = np.nanargmin(peak_prop_signal[peak_idx:tau_tmax_idx]) + peak_idx
 
     if peak_right_idx >= tau_tmax_idx:
         peak_right_idx = tau_tmax_idx
         lowest_side_idx = peak_left_idx
     else:
         idxs = np.array([peak_left_idx, peak_right_idx])
-        lowest_side_idx = idxs[np.argmin(peak_prop_signal[idxs])]
+        lowest_side_idx = idxs[np.nanargmin(peak_prop_signal[idxs])]
         
     peak_height = peak_prop_signal[peak_idx] - peak_prop_signal[lowest_side_idx]
     peak_time = t[peak_idx]
@@ -409,8 +415,12 @@ def calc_peak_properties(signal, t, filter_params={}, peak_find_params={}, fit_d
     # manually find peak width
     peak_width_y = peak_prop_signal[peak_idx] - peak_height*0.5
     y_sel = np.flatnonzero(peak_prop_signal < peak_width_y)
-    left_idxs = y_sel[(y_sel < peak_idx) & (y_sel > peak_left_idx)]
-    right_idxs = y_sel[(y_sel > peak_idx) & (y_sel < peak_right_idx)]
+    if lim_peak_width_to_edges:
+        left_idxs = y_sel[(y_sel < peak_idx) & (y_sel > peak_left_idx)]
+        right_idxs = y_sel[(y_sel > peak_idx) & (y_sel < peak_right_idx)]
+    else:
+        left_idxs = y_sel[(y_sel < peak_idx)]
+        right_idxs = y_sel[(y_sel > peak_idx)]
 
     if len(left_idxs) > 0:
         left_idx = left_idxs[-1]
@@ -450,15 +460,17 @@ def calc_peak_properties(signal, t, filter_params={}, peak_find_params={}, fit_d
     #     peak_width_right = peak_widths_right[all_peaks_peak_idx]*dt + t[0]
 
 
-    # if np.random.random() < 0.01: # or peak_height < 0
-        # _, ax = plt.subplots(1,1)
-        # ax.plot(t, signal)
-        # ax.plot(t, filt_signal)
-        # plot_utils.plot_dashlines([0, peak_tmax], ax=ax)
-        # ax.plot(t[peak_idx], peak_prop_signal[peak_idx], marker=7, markersize=10, color='C1')
-        # ax.vlines(t[peak_idx], peak_prop_signal[peak_idx]-peak_height, peak_prop_signal[peak_idx], color='C2', linestyles='dashed')
-        # ax.plot([t[peak_left_idx], t[peak_right_idx]], [peak_prop_signal[peak_left_idx], peak_prop_signal[peak_right_idx]], color='C2')
-        # ax.hlines(peak_width_y, peak_width_left, peak_width_right, color='C3')
+    # if np.random.random() < 0.02: # or peak_height < 0
+    #     _, ax = plt.subplots(1,1)
+    #     ax.plot(t, signal)
+    #     # fill nans before plotting filtered signal
+    #     filt_signal[nan_idxs] = np.nan
+    #     ax.plot(t, filt_signal)
+    #     plot_utils.plot_dashlines([0, peak_tmax], ax=ax)
+    #     ax.plot(t[peak_idx], peak_prop_signal[peak_idx], marker=7, markersize=10, color='C1')
+    #     ax.vlines(t[peak_idx], peak_prop_signal[peak_idx]-peak_height, peak_prop_signal[peak_idx], color='C2', linestyles='dashed')
+    #     ax.plot([t[peak_left_idx], t[peak_right_idx]], [peak_prop_signal[peak_left_idx], peak_prop_signal[peak_right_idx]], color='C2')
+    #     ax.hlines(peak_width_y, peak_width_left, peak_width_right, color='C3')
 
     # fit exponential decay to falling peak
     if fit_decay:
