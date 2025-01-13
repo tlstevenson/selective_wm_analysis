@@ -140,7 +140,7 @@ def print_params(model):
             print('{}: {}'.format(name, param.data))
     
 
-def plot_fit_results(sess_data, output, agent_activity, agent_names, betas=None, title_prefix=''):
+def plot_single_val_fit_results(sess_data, output, agent_activity, agent_names, betas=None, title_prefix=''):
     # common plotting method to plot output of fits
     
     # convert to numpy for plotting
@@ -149,9 +149,6 @@ def plot_fit_results(sess_data, output, agent_activity, agent_names, betas=None,
         
     if type(agent_activity) is torch.Tensor:
         agent_activity = agent_activity.detach().numpy()
-    
-    # rescale output to -1/1 for plotting
-    plt_output = 2*output - 1
     
     sess_ids = np.unique(sess_data['sessid'])
     
@@ -170,30 +167,25 @@ def plot_fit_results(sess_data, output, agent_activity, agent_names, betas=None,
         fig.suptitle('{}Session {}'.format(title_prefix, sess_id))
 
         x = np.arange(len(trial_data))+1
-        choices = trial_data['choice_inputs']
-        rewarded = trial_data['rewarded']
-        choice_outcome_lines = np.vstack([choices, choices + choices*0.2 + rewarded*choices*0.2])
-
+        
         ax = axs[0]
-        _draw_blocks(block_switch_trials, block_rates, 1.65, ax)
-        ax.vlines(x=x, ymin=choice_outcome_lines[0,:]*1.1, ymax=choice_outcome_lines[1,:]*1.1, color='gray', label='True Output')
         #start plotting from trial 1 to the last trial
-        ax.plot(x[1:], plt_output[i,:len(trial_data)-1,:], label='Model Output')
-        ax.set_ylabel('Output choice')
+        ax.plot(x[1:], output[i,:len(trial_data)-1,:], label='Model Output')
+        ax.set_ylabel('p(Choose Left)')
         ax.set_xlabel('Trial')
         ax.set_title('Model vs True Output across trials',  fontsize=10)
         ax.xaxis.set_major_locator(ticker.MultipleLocator(50))
-        ax.set_yticks([-1.3,-1.0, 0, 1.0, 1.3], labels=['Chose Right', '-1.0', '0', '1.0', 'Chose Left'])
         handles, labels = ax.get_legend_handles_labels()
         ax.legend(handles[-2:], labels[-2:], loc='upper right', fontsize=8, framealpha=0.5, bbox_to_anchor=(1.14, 1.))
-        ax.axhline(y=0, color='black', linestyle='dashed')
-        ax.margins(x=0.01, y=0.1)
+        ax.axhline(y=0.5, color='black', linestyle='dashed')
+        ax.margins(x=0.01)
+        
+        _draw_choices(trial_data, ax)
+        _draw_blocks(block_switch_trials, block_rates, ax)
 
         #Plot agent states over trials
         ax = axs[1]
-        _draw_blocks(block_switch_trials, block_rates, 3.2, ax)
-        ax.vlines(x=x, ymin=choice_outcome_lines[0,:]*2.2, ymax=choice_outcome_lines[1,:]*2.2, color='gray', label='True Output')
-
+        
         for j, agent in enumerate(agent_names):
             agent_vals = agent_activity[i,:len(trial_data)-1,j]
             ax.plot(x[1:], agent_vals, alpha=0.7, label=agent)
@@ -201,12 +193,14 @@ def plot_fit_results(sess_data, output, agent_activity, agent_names, betas=None,
         ax.set_ylabel('Agent State')
         ax.set_xlabel('Trial')
         ax.set_title('Model Agent State across trials', fontsize=10)
-        ax.set_yticks([-2.5, -2.0, -1.0, 0, 1.0, 2.0, 2.5], labels=['Chose Right', '-2.0', '-1.0', '0', '1.0', '2.0', 'Chose Left'])
         ax.xaxis.set_major_locator(ticker.MultipleLocator(50))
         handles, labels = ax.get_legend_handles_labels()
         ax.legend(handles[-4:], labels[-4:], loc='upper right', fontsize=8, framealpha=0.5, bbox_to_anchor=(1.16, 1))
         ax.axhline(y=0, color='black', linestyle='dashed')
-        ax.margins(x=0.01, y=0.1)
+        ax.margins(x=0.01)
+        
+        _draw_choices(trial_data, ax)
+        _draw_blocks(block_switch_trials, block_rates, ax)
         
         # plot weighted agent values
         if not betas is None:
@@ -214,13 +208,12 @@ def plot_fit_results(sess_data, output, agent_activity, agent_names, betas=None,
                 betas = betas.detach().numpy()
             
             ax = axs[2]
-            plot_utils.plot_dashlines(block_switch_trials, ax=ax, label='_')
 
             for j, agent in enumerate(agent_names):
                 agent_vals = agent_activity[i,:len(trial_data)-1,j]*betas[j]
                 ax.plot(x[1:], agent_vals, alpha=0.7, label=agent)
 
-            ax.plot(x[1:], plt_output[i,:len(trial_data)-1,:], label='Model Output')
+            ax.plot(x[1:], output[i,:len(trial_data)-1,:], label='Model Output')
 
             ax.set_ylabel('Weighted Agent State')
             ax.set_xlabel('Trial')
@@ -229,11 +222,120 @@ def plot_fit_results(sess_data, output, agent_activity, agent_names, betas=None,
             handles, labels = ax.get_legend_handles_labels()
             ax.legend(handles[-4:], labels[-4:], loc='upper right', fontsize=8,framealpha=0.5, bbox_to_anchor=(1.16, 1))
             ax.axhline(y=0, color='black', linestyle='dashed')
-            ax.margins(x=0.01, y=0.1)
+            ax.margins(x=0.01)
             
+            _draw_choices(trial_data, ax)
+            _draw_blocks(block_switch_trials, block_rates, ax)
             
-def _draw_blocks(block_switch_trials, block_rates, y_val, ax):
-    plot_utils.plot_dashlines(block_switch_trials, ax=ax, label='_', c='black')
+
+def plot_multi_val_fit_results(sess_data, output, agent_activity, agent_names, choice_names, betas=None, title_prefix=''):
+    # common plotting method to plot output of model fits maintaining values for more than one choice
+    
+    # convert to numpy for plotting
+    if type(output) is torch.Tensor:
+        output = output.detach().numpy()
+        
+    if type(agent_activity) is torch.Tensor:
+        agent_activity = agent_activity.detach().numpy()
+        
+    if not betas is None and type(betas) is torch.Tensor:
+        betas = betas.detach().numpy()
+        
+    n_agents = len(agent_names)
+    
+    sess_ids = np.unique(sess_data['sessid'])
+    
+    for i, sess_id in enumerate(sess_ids):
+        trial_data = sess_data[sess_data['sessid'] == sess_id]
+        fig, axs = plt.subplots(n_agents+1, 1, figsize=(12,(n_agents+1)*3), layout='constrained')
+            
+        # get block transitions
+        block_switch_trials = trial_data[trial_data['block_trial'] == 1]['trial']
+        block_switch_trials = np.append(block_switch_trials, trial_data.iloc[-1]['trial'])
+        block_rates = trial_data[trial_data['trial'].isin(block_switch_trials[:-1])]['side_prob']
+            
+        fig.suptitle('{}Session {}'.format(title_prefix, sess_id))
+
+        x = np.arange(len(trial_data))+1
+        
+        # plot model output versus actual choices
+        ax = axs[0]
+        #start plotting from trial 1 to the last trial
+        ax.plot(x[1:], output[i,:len(trial_data)-1,:], label='Model Output')
+        ax.set_ylabel('p(Choose Left)')
+        ax.set_xlabel('Trial')
+        ax.set_title('Model vs True Output across trials')
+        handles, labels = ax.get_legend_handles_labels()
+        ax.legend(handles[-2:], labels[-2:], loc='upper right', fontsize=8, framealpha=0.5, bbox_to_anchor=(1.14, 1.))
+        ax.xaxis.set_major_locator(ticker.MultipleLocator(50))
+        ax.axhline(y=0.5, color='black', linestyle='dashed')
+        ax.margins(x=0.01)
+
+        _draw_choices(trial_data, ax)
+        _draw_blocks(block_switch_trials, block_rates, ax)
+
+        # Plot agent states over trials
+        for j, agent in enumerate(agent_names):
+            ax = axs[j+1]
+    
+            for k, choice_name in enumerate(choice_names):
+                agent_vals = agent_activity[i,:len(trial_data)-1,k,j]
+                
+                if not betas is None:
+                    ax.plot(x[1:], agent_vals*betas[j], alpha=0.7, label='β*{} {}'.format(agent, choice_name))
+                else:
+                    ax.plot(x[1:], agent_vals, alpha=0.7, label='{} {}'.format(agent, choice_name), color='C{}'.format(k))
+    
+            ax.set_ylabel('{} Agent State'.format(agent))
+            ax.set_xlabel('Trial')
+            ax.set_title('{} Agent State across trials'.format(agent))
+
+            handles, labels = ax.get_legend_handles_labels()
+            ax.legend(handles[-4:], labels[-4:], loc='upper right', fontsize=8, framealpha=0.5, bbox_to_anchor=(1.16, 1))
+            ax.xaxis.set_major_locator(ticker.MultipleLocator(50))
+            ax.axhline(y=0, color='black', linestyle='dashed')
+            ax.margins(x=0.01)
+
+            _draw_choices(trial_data, ax)
+            _draw_blocks(block_switch_trials, block_rates, ax)
+            
+def _draw_choices(trial_data, ax):
+    choices = trial_data['choice_inputs']
+    rewarded = trial_data['rewarded']
+    choice_outcome_lines = np.vstack([np.zeros_like(choices), choices*0.1 + rewarded*choices*0.1])
+    
+    y_min, y_max = ax.get_ylim()
+    y_range = y_max - y_min
+    
+    # add choice lines
+    # Lines will be a multiple of the y range and start at the current y min/max
+    choice_outcome_lines[:,choices == -1] = choice_outcome_lines[:,choices == -1]*y_range + y_min
+    choice_outcome_lines[:,choices == 1] = choice_outcome_lines[:,choices == 1]*y_range + y_max
+    
+    ax.vlines(x=np.arange(len(trial_data))+1, ymin=choice_outcome_lines[0,:], ymax=choice_outcome_lines[1,:], 
+              color='gray', label='Choices')
+    
+    # add labels
+    min_label_y = np.max(choice_outcome_lines[1,choices == -1])
+    max_label_y = np.min(choice_outcome_lines[1,choices == 1])
+    
+    current_ticks = ax.get_yticks()
+    # need to keep any exponential since the formatting gets whacky with a mix of strings and numbers
+    current_labels = np.array(['{:.2}'.format(tick) for tick in current_ticks])
+    # keep ticks that are between the base of the ticks
+    keep_tick_sel = (current_ticks < y_max) & (current_ticks > y_min)
+    new_ticks = [min_label_y] + current_ticks[keep_tick_sel].tolist() + [max_label_y]
+    new_labels = ['Chose Right'] + current_labels[keep_tick_sel].tolist() + ['Chose Left']
+    
+    ax.set_yticks(new_ticks, labels=new_labels)
+
+def _draw_blocks(block_switch_trials, block_rates, ax):
+    y_min, y_max = ax.get_ylim()
+    
+    plot_utils.plot_dashlines(block_switch_trials[:-1], ax=ax, label='_', c='black')    
     block_switch_mids = np.diff(block_switch_trials)/2 + block_switch_trials[:-1]
+    
     for idx, rate in zip(block_switch_mids, block_rates):
-        ax.text(idx, y_val, rate, horizontalalignment='center', size='x-small')
+        ax.text(idx, y_max*1.03, rate, horizontalalignment='center', fontsize=8)
+        
+    ax.set_ylim(y_min, y_max*1.15)

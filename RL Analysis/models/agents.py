@@ -21,7 +21,6 @@ class UnitConstraint(nn.Module):
         # convert an initialization between 0 and 1 into the inverse sigmoid space 
         return torch.log(x) - torch.log1p(-x)
     
-    
 class PositiveConstraint(nn.Module):
     # constrain values to be positive using softplus
     # having beta be 100 closely approximates the relu function
@@ -32,18 +31,22 @@ class PositiveConstraint(nn.Module):
         # convert an initialization into positive values
         return functional.softplus(x, beta=100)
     
-    
+def _init_param(x=None):
+    if x is None:
+        x = torch.rand(1)
+    else:
+        # make sure this is a float
+        x = torch.tensor(x).type(torch.float)
+        
+    return nn.Parameter(x)
+
+
 class AlphaParam(nn.Module):
     
     def __init__(self, alpha0 = None):
         super().__init__()
 
-        if alpha0 is None:
-            alpha0 = torch.rand(1)
-        else:
-            alpha0 = torch.tensor(alpha0)
-            
-        self.a = nn.Parameter(alpha0)
+        self.a = _init_param(alpha0)
         parametrize.register_parametrization(self, 'a', UnitConstraint())
         
     def forward(self, x):
@@ -104,7 +107,7 @@ class SingleValueAgent(ModelAgent):
         self.v = torch.tensor(0)
         
     def step(self, input):
-        diff = input[:,0]*input[:,1] - self.v
+        diff = input[:,[0]]*input[:,[1]] - self.v
         delta = self.alpha_v(diff)
         self.v = self.v + delta
         
@@ -199,7 +202,7 @@ class FallacyAgent(ModelAgent):
         self.g = torch.zeros(self.n_vals)
         
     def step(self, input):
-        diff = input[:,:self.n_vals] - input[:,:self.n_vals]*input[:,self.n_vals] - self.g
+        diff = input[:,:self.n_vals] - input[:,:self.n_vals]*input[:,[self.n_vals]] - self.g
         delta = self.alpha_g(diff)
         self.g = self.g + delta
         
@@ -218,13 +221,33 @@ class QValueAgent(ModelAgent):
         input: tensor of shape (n_sess, n_trials, [chose_left, chose_right, outcome_t])
 
     Outputs:
-        output_v: the output value of the Reward-Seeking/Value Agent V on each trial. Tensor of shape (n_sess, n_trials, [left_value, right_value])
+        output_v: the output value of the Q-Value Agent on each trial. Tensor of shape (n_sess, n_trials, [left_value, right_value])
     """
 
-    def __init__(self, alpha0 = None):
+    def __init__(self, alpha_same_rew=None, alpha_same_unrew=None, alpha_diff_rew=None, alpha_diff_unrew=None, 
+                 k_same_rew=1, k_same_unrew=0, k_diff_rew=1, k_diff_unrew=0, constraints={}):
+        
         super().__init__()
             
-        self.alpha_v = AlphaParam(alpha0)
+        self.alpha_same_rew = AlphaParam(alpha_same_rew)
+        self.alpha_same_unrew = AlphaParam(alpha_same_unrew)
+        self.alpha_diff_rew = AlphaParam(alpha_diff_rew)
+        self.alpha_diff_unrew = AlphaParam(alpha_diff_unrew)
+        self.k_same_rew = _init_param(k_same_rew)
+        self.k_same_unrew = _init_param(k_same_unrew)
+        self.k_diff_rew = _init_param(k_diff_rew)
+        self.k_diff_unrew = _init_param(k_diff_unrew)
+        
+        # apply parameter constraints
+        for key, vals in constraints.items():
+            # reassign parameter to be the same instance of another parameter
+            if 'share' in vals:
+                setattr(self, key, getattr(self, vals['share']))
+            # change whether this parameter is being fit
+            if 'fit' in vals:
+                param = getattr(self, key)
+                param.requires_grad = vals['fit']
+        
         self.v = torch.tensor([0,0])
        
     def forward(self, input):
@@ -244,17 +267,36 @@ class QValueAgent(ModelAgent):
         return output, input_diff, output_delta
     
     def reset_state(self):
-        self.v = torch.tensor([0,0])
+        self.v = torch.tensor([[0,0]])
         
     def step(self, input):
-        diff = input[:,0:2]*input[:,2] - self.v
-        delta = self.alpha_v(diff)
+        left_diffs = torch.stack([input[:,0]*input[:,2]*(self.k_same_rew - self.v[:,0]), 
+                                  input[:,0]*(1-input[:,2])*(self.k_same_unrew - self.v[:,0]),
+                                  input[:,1]*input[:,2]*(self.k_diff_rew - self.v[:,0]),
+                                  input[:,1]*(1-input[:,2])*(self.k_diff_unrew - self.v[:,0])], dim=1)
+        
+        right_diffs = torch.stack([input[:,1]*input[:,2]*(self.k_same_rew - self.v[:,1]), 
+                                   input[:,1]*(1-input[:,2])*(self.k_same_unrew - self.v[:,1]),
+                                   input[:,0]*input[:,2]*(self.k_diff_rew - self.v[:,1]),
+                                   input[:,0]*(1-input[:,2])*(self.k_diff_unrew - self.v[:,1])], dim=1)
+        
+        left_deltas = torch.stack([self.alpha_same_rew(left_diffs[:,0]), self.alpha_same_unrew(left_diffs[:,1]),
+                                   self.alpha_diff_rew(left_diffs[:,2]), self.alpha_diff_unrew(left_diffs[:,3])], dim=1)
+        
+        right_deltas = torch.stack([self.alpha_same_rew(right_diffs[:,0]), self.alpha_same_unrew(right_diffs[:,1]),
+                                    self.alpha_diff_rew(right_diffs[:,2]), self.alpha_diff_unrew(right_diffs[:,3])], dim=1)
+        
+        diff = torch.stack([left_diffs.sum(dim=1), right_diffs.sum(dim=1)], dim=1)
+        delta = torch.stack([left_deltas.sum(dim=1), right_deltas.sum(dim=1)], dim=1)
         self.v = self.v + delta
         
         return self.v, diff, delta
     
     def print_params(self):
-        return 'Q Value Agent: α = {}'.format(self.alpha_v.to_string()) 
+        return '''Q Value Agent: \n\t α same, rew = {} \n\t α same, unrew = {} \n\t α diff, rew = {} \n\t α diff, unrew = {}
+\t κ same, rew = {:.5f} \n\t κ same, unrew = {:.5f} \n\t κ diff, rew = {:.5f} \n\t κ diff, unrew = {:.5f}'''.format(
+                  self.alpha_same_rew.to_string(), self.alpha_same_unrew.to_string(), self.alpha_diff_rew.to_string(), self.alpha_diff_unrew.to_string(),
+                  self.k_same_rew.item(), self.k_same_unrew.item(), self.k_diff_rew.item(), self.k_diff_unrew.item()) 
     
 
 # %% Summantion Agent
