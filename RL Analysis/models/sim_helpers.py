@@ -19,15 +19,13 @@ def simulate_behavior(model, n_trials, n_sess, input_formatter, output_choice, o
     
     model_output = []
     agent_states = []
-    agent_input_state_diffs = []
-    agent_state_deltas = []
+    agent_diffs = []
     
     for i in range(n_sess):
         
         sess_model_output = []
         sess_agent_states = []
-        sess_agent_input_state_diffs = []
-        sess_agent_state_deltas = []
+        sess_agent_diffs = []
         
         block = 0
         prev_reward = None
@@ -62,7 +60,7 @@ def simulate_behavior(model, n_trials, n_sess, input_formatter, output_choice, o
             
             model.eval()
             with torch.no_grad():
-                output, output_data = model.step(inputs)
+                output, out_agent_states = model.step(inputs)
             
             prev_choice = output_choice(output)
             
@@ -80,9 +78,7 @@ def simulate_behavior(model, n_trials, n_sess, input_formatter, output_choice, o
                                'chose_right': prev_choice == 'right', 'side_prob': '{:.0f}/{:.0f}'.format(p_reward_left*100, p_reward_right*100)})
         
             sess_model_output.append(output.detach().numpy())
-            sess_agent_states.append(output_data['agent_states'])
-            sess_agent_input_state_diffs.append(output_data['agent_input_state_diffs'])
-            sess_agent_state_deltas.append(output_data['agent_state_deltas'])
+            sess_agent_states.append(out_agent_states.numpy())
             
             # prepare next trial
             if chose_high:
@@ -95,13 +91,9 @@ def simulate_behavior(model, n_trials, n_sess, input_formatter, output_choice, o
             
         model_output.append(np.stack(sess_model_output, axis=1))
         agent_states.append(np.stack(sess_agent_states, axis=1))
-        agent_input_state_diffs.append(np.stack(sess_agent_input_state_diffs, axis=1))
-        agent_state_deltas.append(np.stack(sess_agent_state_deltas, axis=1))
         
     return pd.DataFrame(trial_data), {'model_output': np.concatenate(model_output, axis=0)[:,:,0,:],
-                                      'agent_states': np.concatenate(agent_states, axis=0), 
-                                      'agent_input_state_diffs': np.concatenate(agent_input_state_diffs, axis=0), 
-                                      'agent_state_deltas': np.concatenate(agent_state_deltas, axis=0)}
+                                      'agent_states': np.concatenate(agent_states, axis=0)}
     
     
     

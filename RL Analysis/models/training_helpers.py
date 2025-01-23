@@ -11,9 +11,10 @@ import random as rand
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
-import plot_utils
+from sys_neuro_tools import plot_utils
+import time
 
-def train_model(model, optimizer, loss, inputs, labels, n_cycles, trial_mask=None, batch_size=None, output_formatter=None):
+def train_model(model, optimizer, loss, inputs, labels, n_cycles, trial_mask=None, batch_size=None, output_formatter=None, print_time=True, print_interval=100):
     ''' A general-purpose method for training a network
        this assumes the batch is the first dimension of the tensor
        also the loss function must have reduction = 'none' 
@@ -27,6 +28,9 @@ def train_model(model, optimizer, loss, inputs, labels, n_cycles, trial_mask=Non
     
     if trial_mask is None:
         trial_mask = torch.zeros_like(labels)+1
+        
+    start_t = time.perf_counter()
+    loop_start_t = start_t
 
     for i in range(n_cycles):
         # stochastically train the network on randomly sampled trial batches
@@ -67,9 +71,14 @@ def train_model(model, optimizer, loss, inputs, labels, n_cycles, trial_mask=Non
         running_loss += loss_val
         loss_arr[i] = loss_val
         
-        if i % 100 == 99:
-            running_loss /= 100
-            print('Step {}, Loss {:0.5f}'.format(i+1, running_loss))
+        
+        if i % print_interval == print_interval - 1:
+            running_loss /= print_interval
+            if print_time:
+                print('Step {}, Loss {:.5f}, elapsed time: {:.1f}s, time per step: {:.3f}s'.format(i+1, running_loss, time.perf_counter()-start_t, (time.perf_counter()-loop_start_t)/print_interval))
+                loop_start_t = time.perf_counter()
+            else:
+                print('Step {}, Loss {:.5f}'.format(i+1, running_loss))
             running_loss = 0
 
     return loss_arr
@@ -83,7 +92,7 @@ def eval_model(model, inputs, labels, trial_mask=None, output_transform=None, la
         trial_mask = torch.zeros_like(labels)+1
     
     with torch.no_grad():
-        output, output_data = model(inputs)
+        output, agent_states = model(inputs)
         
         if not output_transform is None:
             output = output_transform(output)
@@ -98,7 +107,7 @@ def eval_model(model, inputs, labels, trial_mask=None, output_transform=None, la
     ll_tot, ll_avg = log_likelihood(labels, output, trial_mask.numpy())
     acc = accuracy(labels, output, trial_mask.numpy())
     
-    return output, output_data, {'ll_total': ll_tot, 'll_avg': ll_avg, 'acc': acc}
+    return output, agent_states.numpy(), {'ll_total': ll_tot, 'll_avg': ll_avg, 'acc': acc}
     
 
 def log_likelihood(labels, outputs, trial_mask=None):

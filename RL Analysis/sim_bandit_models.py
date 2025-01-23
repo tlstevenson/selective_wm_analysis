@@ -83,8 +83,8 @@ ll_tot, ll_avg = th.log_likelihood(left_choice_labels.numpy(), sim_model_data['m
 acc = th.accuracy(left_choice_labels.numpy(), sim_model_data['model_output'][:,1:,:])
 
 print('\nSim Accuracy: {:.2f}%'.format(acc*100))
-print('Sim Total LL: {:.2f}'.format(ll_tot))
-print('Sim Avg LL: {:.2f}'.format(ll_avg))
+print('Sim Total LL: {:.3f}'.format(ll_tot))
+print('Sim Avg LL: {:.5f}'.format(ll_avg))
 
 # %% Fit a new model on the simulated data to recover model parameters
 
@@ -105,7 +105,7 @@ for i in range(n_fits):
     loss_vals = th.train_model(fit_model, optimizer, loss, inputs, left_choice_labels, 1500)
     
     # evaluate the fit
-    fit_output, fit_output_data, fit_perf = th.eval_model(fit_model, inputs, left_choice_labels, output_transform=lambda x: 1/(1+np.exp(-x)))
+    fit_output, agent_states, fit_perf = th.eval_model(fit_model, inputs, left_choice_labels, output_transform=lambda x: 1/(1+np.exp(-x)))
     
     print('\nSim Model Params:')
     print(sim_model.print_params())
@@ -114,11 +114,11 @@ for i in range(n_fits):
     print(fit_model.print_params())
     
     print('\nAccuracy: {:.2f}%'.format(fit_perf['acc']*100))
-    print('Total LL: {:.2f}'.format(fit_perf['ll_total']))
-    print('Avg LL: {:.2f}'.format(fit_perf['ll_avg']))
+    print('Total LL: {:.3f}'.format(fit_perf['ll_total']))
+    print('Avg LL: {:.5f}'.format(fit_perf['ll_avg']))
     
     # plot fit results
-    th.plot_single_val_fit_results(sim_trials, fit_output, fit_output_data['agent_states'][:,:,0,:], 
+    th.plot_single_val_fit_results(sim_trials, fit_output, agent_states[:,:,0,:], 
                         ['Value Agent (V)', 'Persev Agent (H)', 'Fallacy Agent (G)'], betas=fit_model.beta.weight[0],
                         title_prefix= 'Fit Model {} - '.format(i))
 
@@ -143,23 +143,42 @@ constrts = [{'alpha_same_unrew': {'share': 'alpha_same_rew'}, 'alpha_diff_unrew'
          'k_same_rew': {'fit': False}, 'k_same_unrew': {'fit': False}, 'k_diff_rew': {'fit': False}, 'k_diff_unrew': {'fit': False}},
         {'k_same_rew': {'fit': False}, 'k_same_unrew': {'fit': False}, 'k_diff_rew': {'fit': False}, 'k_diff_unrew': {'fit': False}}]
 
-n_fits = 1
+n_fits = 3
 for i in range(n_fits):
     # fit the model formulated in the same way as the single value model
-    q_agent = agents.QValueAgent(alpha_same_rew=None, alpha_same_unrew=None, alpha_diff_rew=None, alpha_diff_unrew=None, 
-                                 k_same_rew=1, k_same_unrew=0, k_diff_rew=0, k_diff_unrew=0, 
-                                 constraints={})
+    # q_agent = agents.QValueAgent(alpha_same_rew=None, alpha_same_unrew=None, alpha_diff_rew=None, alpha_diff_unrew=None, 
+    #                              k_same_rew=1, k_same_unrew=0, k_diff_rew=0, k_diff_unrew=0, 
+    #                              constraints={})
+    
+    if i < 2:
+        q_agent = agents.DynamicQAgent(global_lam=True, inverse_update=i==0,
+                                       constraints={'alpha_diff_rew': {'share': 'alpha_same_rew'}, 'alpha_diff_unrew': {'share': 'alpha_same_unrew'},
+                                                    'gamma_diff_rew': {'share': 'gamma_same_rew'}, 'gamma_diff_unrew': {'share': 'gamma_same_unrew'},
+                                                    'k_same_rew': {'fit': False}, 'k_same_unrew': {'fit': False}, 'k_diff_rew': {'fit': False}, 'k_diff_unrew': {'fit': False}})
+        
+        model_name = 'Dynamic Q'
+        if i == 0:
+            model_name += ' w/ Inverse Update'
+    else:
+        q_agent = agents.UncertaintyDynamicQAgent(global_lam=True, shared_side_alphas=True, shared_outcome_alpha_update=False,
+                                                  constraints={'alpha_diff_rew': {'share': 'alpha_same_rew'}, 'alpha_diff_unrew': {'share': 'alpha_same_unrew'},
+                                                               'gamma_alpha_diff_rew': {'share': 'gamma_alpha_same_rew'}, 'gamma_alpha_diff_unrew': {'share': 'gamma_alpha_same_unrew'},
+                                                               'gamma_lam_diff_rew': {'share': 'gamma_lam_same_rew'}, 'gamma_lam_diff_unrew': {'share': 'gamma_lam_same_unrew'},
+                                                               'k_same_rew': {'fit': False}, 'k_same_unrew': {'fit': False}, 'k_diff_rew': {'fit': False}, 'k_diff_unrew': {'fit': False}})
+        
+        model_name = 'Uncertainty Dynamic Q'
+    
     fit_model = agents.SummationModule([q_agent, agents.PerseverativeAgent(n_vals=2), agents.FallacyAgent(n_vals=2)]) 
     
     loss = nn.CrossEntropyLoss(reduction='none')
     optimizer = optim.Adam(fit_model.parameters(recurse=True), lr=0.01)
     
     # need to reshape the output to work with the cross entropy loss function
-    loss_vals = th.train_model(fit_model, optimizer, loss, inputs, choice_class_labels, 2000, 
+    loss_vals = th.train_model(fit_model, optimizer, loss, inputs, choice_class_labels, 2000, print_interval=100,
                                output_formatter=lambda x: torch.reshape(x, [-1, x.shape[-1]]).squeeze(-1))
     
     # evaluate the fit
-    fit_output, fit_output_data, fit_perf = th.eval_model(fit_model, inputs, left_choice_labels, 
+    fit_output, fit_agent_states, fit_perf = th.eval_model(fit_model, inputs, left_choice_labels, 
                                                           output_transform=lambda x: torch.softmax(x, 2)[:,:,0].unsqueeze(2))
     
     print('\nSim Model Params:')
@@ -169,11 +188,11 @@ for i in range(n_fits):
     print(fit_model.print_params())
     
     print('\nAccuracy: {:.2f}%'.format(fit_perf['acc']*100))
-    print('Total LL: {:.2f}'.format(fit_perf['ll_total']))
-    print('Avg LL: {:.2f}'.format(fit_perf['ll_avg']))
+    print('Total LL: {:.3f}'.format(fit_perf['ll_total']))
+    print('Avg LL: {:5f}'.format(fit_perf['ll_avg']))
     
     # plot fit results
-    th.plot_multi_val_fit_results(sim_trials, fit_output,  fit_output_data['agent_states'], 
+    th.plot_multi_val_fit_results(sim_trials, fit_output,  fit_agent_states, 
                                   ['Value', 'Persev', 'Fallacy'], 
                                   ['Left', 'Right'], betas=fit_model.beta.weight[0], 
-                                  title_prefix='Fit Model {} - '.format(i))
+                                  title_prefix='Fit Model {} - '.format(model_name))
