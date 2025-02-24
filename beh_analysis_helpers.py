@@ -111,7 +111,7 @@ def get_rate_avg_err(bin_mat):
     return avg, err
 
 
-def plot_counts(counts, ax, title, y_label, stack):
+def plot_counts(counts, ax, title, y_label, stack, legend_cols=1):
     x_labels = counts.index.to_list()
     val_labels = counts.columns.tolist()
     vals = [counts[k].tolist() for k in val_labels]
@@ -119,6 +119,7 @@ def plot_counts(counts, ax, title, y_label, stack):
     plot_utils.plot_stacked_bar(vals, val_labels, x_labels, stack, ax)
     ax.set_ylabel(y_label)
     ax.set_title(title)
+    ax.legend(ncols=legend_cols)
 
 
 def plot_rate_heatmap(rate_dict, column_key, column_name, row_key, row_name, ax=None,
