@@ -8,7 +8,7 @@ dependencies:
   - pandas
   - seaborn
   - pytorch-gpu
-  - mysql-connector-python
+  - mysql-connector-python=8.3.0
   - h5py
   - python-pptx
   - scipy
@@ -19,4 +19,5 @@ dependencies:
   - matplotlib
   - qtpy
   - pyqt
+  - python=3.12
 prefix: C:\Users\Tanner\miniconda3\envs\neuropy
