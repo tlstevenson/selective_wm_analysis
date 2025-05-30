@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Created on Fri Dec 20 20:44:39 2024
+Created on Mon Dec 30 11:35:16 2024
 
 @author: tanne
 """
@@ -12,137 +12,333 @@ import pandas as pd
 from pyutils import utils
 import hankslab_db.basicRLtasks_db as db
 from hankslab_db import db_access
-from models import agents
-import models.training_helpers as mh
+import beh_analysis_helpers as bah
+import fp_analysis_helpers as fpah
+from fp_analysis_helpers import Alignment as Align
+from sys_neuro_tools import plot_utils, fp_utils
+from modeling import agents
+import modeling.training_helpers as th
+import modeling.sim_helpers as sh
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import random as rand
+import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
+import seaborn as sb
+from os import path
+import pickle
 
-# %% Load Data
+# %% Load behavioral data
 
-subj_ids = 179 #179, 188, 191, 207, 182]
+subj_ids = [179, 188, 191, 207] # 182
+
+save_path = r'C:\Users\tanne\repos\python\selective_wm_analysis\RL Analysis\fit_models_masked.json'
+if path.exists(save_path):
+    all_models = agents.load_model(save_path)
+else:
+    all_models = {}
+
+# load data
 sess_ids = db_access.get_subj_sess_ids(subj_ids, protocol='ClassicRLTasks', stage_num=2)
 
-## Create 3-D inputs tensor and 3-D labels tensor
-n_sess = len(utils.flatten(sess_ids))
+# start from the third session (so index=2)-->do not account for the first two sessions
+sess_ids = {subj: sess[2:] for subj, sess in sess_ids.items()}
 
 # get session data
 reload = False
 loc_db = db.LocalDB_BasicRLTasks('twoArmBandit')
-sess_data = loc_db.get_behavior_data(utils.flatten(sess_ids), reload=reload)
-# filter out no responses
-sess_data = sess_data[sess_data['hit']==True]
+all_sess = loc_db.get_behavior_data(utils.flatten(sess_ids), reload=reload)
 
-## add a column to represent choice (+1 right and -1 left) and outcome (+1 rewarded and -1 unrewarded)
-choice_input_dict = {'left': -1, 'right': 1}
-choice_output_dict = {'left': 0, 'right': 1}
-outcome_dict = {False: -1, True: 1}
+all_sess = th.define_choice_outcome(all_sess)
 
-# Add choice and outcome inputs as new columns to sess data
-sess_data['choice_inputs'] = sess_data['choice'].apply(lambda choice: choice_input_dict[choice] if choice in choice_input_dict.keys() else np.nan).to_numpy()
-sess_data['outcome_inputs'] = sess_data['rewarded'].apply(lambda reward: outcome_dict[reward] if reward in outcome_dict.keys() else np.nan).to_numpy()
-sess_data['choice_outputs'] = sess_data['choice'].apply(lambda choice: choice_output_dict[choice] if choice in choice_output_dict.keys() else np.nan).to_numpy()
+# %% Run Fitting
 
-max_trials = np.max(sess_data.groupby('sessid').size())
+skip_existing_fits = True
+refit_existing = False
+print_train_params = False
+limit_mask = True
+n_limit_hist = 2
 
-input_size = 2 #choice and outcome
-output_size = 1
+n_fits = 1
+n_steps = 10000
+end_tol = 5e-6
 
-#create empty tensors with the max number of trials across all sessions
-inputs = torch.zeros(n_sess, max_trials-1, input_size)
-right_choice_labels = torch.zeros(n_sess, max_trials-1, output_size)
-both_choice_labels = torch.zeros_like(right_choice_labels)
-trial_mask = torch.zeros_like(right_choice_labels)
-
-# populate tensors from behavioral data
-for i, sess_id in enumerate(utils.flatten(sess_ids)):
-    trial_data = sess_data[sess_data['sessid'] == sess_id]
-    n_trials = len(trial_data) - 1 # one less because we predict the next choice based on the prior choice
+for subj in subj_ids: 
+    print("\nSubj", subj)
+        
+    sess_data = all_sess[all_sess['subjid'] == subj]
     
-    inputs[i, :n_trials, :] = torch.from_numpy(np.array([trial_data['choice_inputs'][:-1], trial_data['outcome_inputs'][:-1]]).T).type(torch.float)
-    right_choice_labels[i, :n_trials, :] = torch.from_numpy(np.array(trial_data['choice_outputs'][1:])[:,None]).type(torch.float)
-    both_choice_labels[i, :n_trials, :] = torch.from_numpy(np.array(trial_data['choice_inputs'][1:])[:,None]).type(torch.float)
+    training_data = th.get_model_training_data(sess_data, limit_mask=limit_mask, n_limit_hist=n_limit_hist)
+
+    basic_inputs = training_data['basic_inputs']
+    two_side_inputs = training_data['two_side_inputs']
+    left_choice_labels = training_data['left_choice_labels']
+    choice_class_labels = training_data['choice_class_labels']
+    trial_mask_train = training_data['trial_mask_train']
+    trial_mask_eval = training_data['trial_mask_eval']
     
-    trial_mask[i, :n_trials, :] = 1
+    ## BASIC MODEL FITS
+    th.fit_basic_models(basic_inputs, left_choice_labels, trial_mask_train, trial_mask_eval, subj, save_path, n_fits=n_fits, n_steps=n_steps, end_tol=end_tol, 
+                        skip_existing_fits=skip_existing_fits, refit_existing=refit_existing, print_train_params=print_train_params)
     
-# %% Compare different loss functions
+    ## Q-MODEL FITS
 
-def generate_agents(alpha0 = None):
-    return [agents.SingleValueAgent(alpha0), agents.PerseverativeAgent(alpha0), agents.FallacyAgent(alpha0)]
+    # declare model fit settings
+    settings = {# All Alphas Free, Different K Fixes
+                # 'All Free': {},
+                
+                # 'All Alpha Free, S/R K Fixed': {'k_same_rew': {'fit': False}},
+                
+                # 'All Alpha Free, Same K Fixed': {'k_same_rew': {'fit': False}, 'k_same_unrew': {'fit': False}},
+                
+                # 'All Alpha Free, All K Fixed': {'k_same_rew': {'fit': False}, 'k_same_unrew': {'fit': False}, 'k_diff_rew': {'fit': False}, 'k_diff_unrew': {'fit': False}},
+                
+                # 'All Alpha Free, D/R K Free': {'k_same_rew': {'fit': False}, 'k_same_unrew': {'fit': False}, 'k_diff_unrew': {'fit': False}},
+            
+                # 'All Alpha Free, All K Fixed, Diff K=0.5': {'k_same_rew': {'fit': False}, 'k_same_unrew': {'fit': False},
+                #                                             'k_diff_rew': {'fit': False, 'init': 0.5}, 'k_diff_unrew': {'fit': False, 'init': 0.5}},
+                # # All Alphas shared, Different K Fixes
+                'All Alpha Shared, All K Fixed': {'alpha_same_unrew': {'share': 'alpha_same_rew'}, 'alpha_diff_rew': {'share': 'alpha_same_rew'}, 
+                                                  'alpha_diff_unrew': {'share': 'alpha_same_rew'}, 'k_same_rew': {'fit': False}, 
+                                                  'k_same_unrew': {'fit': False},'k_diff_rew': {'fit': False}, 'k_diff_unrew': {'fit': False}},
+                
+                # 'All Alpha Shared, D/R K Free': {'alpha_same_unrew': {'share': 'alpha_same_rew'}, 'alpha_diff_rew': {'share': 'alpha_same_rew'}, 
+                #                                   'alpha_diff_unrew': {'share': 'alpha_same_rew'},'k_same_rew': {'fit': False}, 
+                #                                   'k_same_unrew': {'fit': False}, 'k_diff_unrew': {'fit': False}},
+                
+                # 'All Alpha Shared, Same K Fixed': {'alpha_same_unrew': {'share': 'alpha_same_rew'}, 'alpha_diff_rew': {'share': 'alpha_same_rew'}, 
+                #                                    'alpha_diff_unrew': {'share': 'alpha_same_rew'}, 'k_same_rew': {'fit': False}, 'k_same_unrew': {'fit': False}},
+                
+                # 'All Alpha Shared, All K Free': {'alpha_same_unrew': {'share': 'alpha_same_rew'}, 'alpha_diff_rew': {'share': 'alpha_same_rew'}, 'alpha_diff_unrew': {'share': 'alpha_same_rew'}},
+                
+                # 'All Alpha Shared, All K Fixed, Diff K=0.5': {'alpha_same_unrew': {'share': 'alpha_same_rew'}, 'alpha_diff_rew': {'share': 'alpha_same_rew'}, 
+                #                                               'alpha_diff_unrew': {'share': 'alpha_same_rew'}, 'k_same_rew': {'fit': False}, 'k_same_unrew': {'fit': False},
+                #                                               'k_diff_rew': {'fit': False, 'init': 0.5}, 'k_diff_unrew': {'fit': False, 'init': 0.5}},
+                
+                # # Models with limited different choice updating
+                # 'Same Alpha Only Shared, K Fixed': {'alpha_same_unrew': {'share': 'alpha_same_rew'}, 'alpha_diff_rew': {'fit': False, 'init': 0}, 'alpha_diff_unrew': {'fit': False, 'init': 0},
+                #                                'k_same_rew': {'fit': False}, 'k_same_unrew': {'fit': False},'k_diff_rew': {'fit': False}, 'k_diff_unrew': {'fit': False}},
+                
+                # 'Same Alpha Only Shared, Counter K': {'alpha_same_unrew': {'share': 'alpha_same_rew'}, 'alpha_diff_rew': {'fit': False, 'init': 0}, 'alpha_diff_unrew': {'fit': False, 'init': 0},
+                #                                'k_same_rew': {'fit': False}, 'k_same_unrew': {'fit': False, 'init':-1},'k_diff_rew': {'fit': False}, 'k_diff_unrew': {'fit': False}},
+                
+                # 'Same Alpha Shared, K Free': {'alpha_same_unrew': {'share': 'alpha_same_rew'}, 'alpha_diff_rew': {'fit': False, 'init': 0}, 
+                #                               'alpha_diff_unrew': {'fit': False, 'init': 0}, 'k_diff_rew': {'fit': False}, 'k_diff_unrew': {'fit': False}},
+                
+                # 'Same Alpha Only, K Fixed': {'alpha_diff_rew': {'fit': False, 'init': 0}, 'alpha_diff_unrew': {'fit': False, 'init': 0},
+                #                              'k_same_rew': {'fit': False}, 'k_same_unrew': {'fit': False},'k_diff_rew': {'fit': False}, 'k_diff_unrew': {'fit': False}},
+                
+                # 'Same Alpha Only, K Free': {'alpha_diff_rew': {'fit': False, 'init': 0}, 'alpha_diff_unrew': {'fit': False, 'init': 0},
+                #                             'k_diff_rew': {'fit': False}, 'k_diff_unrew': {'fit': False}},
+                
+                # 'Same Alpha Only, Counter K': {'alpha_diff_rew': {'fit': False, 'init': 0}, 'alpha_diff_unrew': {'fit': False, 'init': 0},
+                #                                'k_same_rew': {'fit': False}, 'k_same_unrew': {'fit': False, 'init':-1}, 'k_diff_rew': {'fit': False}, 
+                #                                'k_diff_unrew': {'fit': False}},
+                
+                # 'No Alpha D/U, All K Fixed': {'alpha_diff_unrew': {'fit': False, 'init': 0}, 'k_same_rew': {'fit': False}, 'k_same_unrew': {'fit': False},
+                #                                'k_diff_rew': {'fit': False}, 'k_diff_unrew': {'fit': False}},
+                
+                # 'No Alpha D/R, All K Fixed': {'alpha_diff_rew': {'fit': False, 'init': 0}, 'k_same_rew': {'fit': False}, 'k_same_unrew': {'fit': False},
+                #                                'k_diff_rew': {'fit': False}, 'k_diff_unrew': {'fit': False}},
+                
+                
+                # # Constrained Alpha Pairs
+                # 'Alpha Same/Diff Shared, Same K Fixed': {'alpha_same_unrew': {'share': 'alpha_same_rew'}, 'alpha_diff_unrew': {'share': 'alpha_diff_rew'}, 
+                #                                          'k_same_rew': {'fit': False}, 'k_same_unrew': {'fit': False}},
+                
+                # 'Alpha Same/Diff Shared, All K Fixed': {'alpha_same_unrew': {'share': 'alpha_same_rew'}, 'alpha_diff_unrew': {'share': 'alpha_diff_rew'}, 
+                #                                          'k_same_rew': {'fit': False}, 'k_same_unrew': {'fit': False}, 'k_diff_rew': {'fit': False}, 
+                #                                          'k_diff_unrew': {'fit': False}},
+                
+                # 'Alpha Same/Diff Shared, D/R K Free': {'alpha_same_unrew': {'share': 'alpha_same_rew'}, 'alpha_diff_unrew': {'share': 'alpha_diff_rew'}, 
+                #                                        'k_same_rew': {'fit': False}, 'k_same_unrew': {'fit': False}, 'k_diff_unrew': {'fit': False}},
+                
+                # 'Alpha Rew/Unrew Shared, Same K Fixed': {'alpha_diff_rew': {'share': 'alpha_same_rew'}, 'alpha_diff_unrew': {'share': 'alpha_same_unrew'}, 
+                #                                          'k_same_rew': {'fit': False}, 'k_same_unrew': {'fit': False}},
+                
+                # 'Alpha Rew/Unrew Shared, All K Fixed': {'alpha_diff_rew': {'share': 'alpha_same_rew'}, 'alpha_diff_unrew': {'share': 'alpha_same_unrew'}, 
+                #                                          'k_same_rew': {'fit': False}, 'k_same_unrew': {'fit': False}, 'k_diff_rew': {'fit': False}, 
+                #                                          'k_diff_unrew': {'fit': False}},
+                
+                # 'Alpha Rew/Unrew Shared, D/R K Free': {'alpha_diff_rew': {'share': 'alpha_same_rew'}, 'alpha_diff_unrew': {'share': 'alpha_same_unrew'}, 
+                #                                        'k_same_rew': {'fit': False}, 'k_same_unrew': {'fit': False}, 'k_diff_unrew': {'fit': False}},
+                
+                
+                # # Counterfactual models
+                # 'All Alpha Shared, Counter D/U K=1': {'alpha_same_unrew': {'share': 'alpha_same_rew'}, 'alpha_diff_rew': {'share': 'alpha_same_rew'}, 
+                #                                       'alpha_diff_unrew': {'share': 'alpha_same_rew'}, 'k_same_rew': {'fit': False}, 'k_same_unrew': {'fit': False}, 
+                #                                       'k_diff_rew': {'fit': False}, 'k_diff_unrew': {'fit': False, 'init': 1}},
+                
+                # 'Alpha Same/Diff Shared, Counter D/U K=1': {'alpha_same_unrew': {'share': 'alpha_same_rew'}, 'alpha_diff_unrew': {'share': 'alpha_diff_rew'}, 
+                #                                             'k_same_rew': {'fit': False}, 'k_same_unrew': {'fit': False}, 'k_diff_rew': {'fit': False}, 
+                #                                             'k_diff_unrew': {'fit': False, 'init': 1}},
+                
+                # 'All Alpha Shared, Counter D/R K=-1': {'alpha_same_unrew': {'share': 'alpha_same_rew'}, 'alpha_diff_rew': {'share': 'alpha_same_rew'}, 
+                #                                       'alpha_diff_unrew': {'share': 'alpha_same_rew'}, 'k_same_rew': {'fit': False}, 'k_same_unrew': {'fit': False}, 
+                #                                       'k_diff_rew': {'fit': False, 'init': -1}, 'k_diff_unrew': {'fit': False}},
+                
+                # 'Alpha Same/Diff Shared, Counter D/R K=-1': {'alpha_same_unrew': {'share': 'alpha_same_rew'}, 'alpha_diff_unrew': {'share': 'alpha_diff_rew'}, 
+                #                                             'k_same_rew': {'fit': False}, 'k_same_unrew': {'fit': False}, 'k_diff_rew': {'fit': False, 'init': -1}, 
+                #                                             'k_diff_unrew': {'fit': False}},
+                
+                # 'All Alpha Shared, Counter S/U K=-1': {'alpha_same_unrew': {'share': 'alpha_same_rew'}, 'alpha_diff_rew': {'share': 'alpha_same_rew'}, 
+                #                                       'alpha_diff_unrew': {'share': 'alpha_same_rew'}, 'k_same_rew': {'fit': False}, 
+                #                                       'k_same_unrew': {'fit': False, 'init':-1}, 'k_diff_rew': {'fit': False}, 'k_diff_unrew': {'fit': False}},
+                
+                # 'Alpha Same/Diff Shared, Counter S/U K=-1': {'alpha_same_unrew': {'share': 'alpha_same_rew'}, 'alpha_diff_unrew': {'share': 'alpha_diff_rew'}, 
+                #                                             'k_same_rew': {'fit': False}, 'k_same_unrew': {'fit': False, 'init':-1}, 'k_diff_rew': {'fit': False}, 
+                #                                             'k_diff_unrew': {'fit': False}},
+                
+                }
 
-batch_size = None
-n_cycles = 3000
-
-# Instantiate each agent and the summation class
-print('MSE Loss, tanh:')
-net_mse_tanh = agents.SummationModule(generate_agents(0.1), output_layer = nn.Tanh())
-loss = nn.MSELoss(reduction='none')
-optimizer_mse_tanh = optim.Adam(net_mse_tanh.parameters(recurse=True), lr=0.01)
-
-mh.train_model(net_mse_tanh, optimizer_mse_tanh, loss, inputs, both_choice_labels, trial_mask, n_cycles, batch_size=batch_size)
-
-tanh_transform = lambda x: (x+1)/2
-[output_mse_tanh, output_data_mse_tanh, perf_mse_tanh] = mh.eval_model(net_mse_tanh, inputs, both_choice_labels, trial_mask, output_transform=tanh_transform, label_transform=tanh_transform)
-
-
-print('MSE Loss, sigmoid:')
-net_mse_sig = agents.SummationModule(generate_agents(0.1), output_layer = nn.Sigmoid())
-loss = nn.MSELoss(reduction='none')
-optimizer_mse_sig = optim.Adam(net_mse_sig.parameters(recurse=True), lr=0.01)
-
-mh.train_model(net_mse_sig, optimizer_mse_sig, loss, inputs, right_choice_labels, trial_mask, n_cycles, batch_size=batch_size)
-
-[output_mse_sig, output_data_mse_sig, perf_mse_sig] = mh.eval_model(net_mse_sig, inputs, right_choice_labels, trial_mask)
-
-
-print('BCE Loss:')
-net_bce = agents.SummationModule(generate_agents(0.1), output_layer = nn.Sigmoid())
-loss = nn.BCELoss(reduction='none')
-optimizer_bce = optim.Adam(net_bce.parameters(recurse=True), lr=0.01)
-
-mh.train_model(net_bce, optimizer_bce, loss, inputs, right_choice_labels, trial_mask, n_cycles, batch_size=batch_size)
-
-[output_bce, output_data_bce, perf_bce] = mh.eval_model(net_bce, inputs, right_choice_labels, trial_mask)
-
-
-print('BCE with Logits Loss:')
-net_bce_logits = agents.SummationModule(generate_agents(0.1))
-loss = nn.BCEWithLogitsLoss(reduction='none')
-optimizer_bce_logits = optim.Adam(net_bce_logits.parameters(recurse=True), lr=0.01)
-
-mh.train_model(net_bce_logits, optimizer_bce_logits, loss, inputs, right_choice_labels, trial_mask, n_cycles, batch_size=batch_size)
-
-[output_bce_logits, output_data_bce_logits, perf_bce_logits] = mh.eval_model(net_bce_logits, inputs, right_choice_labels, trial_mask, output_transform=lambda x: 1/(1+np.exp(-x)))
-
-
-# Print Model Parameters and fit qualities
-
-models = [net_mse_tanh, net_mse_sig, net_bce, net_bce_logits]
-perfs = [perf_mse_tanh, perf_mse_sig, perf_bce, perf_bce_logits]
-names = ['mse tanh', 'mse sigmoid', 'bce', 'bce w/ logits']
-
-for model, perf, name in zip(models, perfs, names):
-    print('{}:'.format(name))
-
-    mh.print_params(model)
-
-    print('Accuracy: {:.2}%'.format(perf['acc']))
-    print('Total LL: {:.2}'.format(perf['ll_total']))
-    print('Avg LL: {:.2}'.format(perf['ll_avg']))
-    print('')
+    add_agent_dict = {'': [], 
+                      # 'Persev': [agents.PerseverativeAgent(n_vals=2)],
+                      # 'Fall': [agents.FallacyAgent(n_vals=2)]
+                      }
+    agent_gen = lambda s: agents.QValueAgent(constraints=s)
     
-# Plot model outputs
+    th.fit_two_side_model(agent_gen, 'Q', settings, two_side_inputs, choice_class_labels, trial_mask_train, trial_mask_eval, subj, save_path, 
+                       n_fits=n_fits, n_steps=n_steps, end_tol=end_tol, add_agent_dict=add_agent_dict, 
+                       skip_existing_fits=skip_existing_fits, refit_existing=refit_existing, print_train_params=print_train_params)
+    
+                    
+    ## DYNAMIC Q-MODEL FITS
 
-mh.plot_fit_results(sess_data, output_mse_tanh, output_data_mse_tanh['agent_states'][:,:,0,:], ['Value Agent (V)', 'Persev Agent (H)', 'Fallacy Agent (G)'], 
-                    betas=net_mse_tanh.beta.weight[0], title_prefix='MSE Tanh Loss - ')
+    # # declare model fit settings
+    # settings = {
+    #             'All Alpha Shared, All K Fixed, Global λ': {'global_lam': True, 'constraints': {'alpha_same_unrew': {'share': 'alpha_same_rew'}, 'alpha_diff_rew': {'share': 'alpha_same_rew'}, 
+    #                                               'alpha_diff_unrew': {'share': 'alpha_same_rew'}, 'k_same_rew': {'fit': False}, 
+    #                                               'k_same_unrew': {'fit': False},'k_diff_rew': {'fit': False}, 'k_diff_unrew': {'fit': False}}},
+                
+    #             }
 
-mh.plot_fit_results(sess_data, output_mse_sig, output_data_mse_sig['agent_states'][:,:,0,:], ['Value Agent (V)', 'Persev Agent (H)', 'Fallacy Agent (G)'], 
-                    betas=net_mse_sig.beta.weight[0], title_prefix='MSE Sigmoid Loss - ')
+    # agent_gen = lambda s: agents.DynamicQAgent(**s)
+    
+    # th.fit_two_side_model(agent_gen, 'Dynamic Q', settings, two_side_inputs, choice_class_labels, trial_mask, subj, save_path, 
+    #                    n_fits=n_fits, n_steps=n_steps, end_tol=end_tol, skip_existing_fits=skip_existing_fits, refit_existing=refit_existing, 
+    #                    print_train_params=print_train_params)
+    
+    ## UNCERTAINTY DYNAMIC Q-MODEL FITS
 
-mh.plot_fit_results(sess_data, output_bce, output_data_bce['agent_states'][:,:,0,:], ['Value Agent (V)', 'Persev Agent (H)', 'Fallacy Agent (G)'], 
-                    betas=net_bce.beta.weight[0], title_prefix='BCE Loss - ')
+    # # declare model fit settings
+    # settings = {
+    #             'All Alpha Shared, All K Fixed, Global λ': {'global_lam': True, 'constraints': {'alpha_same_unrew': {'share': 'alpha_same_rew'}, 'alpha_diff_rew': {'share': 'alpha_same_rew'}, 
+    #                                               'alpha_diff_unrew': {'share': 'alpha_same_rew'}, 'k_same_rew': {'fit': False}, 
+    #                                               'k_same_unrew': {'fit': False},'k_diff_rew': {'fit': False}, 'k_diff_unrew': {'fit': False}}},
+                
+    #             }
 
-mh.plot_fit_results(sess_data, output_bce_logits, output_data_bce_logits['agent_states'][:,:,0,:], ['Value Agent (V)', 'Persev Agent (H)', 'Fallacy Agent (G)'], 
-                    betas=net_bce_logits.beta.weight[0], title_prefix='BCE w/ Logits Loss - ')
+    # agent_gen = lambda s: agents.UncertaintyDynamicQAgent(**s)
+    
+    # th.fit_two_side_model(agent_gen, 'Uncertainty Dynamic Q', settings, two_side_inputs, choice_class_labels, trial_mask, subj, save_path, 
+    #                    n_fits=n_fits, n_steps=n_steps, end_tol=end_tol, skip_existing_fits=skip_existing_fits, refit_existing=refit_existing, 
+    #                    print_train_params=print_train_params)
+            
+    ## Q-VALUE STATE INFERENCE MODEL FITS
+
+    # settings = {'Alpha Free, K Free': {},
+                
+    #             # 'Alpha Free, K Free, Value Update First': {'update_order': 'value_first'},
+                
+    #             # 'Alpha Free, K Free, Belief Update First': {'update_order': 'belief_first'},
+        
+    #             # 'Alpha Free, K Fixed': {'constraints': {'k_high_rew': {'fit': False}, 'k_high_unrew': {'fit': False},
+    #             #                                         'k_low_rew': {'fit': False}, 'k_low_unrew': {'fit': False}}},
+                
+    #             # 'All Alpha Shared, K Free': {'constraints': {'alpha_high_unrew': {'share': 'alpha_high_rew'}, 'alpha_low_rew': {'share': 'alpha_high_rew'}, 
+    #             #                                              'alpha_low_unrew': {'share': 'alpha_high_rew'}}},
+                
+    #             # 'Shared High Alpha, Const Low K, High K Free': {'constraints': {'alpha_high_unrew': {'share': 'alpha_high_rew'}, 
+    #             #                                                                 'alpha_low_rew': {'share': 'alpha_low_unrew', 'fit': False, 'init': 0}, 
+    #             #                                                                 'k_low_unrew': {'share': 'k_low_rew', 'init': None}}},
+                
+    #             # 'Shared High Alpha, Fixed Low K, High K Free': {'constraints': {'alpha_high_unrew': {'share': 'alpha_high_rew'}, 
+    #             #                                                                 'alpha_low_rew': {'share': 'alpha_low_unrew', 'fit': False, 'init': 0}, 
+    #             #                                                                 'k_low_unrew': {'share': 'k_low_rew', 'fit': False, 'init': 0.1}}},
+                
+    #             # 'Separate High Alphas, Const Low K, High K Free': {'constraints': {'alpha_low_rew': {'share': 'alpha_low_unrew', 'fit': False, 'init': 0}, 
+    #             #                                                                    'k_low_unrew': {'share': 'k_low_rew', 'init': None}}},
+                
+    #             # 'Separate Low Alphas, Const High K, Low K Free': {'constraints': {'alpha_high_rew': {'share': 'alpha_high_unrew', 'fit': False, 'init': 0}, 
+    #             #                                                                    'k_high_unrew': {'share': 'k_high_rew', 'init': None}}},
+                
+    #             # 'Shared High Alpha, Const Low K, High K Fixed': {'constraints': {'alpha_high_unrew': {'share': 'alpha_high_rew'}, 
+    #             #                                                                  'alpha_low_rew': {'share': 'alpha_low_unrew', 'fit': False, 'init': 0}, 
+    #             #                                                                  'k_low_unrew': {'share': 'k_low_rew', 'init': None}, 
+    #             #                                                                  'k_high_rew': {'fit': False}, 'k_high_unrew': {'fit': False}}},
+                
+    #             # 'Separate High Alphas, Const Low K, High K Fixed': {'constraints': {'alpha_low_rew': {'share': 'alpha_low_unrew', 'fit': False, 'init': 0}, 
+    #             #                                                                     'k_low_unrew': {'share': 'k_low_rew', 'init': None}, 
+    #             #                                                                     'k_high_rew': {'fit': False}, 'k_high_unrew': {'fit': False}}}
+    #             }
+
+    # agent_gen = lambda s: agents.QValueStateInferenceAgent(**s)
+    
+    # th.fit_two_side_model(agent_gen, 'Q SI', settings, two_side_inputs, choice_class_labels, trial_mask, subj, save_path, 
+    #                    n_fits=n_fits, n_steps=n_steps, end_tol=end_tol, skip_existing_fits=skip_existing_fits, refit_existing=refit_existing, 
+    #                    print_train_params=print_train_params)
+    
+    
+    # ## RL STATE INFERENCE MODEL FITS
+
+    # settings = {
+    #             # 'Shared Evidence': {'complement_c_rew':True, 'complement_c_diff':True}, 
+    #             # 'Separate Same/Diff Evidence': {'complement_c_rew':True, 'complement_c_diff':False},
+    #             # 'Separate Rew/Unrew Evidence': {'complement_c_rew':False, 'complement_c_diff':True}, 
+    #             # 'All Separate Evidence': {'complement_c_rew':False, 'complement_c_diff':False},
+    #             'Free Same/Diff Rew Evidence': {'complement_c_rew':False, 'complement_c_diff':False,
+    #                                             'constraints': {'c_same_unrew': {'fit': False, 'init': 0}, 
+    #                                                             'c_diff_unrew': {'fit': False, 'init': 0}}}
+    #             }
+    
+    # agent_gen = lambda s: agents.RLStateInferenceAgent(**s)
+    
+    # th.fit_two_side_model(agent_gen, 'RL SI', settings, two_side_inputs, choice_class_labels, trial_mask, subj, save_path, 
+    #                    n_fits=n_fits, n_steps=n_steps, end_tol=end_tol, skip_existing_fits=skip_existing_fits, refit_existing=refit_existing, 
+    #                    print_train_params=print_train_params)
+    
+    
+    ## STATE INFERENCE MODEL FITS
+
+    settings = {
+                # 'Shared Evidence': {'complement_c_rew':True, 'complement_c_diff':True}, 
+                # 'Separate Same/Diff Evidence': {'complement_c_rew':True, 'complement_c_diff':False},
+                'Separate Rew/Unrew Evidence': {'complement_c_rew':False, 'complement_c_diff':True}, 
+                # 'All Separate Evidence': {'complement_c_rew':False, 'complement_c_diff':False},
+                # 'Free Same/Diff Rew Evidence': {'complement_c_rew':False, 'complement_c_diff':False,
+                #                                 'constraints': {'c_same_unrew': {'fit': False, 'init': 0}, 
+                #                                                 'c_diff_unrew': {'fit': False, 'init': 0}}}
+                }
+    
+    agent_gen = lambda s: agents.StateInferenceAgent(**s)
+    
+    th.fit_two_side_model(agent_gen, 'SI', settings, two_side_inputs, choice_class_labels, trial_mask_train, trial_mask_eval, subj, save_path, 
+                       n_fits=n_fits, n_steps=n_steps, end_tol=end_tol, skip_existing_fits=skip_existing_fits, refit_existing=refit_existing, 
+                       print_train_params=print_train_params)
+    
+                
+    # ## FULL BAYESIAN MODEL FITS
+
+    # p_step = 0.01
+    
+    # settings = {
+    #             # 'No Switch Scatter, Switch Update First': {'constraints': {'switch_scatter_sig': {'init': 0, 'fit': False}}}, 
+    #             'No Switch Scatter, Perfect Update, No Stay Bias, Simul Updates': 
+    #                 {'update_p_switch_first': False,
+    #                  'constraints': {'switch_scatter_sig': {'init': 0, 'fit': False},
+    #                                  'imperfect_update_alpha': {'init': 0, 'fit': False},
+    #                                  'stay_bias_lam': {'init': 0, 'fit': False}}}, 
+    #             # 'Fixed 0.5 Prior Rew Mean, No Switch Scatter': {'constraints': {'switch_scatter_sig': {'init': 0, 'fit': False}, 
+    #             #                                                          'init_high_rew_mean': {'init': 0, 'fit': False}, 
+    #             #                                                          'init_low_rew_mean': {'init': 1, 'fit': False}}}
+    #             }
+    
+    # agent_gen = lambda s: agents.BayesianAgent(p_step=p_step, **s)
+    
+    # th.fit_two_side_model(agent_gen, 'Bayes', settings, two_side_inputs, choice_class_labels, trial_mask, subj, save_path, 
+    #                    n_fits=n_fits, n_steps=n_steps, end_tol=end_tol, skip_existing_fits=skip_existing_fits, refit_existing=refit_existing, 
+    #                    print_train_params=print_train_params)
+    
+            
