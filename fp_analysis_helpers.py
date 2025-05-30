@@ -2,6 +2,8 @@
 """
 Created on Thu Dec 21 14:58:30 2023
 
+WILL EVENTUALLY WANT TO SEPARATE THESE METHODS INTO GENERAL PURPOSE AND RESEARCH PROJECT SPECIFIC
+
 @author: tanne
 """
 import init
@@ -23,13 +25,6 @@ from pptx.util import Inches, Pt
 import time
 import copy
 import warnings
-
-# %% trial start timestamps
-
-# def get_trial_start_ts(fp_start_ts, sess_data):
-#     fp_ts_diffs = np.diff(fp_start_ts)
-#     beh_ts_diffs = np.diff(trial_data['trialtime'])
-
 
 
 # %% Session Limiting Lookup Table
@@ -531,6 +526,11 @@ def calc_iqr_multiple(table, group_by_cols, parameters):
 
     return table
 
+# %% Behavior Specific Analysis Methods
+
+
+
+
 # %% Plotting Methods
 
 def view_processed_signals(processed_signals, t, dec=10, title='Full Signals', vert_marks=[],
@@ -839,8 +839,12 @@ def get_signal_type_labels(signal_type):
     return title, ax_label
 
 
-def get_implant_side_type(side, implant_side):
-    return 'ipsi' if implant_side == side else 'contra'
+def get_implant_rel_side(abs_side, implant_side):
+    return 'ipsi' if implant_side == abs_side else 'contra'
+
+def get_implant_abs_side(rel_side, implant_side):
+    sides = np.array(['left', 'right'])
+    return implant_side if rel_side == 'ipsi' else sides[sides != implant_side][0]
 
 
 def plot_power_spectra(signals, dt, f_max=20, title='', log_x=True, signal_names=None):

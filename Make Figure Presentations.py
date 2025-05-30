@@ -22,6 +22,8 @@ import pyutils.utils as utils
 # fpah.generate_figure_ppt(path.join(fpah.get_base_figure_save_path(), 'Two-armed Bandit - 182'), group_by=['subject','behavior', 'alignment', 'filename'], behaviors='Two-armed Bandit', subjects=182)
 # fpah.generate_figure_ppt(path.join(fpah.get_base_figure_save_path(), 'Two-armed Bandit - 191'), group_by=['subject','behavior', 'alignment', 'filename'], behaviors='Two-armed Bandit', subjects=191)
 
+fpah.generate_figure_ppt(path.join(fpah.get_base_figure_save_path(), 'Temporal Choice - 179_188_207'), group_by=['behavior', 'alignment', 'filename', 'subject'], behaviors='Intertemporal Choice', subjects=[179,188,207], alignments=[Align.cue, Align.reward])
+
 # By Behavior, all subjects where subjects are adjacent
 # fpah.generate_figure_ppt(path.join(fpah.get_base_figure_save_path(), 'SelWM - Grow Delay - all'), group_by=['behavior', 'alignment', 'filename', 'subject'], behaviors='SelWM - Grow Delay')
 # fpah.generate_figure_ppt(path.join(fpah.get_base_figure_save_path(), 'SelWM - Grow Nosepoke - all'), group_by=['behavior', 'alignment', 'filename', 'subject'], behaviors='SelWM - Grow Nosepoke')
