@@ -21,7 +21,9 @@ plot_bail = False
 # %% LOAD DATA
 
 stage = 7
-active_subjects_only = False
+n_back = 10
+active_subjects_only = True
+reload = False
 
 subject_info = db_access.get_active_subj_stage('ToneCatDelayResp')
 if active_subjects_only:
@@ -30,24 +32,23 @@ else:
     subject_info = subject_info[subject_info['stage'] >= stage]
 
 subj_ids = subject_info['subjid']
+#subj_ids = [193,192]
 
 # get session ids
-sess_ids = db_access.get_subj_sess_ids(subj_ids, stage=stage)
-sess_ids = bah.limit_sess_ids(sess_ids, 5)
+sess_ids = db_access.get_subj_sess_ids(subj_ids, stage_num=stage, protocol='ToneCatDelayResp')
+sess_ids = bah.limit_sess_ids(sess_ids, n_back)
 
 # get trial information
-loc_db = db.LocalDB_ToneCatDelayResp()  # reload=True
-all_sess = loc_db.get_behavior_data(utils.flatten_dict_array(sess_ids))
+loc_db = db.LocalDB_ToneCatDelayResp()
+all_sess = loc_db.get_behavior_data(utils.flatten(sess_ids), reload=reload)
 # remove trials where the stimulus didn't start
 all_sess = all_sess[all_sess['trial_started']]
 
 # %% Format Data
 
 # calculate delay time
-tone_dur = 0.25
+tone_dur = 0.4
 all_sess['delay_time'] = all_sess['stim_dur'] - all_sess['rel_tone_start_times'] - tone_dur
-all_sess['delay_time'] = all_sess['delay_time'].round(2)
-all_sess['stim_dur'] = all_sess['stim_dur'].round(2)
 
 # format columns for ease of aggregating and display
 
@@ -59,13 +60,22 @@ tone_info_order = ['high', 'low', 'left', 'right']
 all_sess['tone_info_str'] = pd.Categorical(all_sess['tone_info_str'], categories=tone_info_order)
 
 
+bin_size = 0.5
+delay_bin_max = np.ceil(np.max(all_sess['delay_time'])/bin_size)
+delay_bin_min = np.floor(np.min(all_sess['delay_time'])/bin_size)
+delay_bins = np.arange(delay_bin_min, delay_bin_max+1)*bin_size
+delay_bin_labels = ['{:.1f}-{:.1f}s'.format(delay_bins[i], delay_bins[i+1]) for i in range(len(delay_bins)-1)]
+
+all_sess['delay_bin'] = all_sess['delay_time'].apply(lambda x: delay_bin_labels[np.where(x >= delay_bins)[0][-1]])
+
+
 # %% INVESTIGATE TRIAL TYPE COUNTS
 
 # ignore bails because they are repeated
 all_sess_no_bails = all_sess[all_sess['bail'] == False]
 
 # aggregate count tables into dictionary
-count_columns = ['correct_port', 'stim_dur', 'delay_time', 'tone_info_str']
+count_columns = ['correct_port', 'stim_dur', 'delay_bin', 'tone_info_str']
 count_dict = bah.get_count_dict(all_sess_no_bails, 'subjid', count_columns, normalize=False)
 count_dict_pct = bah.get_count_dict(all_sess_no_bails, 'subjid', count_columns, normalize=True)
 
@@ -89,7 +99,7 @@ bah.plot_counts(count_dict_pct['tone_info_str'], axs[3], 'Stimulus Type', '% Tri
 
 # CALCULATE HIT/BAIL METRICS
 # ignore bails and no responses
-rate_columns = ['tone_info_str', 'delay_time', ['tone_info_str', 'delay_time']]
+rate_columns = ['tone_info_str', 'delay_bin', ['tone_info_str', 'delay_bin']]
 
 for subj_id in subj_ids:
     subj_sess = all_sess[all_sess['subjid'] == subj_id]
@@ -179,13 +189,13 @@ for subj_id in subj_ids:
     ax = fig.add_subplot(gs[0, 0])
     ax.set_title('Hit Rates')
 
-    bah.plot_rate_heatmap(hit_metrics_dict, 'delay_time', 'Response Delay', 'tone_info_str', 'Tone', ax)
+    bah.plot_rate_heatmap(hit_metrics_dict, 'delay_bin', 'Response Delay', 'tone_info_str', 'Tone', ax)
 
     if plot_bail:
         ax = fig.add_subplot(gs[0, 1])
         ax.set_title('Bail Rates')
 
-        bah.plot_rate_heatmap(bail_metrics_dict, 'delay_time', 'Response Delay', 'tone_info_str', 'Tone', ax)
+        bah.plot_rate_heatmap(bail_metrics_dict, 'delay_bin', 'Response Delay', 'tone_info_str', 'Tone', ax)
 
     # plot probabilities
     def comp_p(n_dict): return n_dict['num']/n_dict['denom']

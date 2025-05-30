@@ -19,18 +19,18 @@ import numpy as np
 import pandas as pd
 import re
 import seaborn as sb
+import copy
 
 plot_timing = False
 exclude_instruct_from_hitrate = True
-instruct_dB = -40
-plot_bail = False
 # plot_summary = True
 
 # %% LOAD DATA
 
 stage = 8
-n_back = 10
+n_back = 15
 active_subjects_only = True
+reload = False
 
 subject_info = db_access.get_active_subj_stage('ToneCatDelayResp')
 if active_subjects_only:
@@ -39,7 +39,8 @@ else:
     subject_info = subject_info[subject_info['stage'] >= stage]
 
 subj_ids = subject_info['subjid']
-#subj_ids = [179]
+#subj_ids = subj_ids[subj_ids != 187]
+#subj_ids = [193,192]
 
 # get session ids
 sess_ids = db_access.get_subj_sess_ids(subj_ids, stage_num=stage, protocol='ToneCatDelayResp')
@@ -48,35 +49,62 @@ sess_ids = bah.limit_sess_ids(sess_ids, n_back)
 #sess_ids = {179: [92562, 92600, 93412]} #[92562, 92600, 92646, 92692, 93412]
 
 # get trial information
-loc_db = db.LocalDB_ToneCatDelayResp()  # reload=True
-all_sess = loc_db.get_behavior_data(utils.flatten(sess_ids))
+loc_db = db.LocalDB_ToneCatDelayResp()
+all_sess = loc_db.get_behavior_data(utils.flatten(sess_ids), reload=reload)
 # remove trials where the stimulus didn't start
 all_sess = all_sess[all_sess['trial_started']]
 
-# format columns for ease of aggregating and display
-# round stimulus duration
-all_sess['stim_dur'] = all_sess['stim_dur'].round(2).apply(lambda x: str(x))
-# reformat tone start times and high tones arrays into strings to be hashable for value counting and for display
-all_sess['rel_tone_start_times_str'] = all_sess['rel_tone_start_times'].apply(
-    lambda x: str(x) if not type(x) is np.ndarray else ', '.join([str(i) for i in x]))
+# %% Add formatted information columns to ease analysis and plotting
+
+# group stimulus durations into bins
+bin_size = 1
+dur_bin_max = np.ceil(np.max(all_sess['stim_dur'])/bin_size)
+dur_bin_min = np.floor(np.min(all_sess['stim_dur'])/bin_size)
+dur_bins = np.arange(dur_bin_min, dur_bin_max+1)*bin_size
+dur_bin_labels = ['{:.0f}-{:.0f}s'.format(dur_bins[i], dur_bins[i+1]) for i in range(len(dur_bins)-1)]
+
+all_sess['stim_dur_bin'] = all_sess['stim_dur'].apply(lambda x: dur_bin_labels[np.where(x >= dur_bins)[0][-1]])
+
+# calculate the delay from the last relevant tone and group delays into bins
+def calc_rel_tone_delay(row):
+    rel_tone_pos = np.array(row['tone_info']) == row['relevant_tone_info']
+    if not any(rel_tone_pos):
+        rel_tone_time = row['rel_tone_end_times'][-1]
+    else:
+        rel_tone_time = row['rel_tone_end_times'][rel_tone_pos][-1]
+        
+    return row['stim_dur'] - rel_tone_time
+
+all_sess['rel_tone_delay'] = all_sess.apply(lambda x: calc_rel_tone_delay(x), axis=1)
+
+bin_size = 1
+delay_bin_max = np.ceil(np.max(all_sess['rel_tone_delay'])/bin_size)
+delay_bin_min = np.floor(np.min(all_sess['rel_tone_delay'])/bin_size)
+delay_bins = np.arange(delay_bin_min, delay_bin_max+1)*bin_size
+delay_bin_labels = ['{:.0f}-{:.0f}s'.format(delay_bins[i], delay_bins[i+1]) for i in range(len(delay_bins)-1)]
+
+all_sess['delay_bin'] = all_sess['rel_tone_delay'].apply(lambda x: delay_bin_labels[np.where(x >= delay_bins)[0][-1]])
+
+# Make trial type category labels based on tone types
+def simplify_tone_info(x):
+    return x.replace('low', 'L').replace('high', 'H').replace('left', 'L').replace('right', 'R')
+
 all_sess['tone_info_str'] = all_sess['tone_info'].apply(
-    lambda x: x if not type(x) is list else ', '.join(x)).apply(
-    lambda x: x.replace('low', 'L').replace('high', 'H').replace('left', 'L').replace('right', 'R'))
+    lambda x: x if not type(x) is list else ', '.join(x)).apply(simplify_tone_info)
+all_sess['variant_tone_info_str'] = all_sess['relevant_tone_info'].apply(simplify_tone_info) + ' - (' + all_sess['tone_info_str'] + ')'
 all_sess['trial_type'] = all_sess['tone_info'].apply(
     lambda x: '1 tone' if not type(x) is list else
     '{0} tones - same'.format(len(x)) if x[0] == x[-1] else '{0} tones - diff'.format(len(x)))
-# combine tone positions with stimulus durations
-all_sess['tone_pos_dur'] = '[' + all_sess['rel_tone_start_times_str'] + '] - ' + all_sess['stim_dur'] + 's'
+all_sess['first_tone_info'] = all_sess['tone_info'].apply(lambda x: x if not type(x) is list else x[0]).apply(simplify_tone_info)
+all_sess['second_tone_info'] = all_sess['tone_info'].apply(lambda x: '' if not type(x) is list else x[1]).apply(simplify_tone_info)
 
 # get custom sorted values
 tone_pitch_labels = np.array(sorted(all_sess['tone_info_str'].unique().tolist(), key=lambda x: str(len(x)) + x))
-stim_struct_labels = np.array(sorted(all_sess['tone_pos_dur'].unique().tolist(), key=lambda x:
-                                     sum([float(s) for s in re.findall(r'\[.*]', x)[0].strip('[]').split(', ')]) +
-                                     float(re.findall(r'-.*[s]', x)[0].strip('-s'))))
+variant_tone_pitch_labels = np.array(sorted(all_sess['variant_tone_info_str'].unique().tolist(), key=lambda x: str(len(x)) + x))
 
 # make sure these values are always sorted appropriately using categories
 all_sess['tone_info_str'] = pd.Categorical(all_sess['tone_info_str'], categories=tone_pitch_labels)
-all_sess['tone_pos_dur'] = pd.Categorical(all_sess['tone_pos_dur'], categories=stim_struct_labels)
+all_sess['variant_tone_info_str'] = pd.Categorical(all_sess['variant_tone_info_str'], categories=variant_tone_pitch_labels)
 
 # %% INVESTIGATE TRIAL TYPE COUNTS
 
@@ -84,45 +112,35 @@ all_sess['tone_pos_dur'] = pd.Categorical(all_sess['tone_pos_dur'], categories=s
 all_sess_no_bails = all_sess[all_sess['bail'] == False]
 
 # aggregate count tables into dictionary
-count_columns = ['correct_port', 'n_tones', 'stim_dur', 'rel_tone_start_times_str', 'tone_pos_dur', 'tone_info_str']
+count_columns = ['correct_port', 'relevant_tone_info', 'stim_dur_bin', 'delay_bin', 'tone_info_str', 'variant_tone_info_str']
 count_dict = bah.get_count_dict(all_sess_no_bails, 'subjid', count_columns, normalize=False)
 count_dict_pct = bah.get_count_dict(all_sess_no_bails, 'subjid', count_columns, normalize=True)
-
-# round unique stimulus trial percentages for ease of display in table
-count_dict_pct['tone_info_str'] = count_dict_pct['tone_info_str'].applymap(lambda x: round(x*100, 1))
 
 # plot bar charts and tables of trial distribution
 
 def plotCounts(count_dict, stack, subj_ids, title, y_label):
 
     fig, axs = plt.subplots(len(count_dict.keys()), 1, layout='constrained',
-                            figsize=(3+0.25*len(subj_ids), 3*len(count_dict.keys())))
+                            figsize=(3+0.5*len(subj_ids), 3*len(count_dict.keys())))
     fig.suptitle(title)
 
     bah.plot_counts(count_dict['correct_port'], axs[0], 'Correct Port', y_label, stack)
-    bah.plot_counts(count_dict['n_tones'], axs[1], '# Tones', y_label, stack)
-    bah.plot_counts(count_dict['stim_dur'], axs[2], 'Stimulus Duration', y_label, stack)
-    bah.plot_counts(count_dict['rel_tone_start_times_str'], axs[3], 'Tone Positions', y_label, stack)
-    bah.plot_counts(count_dict['tone_pos_dur'], axs[4], 'Tone Positions by Stimulus Duration', y_label, stack)
-
-    # unique stimuli
-    ax = axs[5]
-    # just show table
-    ax.axis('off')
-    ax.axis('tight')
-    key = 'tone_info_str'
-    val_labels = tone_pitch_labels
-    x_labels = [str(i) for i in subj_ids]
-    t = ax.table(count_dict[key][val_labels].values,
-                 rowLabels=x_labels, colLabels=val_labels, loc='center')
-    t.scale(1, 1.4)
-    ax.set_title('Unique Stimuli')
-
+    bah.plot_counts(count_dict['relevant_tone_info'], axs[1], 'Relevant Tone', y_label, stack)
+    bah.plot_counts(count_dict['stim_dur_bin'], axs[2], 'Trial Duration', y_label, stack)
+    bah.plot_counts(count_dict['delay_bin'], axs[3], 'Response Delay', y_label, stack)
+    bah.plot_counts(count_dict['tone_info_str'], axs[4], 'Tone Positions', y_label, stack)
+    bah.plot_counts(count_dict['variant_tone_info_str'], axs[5], 'Relevant Tone x Tone Positions', y_label, stack, legend_cols=2)
 
 plotCounts(count_dict_pct, 'v', subj_ids, 'Trial Distribution', '% Trials')
 plotCounts(count_dict, 'h', subj_ids, 'Trial Counts', '# Trials')
 
 # %% LOOK AT HIT & BAIL RATES
+
+subj_ids = [190, 198, 199, 400] 
+
+plot_bail = False
+ind_subj = False
+meta_subj = True
 
 # calculate per-subject metrics
 # hit rates over time
@@ -130,30 +148,42 @@ n_back = 10
 hit_rate_signal = []
 irr_tone_volume = []
 
-for subj_id in subj_ids:
-    subj_sess = all_sess[all_sess['subjid'] == subj_id]
+plot_subjs = []
+if ind_subj:
+    plot_subjs.extend(subj_ids)
+    
+if meta_subj:
+    plot_subjs.append('all')
 
-    variants = subj_sess['task_variant'].unique()
+for subj_id in plot_subjs:
+    if subj_id == 'all':
+        subj_sess = all_sess[all_sess['subjid'].isin(subj_ids)]
+    else:
+        subj_sess = all_sess[all_sess['subjid'] == subj_id]
+        
+    subj_sess_ids = np.unique(subj_sess['sessid'])
+
+    rel_tones = np.unique(subj_sess['relevant_tone_info'])
 
     # CALCULATE HIT/BAIL METRICS
     # ignore bails and no responses
-    rate_columns = [['n_tones', 'stim_dur'],
-                    ['tone_pos_dur', 'tone_info_str'],
-                    ['trial_type', 'stim_dur'],
-                    ['stim_dur', 'tone_info_str']]
+    rate_columns = [['first_tone_info', 'second_tone_info'],
+                    ['stim_dur_bin', 'tone_info_str'],
+                    ['trial_type', 'delay_bin']]
     
     hit_metrics_dict = {}
     bail_metrics_dict = {}
 
-    for variant in variants:
-        var_subj_sess = subj_sess[subj_sess['task_variant'] == variant]
-        var_subj_sess_no_bails = var_subj_sess[(var_subj_sess['bail'] == False) & (var_subj_sess['choice'] != 'none')]
+    for rel_tone in rel_tones:
+        rel_subj_sess = subj_sess[subj_sess['relevant_tone_info'] == rel_tone]
+        rel_subj_sess_no_bails = rel_subj_sess[(rel_subj_sess['bail'] == False) & (rel_subj_sess['choice'] != 'none')]
         if exclude_instruct_from_hitrate:
-            var_subj_sess_no_bails = var_subj_sess_no_bails[var_subj_sess_no_bails['irrelevant_tone_db_offset'] > instruct_dB]
-        var_subj_sess_tone_heard = var_subj_sess[var_subj_sess['abs_tone_start_times'].str[0] < var_subj_sess['cpoke_out_time']]
+            rel_subj_sess_no_bails = rel_subj_sess_no_bails[rel_subj_sess_no_bails['tone_db_offsets'].apply(lambda x: all(x == 0))]
+        
+        rel_subj_sess_tone_heard = rel_subj_sess[rel_subj_sess['abs_tone_start_times'].str[0] < rel_subj_sess['cpoke_out_time']]
 
-        hit_metrics_dict[variant] = bah.get_rate_dict(var_subj_sess_no_bails, 'hit', rate_columns)
-        bail_metrics_dict[variant] = bah.get_rate_dict(var_subj_sess_tone_heard, 'bail', rate_columns)
+        hit_metrics_dict[rel_tone] = bah.get_rate_dict(rel_subj_sess_no_bails, 'hit', rate_columns)
+        bail_metrics_dict[rel_tone] = bah.get_rate_dict(rel_subj_sess_tone_heard, 'bail', rate_columns)
 
     # COMPUTE METRICS SESSION BY SESSION
 
@@ -169,22 +199,24 @@ for subj_id in subj_ids:
     # p(bail|previously incorrect)
     # p(bail|previously correct)
 
-    n_high_any_high = {'num': 0, 'denom': 0}
-    n_low_any_low = {'num': 0, 'denom': 0}
-    n_right_prev_right = {'num': 0, 'denom': 0}
-    n_right_prev_left = {'num': 0, 'denom': 0}
-    n_repeat_choice = {'num': 0, 'denom': 0}
-    n_win_stay = {'num': 0, 'denom': 0}
-    n_lose_switch = {'num': 0, 'denom': 0}
-    n_bail_prev_bail = {'num': 0, 'denom': 0}
-    n_bail_prev_correct = {'num': 0, 'denom': 0}
-    n_bail_prev_incorrect = {'num': 0, 'denom': 0}
+    n_high_any_high = {t: {'num': 0, 'denom': 0} for t in rel_tones}
+    n_low_any_low = copy.deepcopy(n_high_any_high)
+    n_right_prev_right = copy.deepcopy(n_high_any_high)
+    n_right_prev_left = copy.deepcopy(n_high_any_high)
+    n_repeat_choice = copy.deepcopy(n_high_any_high)
+    n_win_stay = copy.deepcopy(n_high_any_high)
+    n_lose_switch = copy.deepcopy(n_high_any_high)
+    n_bail_prev_bail = copy.deepcopy(n_high_any_high)
+    n_bail_prev_correct = copy.deepcopy(n_high_any_high)
+    n_bail_prev_incorrect = copy.deepcopy(n_high_any_high)
+    n_correct_prev_bail = copy.deepcopy(n_high_any_high)
+    n_correct = copy.deepcopy(n_high_any_high)
 
     # ROLLING PERFORMANCE OVER TIME
     subj_hit_rate_signal = []
     subj_irr_tone_vol = []
 
-    for sess_id in sess_ids[subj_id]:
+    for sess_id in subj_sess_ids:
         ind_sess = subj_sess[subj_sess['sessid'] == sess_id]
         ind_sess_no_bails = ind_sess[(ind_sess['bail'] == False) & (ind_sess['choice'] != 'none')]
 
@@ -193,55 +225,77 @@ for subj_id in subj_ids:
 
         # p(incorrect side|tone presence)
         # find which side is the high tone
-        high_tone_side = ind_sess[ind_sess['response_tone'] == 'high'].iloc[0]['correct_port']
+        if len(ind_sess[ind_sess['relevant_tone_info'] == 'high']) > 0:
+            high_tone_side = ind_sess[ind_sess['relevant_tone_info'] == 'high'].iloc[0]['relevant_tone_port']
+        else:
+            low_tone_side = ind_sess[ind_sess['relevant_tone_info'] == 'low'].iloc[0]['relevant_tone_port']
+            sides = np.array(['left', 'right'])
+            high_tone_side = sides[sides != low_tone_side][0]
+            
         high_tone_choice = ind_sess_no_bails['choice'].to_numpy() == high_tone_side
-        incorrect = ind_sess_no_bails['hit'].to_numpy() == False
+        incorrect_no_bails = ind_sess_no_bails['hit'].to_numpy() == False
         any_tone_high = ind_sess_no_bails['tone_info'].apply(
             lambda x: x == 'high' if not type(x) is list else any([val == 'high' for val in x])).to_numpy()
         any_tone_low = ind_sess_no_bails['tone_info'].apply(
             lambda x: x == 'low' if not type(x) is list else any([val == 'low' for val in x])).to_numpy()
-        n_high_any_high['num'] += sum(high_tone_choice & incorrect & any_tone_high)
-        n_high_any_high['denom'] += sum(any_tone_high)
-        n_low_any_low['num'] += sum(~high_tone_choice & incorrect & any_tone_low)
-        n_low_any_low['denom'] += sum(any_tone_low)
-
-        # p(choice|previous choice)
+        
         choices = ind_sess_no_bails['choice'].to_numpy()
         prev_choice_right = choices[:-1] == 'right'
         cur_choice_right = choices[1:] == 'right'
-        n_right_prev_right['num'] += sum(cur_choice_right & prev_choice_right)
-        n_right_prev_right['denom'] += sum(prev_choice_right)
-        n_right_prev_left['num'] += sum(cur_choice_right & ~prev_choice_right)
-        n_right_prev_left['denom'] += sum(~prev_choice_right)
-        n_repeat_choice['num'] += sum(choices[:-1] == choices[1:])
-        n_repeat_choice['denom'] += len(choices)-1
-
-        # p(win-stay/lose-switch)
         stays = choices[:-1] == choices[1:]
-        hits = ind_sess_no_bails['hit'].astype(bool).to_numpy()[:-1]
-        n_win_stay['num'] += sum(stays & hits)
-        n_win_stay['denom'] += sum(hits)
-        n_lose_switch['num'] += sum(~stays & ~hits)
-        n_lose_switch['denom'] += sum(~hits)
-
-        # p(bail|previous result)
+        hits_no_bails = ind_sess_no_bails['hit'].astype(bool).to_numpy()
         bails = ind_sess['bail'].to_numpy()
-        hits = ind_sess['hit'].to_numpy()
+        hits_all = ind_sess['hit'].to_numpy()
         prev_bail = bails[:-1] == True
-        prev_correct = hits[:-1] == True
-        prev_incorrect = hits[:-1] == False
+        prev_correct = hits_all[:-1] == True
+        prev_incorrect = hits_all[:-1] == False
+        cur_correct = hits_all[1:] == True
         cur_bail = bails[1:] == True
-        n_bail_prev_bail['num'] += sum(cur_bail & prev_bail)
-        n_bail_prev_bail['denom'] += sum(prev_bail)
-        n_bail_prev_correct['num'] += sum(cur_bail & prev_correct)
-        n_bail_prev_correct['denom'] += sum(prev_correct)
-        n_bail_prev_incorrect['num'] += sum(cur_bail & prev_incorrect)
-        n_bail_prev_incorrect['denom'] += sum(prev_incorrect)
+            
+        # break out metric by relevant tone block
+        for rel_tone in rel_tones:
+            rel_tone_sel = ind_sess['relevant_tone_info'] == rel_tone
+            rel_tone_sel_no_bails = ind_sess_no_bails['relevant_tone_info'] == rel_tone
+            
+            if sum(rel_tone_sel) == 0:
+                continue
+            
+            n_high_any_high[rel_tone]['num'] += sum(high_tone_choice & incorrect_no_bails & any_tone_high & rel_tone_sel_no_bails)
+            n_high_any_high[rel_tone]['denom'] += sum(any_tone_high & rel_tone_sel_no_bails)
+            n_low_any_low[rel_tone]['num'] += sum(~high_tone_choice & incorrect_no_bails & any_tone_low & rel_tone_sel_no_bails)
+            n_low_any_low[rel_tone]['denom'] += sum(any_tone_low & rel_tone_sel_no_bails)
+    
+            # p(choice|previous choice)
+            n_right_prev_right[rel_tone]['num'] += sum(cur_choice_right & prev_choice_right & rel_tone_sel_no_bails[1:])
+            n_right_prev_right[rel_tone]['denom'] += sum(prev_choice_right & rel_tone_sel_no_bails[1:])
+            n_right_prev_left[rel_tone]['num'] += sum(cur_choice_right & ~prev_choice_right & rel_tone_sel_no_bails[1:])
+            n_right_prev_left[rel_tone]['denom'] += sum(~prev_choice_right & rel_tone_sel_no_bails[1:])
+            n_repeat_choice[rel_tone]['num'] += sum(stays & rel_tone_sel_no_bails[1:])
+            n_repeat_choice[rel_tone]['denom'] += sum(rel_tone_sel_no_bails[1:])
+    
+            # p(win-stay/lose-switch)
+            n_win_stay[rel_tone]['num'] += sum(stays & hits_no_bails[1:] & rel_tone_sel_no_bails[1:])
+            n_win_stay[rel_tone]['denom'] += sum(hits_no_bails[1:] & rel_tone_sel_no_bails[1:])
+            n_lose_switch[rel_tone]['num'] += sum(~stays & ~hits_no_bails[1:] & rel_tone_sel_no_bails[1:])
+            n_lose_switch[rel_tone]['denom'] += sum(~hits_no_bails[1:] & rel_tone_sel_no_bails[1:])
+    
+            # p(bail|previous result)
+            n_bail_prev_bail[rel_tone]['num'] += sum(cur_bail & prev_bail & rel_tone_sel[1:])
+            n_bail_prev_bail[rel_tone]['denom'] += sum(prev_bail & rel_tone_sel[1:])
+            n_bail_prev_correct[rel_tone]['num'] += sum(cur_bail & prev_correct & rel_tone_sel[1:])
+            n_bail_prev_correct[rel_tone]['denom'] += sum(prev_correct & rel_tone_sel[1:])
+            n_bail_prev_incorrect[rel_tone]['num'] += sum(cur_bail & prev_incorrect & rel_tone_sel[1:])
+            n_bail_prev_incorrect[rel_tone]['denom'] += sum(prev_incorrect & rel_tone_sel[1:])
+            
+            # p(correct|previous bail & current response)
+            n_correct_prev_bail[rel_tone]['num'] += sum(cur_correct & prev_bail & rel_tone_sel[1:])
+            n_correct_prev_bail[rel_tone]['denom'] += sum(~cur_bail & prev_bail & rel_tone_sel[1:])
+            n_correct[rel_tone]['num'] += sum(cur_correct & rel_tone_sel[1:])
+            n_correct[rel_tone]['denom'] += sum(~cur_bail & rel_tone_sel[1:])
 
         # performance over time
-        hits = ind_sess_no_bails['hit'].astype(bool).to_numpy()
-        subj_hit_rate_signal.extend(np.convolve(hits, np.ones(n_back)/n_back, 'valid'))
-        subj_irr_tone_vol.extend(ind_sess[ind_sess['bail'] == False]['irrelevant_tone_db_offset'].iloc[n_back:])
+        subj_hit_rate_signal.extend(np.convolve(hits_no_bails, np.ones(n_back)/n_back, 'valid'))
+        subj_irr_tone_vol.extend(ind_sess[ind_sess['bail'] == False]['tone_db_offsets'].iloc[n_back:].apply(lambda x: np.min(x)))
 
     hit_rate_signal.append(subj_hit_rate_signal)
     irr_tone_volume.append(subj_irr_tone_vol)
@@ -251,53 +305,64 @@ for subj_id in subj_ids:
     # plot rate metrics
 
     if plot_bail:
-        fig = plt.figure(constrained_layout=True, figsize=(9*len(variants), 10))
-        gs = GridSpec(3, 2*len(variants), figure=fig)
+        fig = plt.figure(constrained_layout=True, figsize=(9*len(rel_tones), 13))
+        gs = GridSpec(4, 2*len(rel_tones), figure=fig)
     else:
-        fig = plt.figure(constrained_layout=True, figsize=(8*len(variants), 7))
-        gs = GridSpec(2, 2*len(variants), figure=fig, width_ratios=[2, 1])
+        fig = plt.figure(constrained_layout=True, figsize=(8*len(rel_tones), 10))
+        gs = GridSpec(3, 2*len(rel_tones), figure=fig, width_ratios=np.tile([2, 1], len(rel_tones)))
 
     fig.suptitle('Psychometrics (subj {0})'.format(str(subj_id)))
 
-    for i, variant in enumerate(variants):
+    for i, rel_tone in enumerate(rel_tones):
         ax = fig.add_subplot(gs[0, 2*i])
 
-        ax.set_title('Hit Rates \'{0}\' Variant'.format(variant))
+        ax.set_title('Hit Rates - {0} Tone Relevant'.format(rel_tone.capitalize()))
 
-        # plot hit rates for n tones by stimulus duration
-        bah.plot_rate_heatmap(hit_metrics_dict[variant], 'stim_dur', 'Stimulus Duration', 'trial_type', 'Trial Type', ax)
+        # plot hit rates for first tone by second tone
+        bah.plot_rate_heatmap(hit_metrics_dict[rel_tone], 'second_tone_info', 'Second Tone', 'first_tone_info', 'First Tone', ax)
 
-        # plot hit rates for unique tones by stimulus layout
+        # plot hit rates for tones by stimulus duration
         ax = fig.add_subplot(gs[1, 2*i])
 
-        bah.plot_rate_heatmap(hit_metrics_dict[variant], 'tone_pos_dur', 'Tone Positions by Stimulus Duration',
+        bah.plot_rate_heatmap(hit_metrics_dict[rel_tone], 'stim_dur_bin', 'Stimulus Duration',
                               'tone_info_str', 'Unique Stimuli', ax, x_rot=30)
+        
+        # plot hit rates for tones by stimulus duration
+        ax = fig.add_subplot(gs[2, 2*i])
 
+        bah.plot_rate_heatmap(hit_metrics_dict[rel_tone], 'delay_bin', 'Delay from Last Relevant Tone',
+                              'trial_type', 'Trial Type', ax, x_rot=30)
+
+        # repeat above plots for bails
         if plot_bail:
             # plot bail rates
             ax = fig.add_subplot(gs[0, 2*i+1])
 
-            ax.set_title('Bail Rates \'{0}\' Variant'.format(variant))
+            ax.set_title('Bail Rates - {0} Tone Relevant'.format(rel_tone.capitalize()))
 
-            # plot bail rates for n tones by stimulus duration
-            bah.plot_rate_heatmap(bail_metrics_dict[variant], 'stim_dur', 'Stimulus Duration', 'trial_type', 'Trial Type', ax)
+            bah.plot_rate_heatmap(bail_metrics_dict[rel_tone], 'second_tone_info', 'Second Tone', 'first_tone_info', 'First Tone', ax)
 
-            # plot bail rates for unique tones by stimulus layout
             ax = fig.add_subplot(gs[1, 2*i+1])
 
-            bah.plot_rate_heatmap(bail_metrics_dict[variant], 'tone_pos_dur', 'Tone Positions by Stimulus Duration',
+            bah.plot_rate_heatmap(bail_metrics_dict[rel_tone], 'stim_dur_bin', 'Stimulus Duration',
                                   'tone_info_str', 'Unique Stimuli', ax, x_rot=30)
+            
+            # plot hit rates for tones by stimulus duration
+            ax = fig.add_subplot(gs[2, 2*i+1])
+ 
+            bah.plot_rate_heatmap(bail_metrics_dict[rel_tone], 'delay_bin', 'Delay from Last Relevant Tone',
+                                  'trial_type', 'Trial Type', ax, x_rot=30)
 
         # plot probabilities
         def comp_p(n_dict): return n_dict['num']/n_dict['denom']
         prob_labels = ['p(wrong high|any high)', 'p(wrong low|any low)', 'p(right|prev right)', 'p(right|prev left)', 'p(repeat choice)',
-                       'p(stay|correct)', 'p(switch|incorrect)', 'p(bail|bail)', 'p(bail|incorrect)', 'p(bail|correct)']
-        prob_values = [comp_p(n_high_any_high), comp_p(n_low_any_low), comp_p(n_right_prev_right), comp_p(n_right_prev_left),
-                       comp_p(n_repeat_choice), comp_p(n_win_stay), comp_p(n_lose_switch), comp_p(n_bail_prev_bail),
-                       comp_p(n_bail_prev_incorrect), comp_p(n_bail_prev_correct)]
+                       'p(stay|correct)', 'p(switch|incorrect)', 'p(bail|bail)', 'p(bail|incorrect)', 'p(bail|correct)', 'p(correct|bail,resp)', 'p(correct)']
+        prob_values = [comp_p(n_high_any_high[rel_tone]), comp_p(n_low_any_low[rel_tone]), comp_p(n_right_prev_right[rel_tone]), comp_p(n_right_prev_left[rel_tone]),
+                       comp_p(n_repeat_choice[rel_tone]), comp_p(n_win_stay[rel_tone]), comp_p(n_lose_switch[rel_tone]), comp_p(n_bail_prev_bail[rel_tone]),
+                       comp_p(n_bail_prev_incorrect[rel_tone]), comp_p(n_bail_prev_correct[rel_tone]), comp_p(n_correct_prev_bail[rel_tone]), comp_p(n_correct[rel_tone])]
 
         if plot_bail:
-            ax = fig.add_subplot(gs[2, 2*i:2*i+2])
+            ax = fig.add_subplot(gs[3, 2*i:2*i+2])
             ax.plot(np.arange(len(prob_labels)), prob_values, 'o')
             ax.axhline(0.5, dashes=[4, 4], c='k', lw=1)
             ax.set_ylabel('Probability')
