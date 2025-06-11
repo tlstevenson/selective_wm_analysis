@@ -1,5 +1,6 @@
 name: neuropy
 channels:
+  - pytorch
   - conda-forge
   - defaults
 dependencies:
@@ -7,7 +8,6 @@ dependencies:
   - scikit-learn
   - pandas
   - seaborn
-  - pytorch-gpu
   - mysql-connector-python=8.3.0
   - h5py
   - python-pptx
