@@ -480,7 +480,8 @@ def calc_peak_properties(signal, t, filter_params={}, peak_find_params={}, fit_d
 
     return {'peak_time': peak_time, 'peak_height': peak_height, 'peak_width': peak_width,
             'peak_width_info': {'y': peak_width_y, 't_lims': [peak_width_left, peak_width_right]},
-            'peak_end_time': t[peak_right_idx], 'decay_tau': decay_tau, 'decay_params': decay_params, 'decay_form': decay_form}
+            'peak_start_time': t[peak_left_idx], 'peak_end_time': t[peak_right_idx], 
+            'decay_tau': decay_tau, 'decay_params': decay_params, 'decay_form': decay_form}
 
 
 def calc_iqr_multiple(table, group_by_cols, parameters):

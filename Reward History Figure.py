@@ -134,6 +134,10 @@ with open(save_path, 'wb') as f:
                              'alignments': alignments,
                              'regions': regions,
                              'xlims': xlims}}, f)
+    
+# %% modify sess_data "RT" column
+
+sess_data['RT'] = sess_data['RT'].fillna(sess_data['response_time'] - sess_data['response_cue_time'])
 
 # %% Analyze aligned signals
 
@@ -188,6 +192,11 @@ for subj_id in subj_ids:
         responded = ~np.isnan(trial_data['response_time']).to_numpy()
         rew_hist = pd.cut(trial_data['rew_rate_hist_all'], rew_hist_bins)
         choice = trial_data['choice']
+        cpoke_in_time = sess_data['cpoke_in_time'].fillna(0)
+        RT = sess_data['RT'].fillna(0)
+        L_or_R = sess_data['choice']
+        reward_time = sess_data['reward_time']
+        cpoke_out_time = sess_data['cpoke_out_time'].fillna(0)
         
         resp_rewarded = rewarded[responded]
 
@@ -234,7 +243,10 @@ for subj_id in subj_ids:
                                                          ('align', align.name), ('region', region), ('trial', i),
                                                          ('rewarded', rewarded[i]), ('rew_hist_bin', rew_hist.iloc[i]), 
                                                          ('side', choice_side[i]), ('rew_hist', rew_hist_vec),
-                                                         ('contra_hist', contra_hist_vec), ('ipsi_hist', ipsi_hist_vec),
+                                                         ('contra_hist', contra_hist_vec), ('ipsi_hist', ipsi_hist_vec), 
+                                                         ('cpoke_in_time', cpoke_in_time[i]), ('RT', RT[i]),
+                                                         ('L_or_R', L_or_R[i]), ('reward_time', reward_time[i]),
+                                                         ('cpoke_out_time', cpoke_out_time[i]), 
                                                          *metrics.items()]))
                                 
                                 resp_idx += 1
@@ -556,46 +568,46 @@ for signal_type in plot_signal_types:
             fpah.save_fig(fig, fpah.get_figure_save_path('Two-armed Bandit', 'Reward History', plot_name), format='pdf')
 
 # %% compare peak height dffs with z-scores
-cols = ['subj_id', 'sess_id', 'align', 'region', 'group_label', 'rewarded', 'peak_height']
-sub_metrics = peak_metrics.loc[peak_metrics['signal_type'] == 'dff_iso', cols].reset_index()
-sub_metrics.rename(columns={'peak_height': 'height_dff'}, inplace=True)
-sub_metrics['height_zdff'] = peak_metrics.loc[peak_metrics['signal_type'] == 'z_dff_iso', 'peak_height'].to_numpy()
-align_labels = {'cue': 'Response Cue', 'reward': 'Reward Delivery'}
+# cols = ['subj_id', 'sess_id', 'align', 'region', 'group_label', 'rewarded', 'peak_height']
+# sub_metrics = peak_metrics.loc[peak_metrics['signal_type'] == 'dff_iso', cols].reset_index()
+# sub_metrics.rename(columns={'peak_height': 'height_dff'}, inplace=True)
+# sub_metrics['height_zdff'] = peak_metrics.loc[peak_metrics['signal_type'] == 'z_dff_iso', 'peak_height'].to_numpy()
+# align_labels = {'cue': 'Response Cue', 'reward': 'Reward Delivery'}
 
-sub_subj_ids = np.unique(sub_metrics['subj_id'])
+# sub_subj_ids = np.unique(sub_metrics['subj_id'])
 
-n_regions = len(regions)
-n_aligns = len(alignments)
+# n_regions = len(regions)
+# n_aligns = len(alignments)
 
-for subj_id in sub_subj_ids:
-    fig, axs = plt.subplots(n_regions, n_aligns, figsize=(4*n_aligns, 4*n_regions), layout='constrained')
-    fig.suptitle('Peak Heights, {}'.format(subj_id))
+# for subj_id in sub_subj_ids:
+#     fig, axs = plt.subplots(n_regions, n_aligns, figsize=(4*n_aligns, 4*n_regions), layout='constrained')
+#     fig.suptitle('Peak Heights, {}'.format(subj_id))
 
-    for i, region in enumerate(regions):
-        for j, align in enumerate(alignments):
+#     for i, region in enumerate(regions):
+#         for j, align in enumerate(alignments):
 
-            match align:
-                case Align.cue:
-                    region_metrics = sub_metrics[(sub_metrics['region'] == region) & (sub_metrics['align'] == align) 
-                                                  & (sub_metrics['subj_id'] == subj_id)]
-                case Align.reward:
-                    # only show rewarded peaks heights in reward alignment
-                    region_metrics = sub_metrics[(sub_metrics['region'] == region) & (sub_metrics['align'] == align) 
-                                                  & (sub_metrics['subj_id'] == subj_id) & sub_metrics['rewarded']]
+#             match align:
+#                 case Align.cue:
+#                     region_metrics = sub_metrics[(sub_metrics['region'] == region) & (sub_metrics['align'] == align) 
+#                                                   & (sub_metrics['subj_id'] == subj_id)]
+#                 case Align.reward:
+#                     # only show rewarded peaks heights in reward alignment
+#                     region_metrics = sub_metrics[(sub_metrics['region'] == region) & (sub_metrics['align'] == align) 
+#                                                   & (sub_metrics['subj_id'] == subj_id) & sub_metrics['rewarded']]
                     
-            ax = axs[i,j]
-            for k, group in enumerate(np.unique(region_metrics['group_label'])):
-                group_metrics = region_metrics[region_metrics['group_label'] == group]
-                ax.scatter(group_metrics['height_dff'], group_metrics['height_zdff'], label=group, alpha=0.5, c='C'+str(k))
+#             ax = axs[i,j]
+#             for k, group in enumerate(np.unique(region_metrics['group_label'])):
+#                 group_metrics = region_metrics[region_metrics['group_label'] == group]
+#                 ax.scatter(group_metrics['height_dff'], group_metrics['height_zdff'], label=group, alpha=0.5, c='C'+str(k))
                 
-            for k, group in enumerate(np.unique(region_metrics['group_label'])):
-                group_metrics = region_metrics[region_metrics['group_label'] == group]
-                ax.scatter(np.nanmean(group_metrics['height_dff']), np.nanmean(group_metrics['height_zdff']), c='C'+str(k), marker='x', s=500, linewidths=3, label='_')
+#             for k, group in enumerate(np.unique(region_metrics['group_label'])):
+#                 group_metrics = region_metrics[region_metrics['group_label'] == group]
+#                 ax.scatter(np.nanmean(group_metrics['height_dff']), np.nanmean(group_metrics['height_zdff']), c='C'+str(k), marker='x', s=500, linewidths=3, label='_')
                 
-            ax.set_title('{} {}'.format(region, align_labels[align]))
-            ax.set_xlabel('dF/F')
-            ax.set_ylabel('z-scored dF/F')
-            ax.legend()
+#             ax.set_title('{} {}'.format(region, align_labels[align]))
+#             ax.set_xlabel('dF/F')
+#             ax.set_ylabel('z-scored dF/F')
+#             ax.legend()
             
 # %% prep peak properties for analysis
 
@@ -641,6 +653,7 @@ if ignore_outliers:
     # for subj_id in rem_subj_ids:
     #     subj_peak_info = rem_peak_info[rem_peak_info['subj_id'] == subj_id]
     #     for _, row in subj_peak_info.iterrows():
+           # if np.random.random() < 0.01
     #         mat = aligned_signals[row['subj_id']][row['sess_id']]['dff_iso'][row['align']][row['region']]
     #         _, ax = plt.subplots(1,1)
     #         ax.set_title('{} - {}, {} {}-aligned, trial {}'.format(row['subj_id'], row['sess_id'], row['region'], row['align'], row['trial']))
@@ -701,7 +714,893 @@ if ignore_outliers:
             #         ax.vlines(row['peak_time'], mat[row['trial'], peak_idx]-row['peak_height'], mat[row['trial'], peak_idx], color='C2', linestyles='dashed')
         
             filt_peak_metrics.loc[outlier_sel, param] = np.nan
+            
+# %% value = cue peak amplitude / x_axis:y_axis = previous trial('pre'):current trial('post') / categories = rewarded or unrewarded & same or different side choice
 
+#construct dateframe
+cue_amp = filt_peak_metrics[['subj_id', 'signal_type', 'sess_id', 'region', 'peak_height', 'align', 'trial', 'rewarded', 'L_or_R', 'side']]
+cue_amp = cue_amp[(cue_amp['region'] == 'DMS') & (cue_amp['signal_type'] == 'z_dff_iso') & (cue_amp['align'] == 'cue')]
+
+#build up categories
+amp_all = []
+
+for item in np.unique(cue_amp['sess_id']):
+    
+    new_amp = cue_amp[(cue_amp['sess_id'] == item)]
+    new_table = [new_amp[:-1].reset_index(), new_amp[1:].reset_index()]
+    
+    prefixes = ['pre_', 'post_']
+    for i, df in enumerate(new_table):
+        df.columns = [prefixes[i] + col for col in df.columns]
+        
+    amp_raw_table = pd.concat(new_table, axis = 1)
+    
+    amp_all.append(amp_raw_table)
+
+amp_done = pd.concat(amp_all, ignore_index = True)
+
+def comp_values(row):
+    if row['pre_side'] == row['post_side']:
+        return 'same'
+    elif row['pre_side'] < row['post_side']:
+        return 'contra->ipsi'
+    else:
+        return 'ipsi->contra'
+
+side_compare = amp_done[['pre_side', 'post_side']]
+side_compare['side_switch'] = side_compare.apply(comp_values, axis = 1)
+
+amp_done['side_switch'] = side_compare['side_switch']
+pre_rew_sel = amp_done['pre_rewarded']
+
+plot_side = side_compare['side_switch']
+
+check_table = amp_done[['pre_L_or_R', 'post_L_or_R', 'pre_side', 'post_side', 'side_switch']]
+
+cus_palette = {'contra' : 'red', 'ipsi' : 'green'}
+
+#separate subj-id plots
+included_subjs = np.array(subj_ids)[~np.isin(subj_ids, ignored_subjects)]
+plot_subjs = included_subjs.tolist() + ['all']
+
+for subj in plot_subjs:
+    if subj == 'all':
+        plot_mets = amp_done
+    else:
+        plot_mets = amp_done[amp_done['pre_subj_id'] == subj]
+            
+#plot
+    pre_rew_sel = amp_done['pre_rewarded']
+    fig, axs = plt.subplots(2, 2, figsize = (8, 8), layout = 'constrained', sharex = True, sharey = True)
+    fig.suptitle('Cue Peak Amplitude, Comparing Previous & Current Trials, {}'.format(subj))
+
+    ax = axs[0,0]
+        
+    sb.scatterplot(data = plot_mets[(pre_rew_sel) & (plot_mets['side_switch'] == 'same')], x = 'pre_peak_height', y = 'post_peak_height', hue = 'pre_side', palette = cus_palette, ax = ax, alpha = 0.5)
+    
+    x_lim = ax.get_xlim()
+    y_lim = ax.get_ylim()
+    new_lims = [min(x_lim[0], y_lim[0]), max(x_lim[1], y_lim[1])]
+    ax.set_xlim(new_lims)
+    ax.set_ylim(new_lims)
+    ax.plot(new_lims, new_lims, '--', color = 'black')
+    
+    ax.set_title('Same, Pre-Rewarded')
+    ax.set_xlabel('Pre_Peak_Height')
+    ax.set_ylabel('Post_Peak_Height')
+    
+    ax = axs[0,1]
+        
+    sb.scatterplot(data = plot_mets[(~pre_rew_sel) & (plot_mets['side_switch'] == 'same')], x = 'pre_peak_height', y = 'post_peak_height', hue = 'pre_side', palette = cus_palette, ax = ax, alpha = 0.5)
+    
+    x_lim = ax.get_xlim()
+    y_lim = ax.get_ylim()
+    new_lims = [min(x_lim[0], y_lim[0]), max(x_lim[1], y_lim[1])]
+    ax.set_xlim(new_lims)
+    ax.set_ylim(new_lims)
+    ax.plot(new_lims, new_lims, '--', color = 'black')
+    
+    ax.set_title('Same, Pre-Unrewarded')
+    ax.set_xlabel('Pre_Peak_Height')
+    ax.set_ylabel('Post_Peak_Height')
+
+    ax = axs[1,0]
+       
+    sb.scatterplot(data = plot_mets[(pre_rew_sel) & (plot_mets['side_switch'] != 'same')], x = 'pre_peak_height', y = 'post_peak_height', hue = 'side_switch', hue_order = ['contra->ipsi', 'ipsi->contra'], ax = ax, alpha = 0.5)
+    
+    x_lim = ax.get_xlim()
+    y_lim = ax.get_ylim()
+    new_lims = [min(x_lim[0], y_lim[0]), max(x_lim[1], y_lim[1])]
+    ax.set_xlim(new_lims)
+    ax.set_ylim(new_lims)
+    ax.plot(new_lims, new_lims, '--', color = 'black')
+    
+    ax.set_title('Different, Pre-Rewarded')
+    ax.set_xlabel('Pre_Peak_Height')
+    ax.set_ylabel('Post_Peak_Height')
+    
+    ax = axs[1,1]
+
+    sb.scatterplot(data = plot_mets[(~pre_rew_sel) & (plot_mets['side_switch'] != 'same')], x = 'pre_peak_height', y = 'post_peak_height', hue = 'side_switch', hue_order = ['contra->ipsi', 'ipsi->contra'], ax = ax, alpha = 0.5)
+    
+    x_lim = ax.get_xlim()
+    y_lim = ax.get_ylim()
+    new_lims = [min(x_lim[0], y_lim[0]), max(x_lim[1], y_lim[1])]
+    ax.set_xlim(new_lims)
+    ax.set_ylim(new_lims)
+    ax.plot(new_lims, new_lims, '--', color = 'black')
+    
+    ax.set_title('Different, Pre-Unrewarded')
+    ax.set_xlabel('Pre_Peak_Amplitude')
+    ax.set_ylabel('Post_Peak_Amplitude')
+            
+# %% value = reward peak amplitude / x_axis:y_axis = previous trial('pre'):current trial('post') / filtering condition: rewarded trial only / categories = same or different side choice
+
+#construct dataframe
+rew_amp = filt_peak_metrics[['subj_id', 'signal_type', 'sess_id', 'region', 'peak_height', 'align', 'trial', 'rewarded', 'L_or_R', 'side']]
+rew_amp = rew_amp[(rew_amp['region'] == 'DMS') & (rew_amp['signal_type'] == 'z_dff_iso') & (rew_amp['align'] == 'reward')]
+
+amp_all = []
+
+for item in np.unique(rew_amp['sess_id']):
+    
+    new_amp = rew_amp[(rew_amp['sess_id'] == item)]
+    new_table = [new_amp[:-1].reset_index(), new_amp[1:].reset_index()]
+    
+    prefixes = ['pre_', 'post_']
+    for i, df in enumerate(new_table):
+        df.columns = [prefixes[i] + col for col in df.columns]
+        
+    amp_raw_table = pd.concat(new_table, axis = 1)
+    
+    amp_all.append(amp_raw_table)
+
+amp_done = pd.concat(amp_all, ignore_index = True)
+
+#filtering condition: post_rewarded_trials only
+amp_done = amp_done[(amp_done['post_rewarded'] == True)]
+
+#build up categories
+def comp_values(row):
+    if row['pre_side'] == row['post_side']:
+        return 'same'
+    else:
+        return '{} -> {}'.format(row['pre_side'], row['post_side'])
+
+amp_done['side_switch'] = amp_done.apply(comp_values, axis = 1)
+
+plot_side = amp_done['side_switch']
+
+cus_palette = {'contra' : 'brown', 'ipsi' : 'green'}
+
+#separate subj-id plots
+included_subjs = np.array(subj_ids)[~np.isin(subj_ids, ignored_subjects)]
+plot_subjs = included_subjs.tolist() + ['all']
+
+#debug
+check_table = amp_done[['pre_subj_id','pre_L_or_R', 'post_L_or_R', 'pre_side', 'post_side', 'side_switch']]
+check_table = check_table[check_table['pre_subj_id'] == 179]
+
+order = ['contra -> ipsi', 'ipsi -> contra']
+
+for subj in plot_subjs:
+    if subj == 'all':
+        plot_mets = amp_done
+    else:
+        plot_mets = amp_done[amp_done['pre_subj_id'] == subj]
+            
+#plot
+    pre_rew_sel = amp_done['pre_rewarded']
+    fig, axs = plt.subplots(2, 2, figsize = (8, 8), layout = 'constrained', sharex = True, sharey = True)
+    # fig.suptitle('Reward Peak Amplitude, Comparing Previous & Current(Post) Trials, {}'.format(subj))
+    fig.suptitle('Reward Peak Amplitude, Comparing Previous & Current(post) Trials, Post_Rewarded Trials Only, {}'.format(subj))
+
+    ax = axs[0,0]
+        
+    sb.scatterplot(data = plot_mets[(pre_rew_sel) & (plot_mets['side_switch'] == 'same')], x = 'pre_peak_height', y = 'post_peak_height', hue = 'pre_side', palette = cus_palette, ax = ax, alpha = 0.5)
+    
+    x_lim = ax.get_xlim()
+    y_lim = ax.get_ylim()
+    new_lims = [min(x_lim[0], y_lim[0]), max(x_lim[1], y_lim[1])]
+    ax.set_xlim(new_lims)
+    ax.set_ylim(new_lims)
+    ax.plot(new_lims, new_lims, '--', color = 'black')
+    
+    ax.set_title('Same, Pre-Rewarded')
+    ax.set_xlabel('Pre_Peak_Height')
+    ax.set_ylabel('Post_Peak_Height')
+    
+    ax = axs[1,0]
+
+    sb.scatterplot(data = plot_mets[(pre_rew_sel) & (plot_mets['side_switch'] != 'same')], x = 'pre_peak_height', y = 'post_peak_height', hue = 'side_switch', hue_order = order, ax = ax, alpha = 0.5)
+    
+    x_lim = ax.get_xlim()
+    y_lim = ax.get_ylim()
+    new_lims = [min(x_lim[0], y_lim[0]), max(x_lim[1], y_lim[1])]
+    ax.set_xlim(new_lims)
+    ax.set_ylim(new_lims)
+    ax.plot(new_lims, new_lims, '--', color = 'black')
+    
+    ax.set_title('Different, Pre-Rewarded')
+    ax.set_xlabel('Pre_Peak_Height')
+    ax.set_ylabel('Post_Peak_Height')
+    
+    ax = axs[0,1]
+        
+    sb.scatterplot(data = plot_mets[(~pre_rew_sel) & (plot_mets['side_switch'] == 'same')], x = 'pre_peak_height', y = 'post_peak_height', hue = 'pre_side', palette = cus_palette, ax = ax, alpha = 0.5)
+    
+    x_lim = ax.get_xlim()
+    y_lim = ax.get_ylim()
+    new_lims = [min(x_lim[0], y_lim[0]), max(x_lim[1], y_lim[1])]
+    ax.set_xlim(new_lims)
+    ax.set_ylim(new_lims)
+    ax.plot(new_lims, new_lims, '--', color = 'black')
+    
+    ax.set_title('Same, Pre-Unrewarded')
+    ax.set_xlabel('Pre_Peak_Height')
+    ax.set_ylabel('Post_Peak_Height')
+    
+    ax = axs[1,1]
+
+    sb.scatterplot(data = plot_mets[(~pre_rew_sel) & (plot_mets['side_switch'] != 'same')], x = 'pre_peak_height', y = 'post_peak_height', hue = 'side_switch', hue_order = order, ax = ax, alpha = 0.5)
+    
+    x_lim = ax.get_xlim()
+    y_lim = ax.get_ylim()
+    new_lims = [min(x_lim[0], y_lim[0]), max(x_lim[1], y_lim[1])]
+    ax.set_xlim(new_lims)
+    ax.set_ylim(new_lims)
+    ax.plot(new_lims, new_lims, '--', color = 'black')
+    
+    ax.set_title('Different, Pre-Unrewarded')
+    ax.set_xlabel('Pre_Peak_Height')
+    ax.set_ylabel('Post_Peak_Height')
+    
+
+# %% value = reward peak amplitude / stirpplot / categories = same or different side choice
+
+# rough dataframe building
+rew_peak = filt_peak_metrics[['subj_id', 'signal_type', 'sess_id', 'region', 'peak_height', 'align', 'trial', 'rewarded', 'L_or_R', 'side', 'peak_time']]
+rew_peak = rew_peak[(rew_peak['region'] == 'DMS') & (rew_peak['align'] == 'reward') & (rew_peak['signal_type'] == 'z_dff_iso')]
+
+amp_done = rew_peak[['subj_id', 'side',  'rewarded', 'peak_height', 'peak_time']]
+
+def type_define(row):
+    if row['rewarded'] == True:
+        return'{}, rewarded'.format(row['side'])
+    else:
+        return'{}, unrewarded'.format(row['side'])
+
+amp_done['catagory'] = amp_done.apply(type_define, axis = 1)
+order = ['contra, rewarded', 'contra, unrewarded', 'ipsi, rewarded', 'ipsi, unrewarded']
+
+amp_done['catagory'] = pd.Categorical(amp_done['catagory'], categories = order, ordered = True)
+
+# subj_id loop
+included_subjs = np.array(subj_ids)[~np.isin(subj_ids, ignored_subjects)]
+plot_subjs = included_subjs.tolist() + ['all']
+
+for subj in plot_subjs:
+    if subj == 'all':
+        plot_mets = amp_done
+    else:
+        plot_mets = amp_done[amp_done['subj_id'] == subj]
+        
+    fig, axs = plt.subplots(1, 1, figsize = (8, 4), layout = 'constrained', sharex = True, sharey = True)
+    fig.suptitle('Reward Peak Amplitude Distribution, Comparing Side Choices Switch & Current Trial Rewarded or Not, {}'.format(subj))
+    sb.swarmplot(data = plot_mets, x = 'catagory', y = 'peak_height', hue = 'catagory', ax = axs, alpha = 0.5, legend = False, order = order, size = 1.5)
+
+# %% value = reward peak amplitude / x_axis:y_axis = peak time:peak height / categories = rewarded or unrewarded & same or different side choice
+
+#construct dataframe
+rew_peak = filt_peak_metrics[['subj_id', 'signal_type', 'sess_id', 'region', 'peak_height', 'align', 'trial', 'rewarded', 'L_or_R', 'side', 'peak_time']]
+rew_peak = rew_peak[(rew_peak['region'] == 'DMS') & (rew_peak['align'] == 'reward') & (rew_peak['signal_type'] == 'z_dff_iso')]
+
+amp_done = rew_peak[['subj_id', 'side',  'rewarded', 'peak_height', 'peak_time']]
+
+#build up categories
+def type_define(row):
+    if row['rewarded'] == True:
+        return'{}, rewarded'.format(row['side'])
+    else:
+        return'{}, unrewarded'.format(row['side'])
+
+amp_done['catagory'] = amp_done.apply(type_define, axis = 1)
+order = ['contra, rewarded', 'contra, unrewarded', 'ipsi, rewarded', 'ipsi, unrewarded']
+
+included_subjs = np.array(subj_ids)[~np.isin(subj_ids, ignored_subjects)]
+plot_subjs = included_subjs.tolist() + ['all']
+
+hue_palette = {'contra, rewarded' : 'blue', 'contra, unrewarded' : 'red', 
+               'ipsi, rewarded' : 'orange', 'ipsi, unrewarded' : 'green'}
+
+#separate subj-id plots
+for subj in plot_subjs:
+    if subj == 'all':
+        plot_mets = amp_done
+    else:
+        plot_mets = amp_done[(amp_done['subj_id'] == subj)]
+
+#plot
+    fig, axs = plt.subplots(2, 2, figsize = (8, 8), layout = 'constrained', sharex = True, sharey = True)
+    fig.suptitle('Reward Peak Amplitude vs. Peak Time, {}'.format(subj))
+    
+    ax = axs[0,0]
+    sb.scatterplot(data = plot_mets[plot_mets['catagory'] == 'contra, rewarded'], x = 'peak_time', y = 'peak_height', hue = 'catagory', palette = hue_palette, ax = ax, alpha = 0.5, legend = False)
+    x_lim = ax.get_xlim()
+    y_lim = ax.get_ylim()
+    ax.set_xlim(x_lim[0], x_lim[1])
+    ax.set_ylim(y_lim[0], y_lim[1])
+    min_lim = min(x_lim[0], y_lim[0])
+    max_lim = max(x_lim[1], y_lim[1])
+    ax.plot([min_lim, max_lim], [min_lim, max_lim], '--', color = 'black')
+    ax.set_title('Contra, Rewarded')
+    ax.set_xlabel('Peak Time')
+    ax.set_ylabel('Peak Height')
+    
+    ax = axs[0,1]
+    sb.scatterplot(data = plot_mets[plot_mets['catagory'] == 'contra, unrewarded'], x = 'peak_time', y = 'peak_height', hue = 'catagory', palette = hue_palette, ax = ax, alpha = 0.5, legend = False)
+    x_lim = ax.get_xlim()
+    y_lim = ax.get_ylim()
+    ax.set_xlim(x_lim[0], x_lim[1])
+    ax.set_ylim(y_lim[0], y_lim[1])
+    min_lim = min(x_lim[0], y_lim[0])
+    max_lim = max(x_lim[1], y_lim[1])
+    ax.plot([min_lim, max_lim], [min_lim, max_lim], '--', color = 'black')
+    ax.set_title('Contra, Unrewarded')
+    ax.set_xlabel('Peak Time')
+    ax.set_ylabel('Peak Height')
+    
+    ax = axs[1,0]
+    sb.scatterplot(data = plot_mets[plot_mets['catagory'] == 'ipsi, rewarded'], x = 'peak_time', y = 'peak_height', hue = 'catagory', palette = hue_palette, ax = ax, alpha = 0.5, legend = False)
+    x_lim = ax.get_xlim()
+    y_lim = ax.get_ylim()
+    ax.set_xlim(x_lim[0], x_lim[1])
+    ax.set_ylim(y_lim[0], y_lim[1])
+    min_lim = min(x_lim[0], y_lim[0])
+    max_lim = max(x_lim[1], y_lim[1])
+    ax.plot([min_lim, max_lim], [min_lim, max_lim], '--', color = 'black')
+    ax.set_title('Ipsi, Rewarded')
+    ax.set_xlabel('Peak Time')
+    ax.set_ylabel('Peak Height')
+    
+    ax = axs[1,1]
+    sb.scatterplot(data = plot_mets[plot_mets['catagory'] == 'ipsi, unrewarded'], x = 'peak_time', y = 'peak_height', hue = 'catagory', palette = hue_palette, ax = ax, alpha = 0.5, legend = False)
+    x_lim = ax.get_xlim()
+    y_lim = ax.get_ylim()
+    ax.set_xlim(x_lim[0], x_lim[1])
+    ax.set_ylim(y_lim[0], y_lim[1])
+    min_lim = min(x_lim[0], y_lim[0])
+    max_lim = max(x_lim[1], y_lim[1])
+    ax.plot([min_lim, max_lim], [min_lim, max_lim], '--', color = 'black')
+    ax.set_title('Ipsi, Unrewarded')
+    ax.set_xlabel('Peak Time')
+    ax.set_ylabel('Peak Height')
+    
+# %% check with specific peaks shape (unrew: peakheight > 3 or 4)
+
+def print_dic_structure(d, indent = 0):
+    for key, value in d.items():
+        print(" " * indent+ str(key))
+        if isinstance(value, dict):
+            print_dic_structure(value, indent + 1)
+print_dic_structure(aligned_signals)
+
+
+# look at potentially problematic peaks
+t = aligned_signals['t']
+#rem_peak_info = peak_metrics[~peak_sel]
+rem_peak_info = filt_peak_metrics[(filt_peak_metrics['signal_type'] == 'z_dff_iso') 
+                                  & (filt_peak_metrics['region'] == 'DMS') 
+                                  & (filt_peak_metrics['align'] == 'reward') 
+                                  & (filt_peak_metrics['rewarded'] == False)
+                                  & (filt_peak_metrics['peak_height'] >= 4)].groupby("subj_id").apply(lambda x: x.nlargest(5, 'peak_height'))
+rem_subj_ids = np.unique(rem_peak_info['subj_id'])
+
+for subj_id in rem_subj_ids:
+    subj_peak_info = rem_peak_info[rem_peak_info['subj_id'] == subj_id]
+    
+    for _, row in subj_peak_info.iterrows():
+         #if np.random.random() < 0.1:
+            mat = aligned_signals[row['subj_id']][row['sess_id']]['z_dff_iso'][row['align']][row['region']]
+            
+            _, ax = plt.subplots(1,1)
+            ax.set_title('{} - {}, {} {}-aligned, trial {}'.format(row['subj_id'], row['sess_id'], row['region'], row['align'], row['trial']))
+            ax.plot(t[row['region']], mat[row['trial'], :])
+            plot_utils.plot_dashlines([t_min, t_max[row['align']][row['region']]], ax=ax)
+            peak_idx = np.argmin(np.abs(t[row['region']] - row['peak_time']))
+            ax.plot(row['peak_time'], mat[row['trial'], peak_idx], marker=7, markersize=10, color='C1')
+            peak_end_idx = np.argmin(np.abs(t[row['region']] - row['peak_end_time']))
+            ax.plot(row['peak_end_time'], mat[row['trial'], peak_end_idx], marker=7, markersize=10, color='C1')
+            peak_start_idx = np.argmin(np.abs(t[row['region']] - row['peak_start_time']))
+            ax.plot(row['peak_start_time'], mat[row['trial'], peak_start_idx], marker=7, markersize=10, color='C1')
+            ax.vlines(row['peak_time'], mat[row['trial'], peak_idx]-row['peak_height'], mat[row['trial'], peak_idx], color='C2', linestyles='dashed')
+            start_point = mat[row['trial'], peak_start_idx]
+            end_point = mat[row['trial'], peak_end_idx]
+            ax.plot([row['peak_start_time'], row['peak_end_time']], [start_point, end_point], color = 'black', linestyle = '-')
+            ax.set_xlabel('Time')
+            ax.set_ylabel('Peak Height')
+
+# %% value = reward peak amplitude / x_axis:y_axis = previous trial('pre'):current trial('post') / categories = current[(contra/ipsi)&(rew/unrew)] / color = pre[(contra/ipsi)&(rew/unrew)]
+
+#construct dataframe
+rew_amp = filt_peak_metrics[['subj_id', 'signal_type', 'sess_id', 'region', 'peak_height', 'align', 'trial', 'rewarded', 'L_or_R', 'side', 'peak_time']]
+rew_amp = rew_amp[(rew_amp['region'] == 'DMS') & (rew_amp['align'] == 'reward') & (rew_amp['signal_type'] == 'z_dff_iso')]
+
+#build up categories
+amp_done = []
+
+for item in np.unique(rew_amp['sess_id']):
+    
+    new_amp = rew_amp[(rew_amp['sess_id'] == item)]
+    new_table = [new_amp[:-1].reset_index(), new_amp[1:].reset_index()]
+    
+    prefixes = ['pre_', 'post_']
+    for i, df in enumerate(new_table):
+        df.columns = [prefixes[i] + col for col in df.columns]
+        
+    amp_raw_table = pd.concat(new_table, axis = 1)
+    
+    amp_done.append(amp_raw_table)
+
+amp_done = pd.concat(amp_done, ignore_index = True)
+
+def pre_type_define(row):
+    if row['pre_rewarded'] == True:
+        return'{}, rewarded'.format(row['pre_side'])
+    else:
+        return'{}, unrewarded'.format(row['pre_side'])
+    
+amp_done['pre_category'] = amp_done.apply(pre_type_define, axis=1)
+
+def post_type_define(row):
+    if row['post_rewarded'] == True:
+        return'{}, rewarded'.format(row['post_side'])
+    else:
+        return'{}, unrewarded'.format(row['post_side'])
+
+amp_done['post_category'] = amp_done.apply(post_type_define, axis=1)
+order = ['contra, rewarded', 'contra, unrewarded', 'ipsi, rewarded', 'ipsi, unrewarded']
+
+amp_done['peak_height_dff'] = amp_done['pre_peak_height'] - amp_done['post_peak_height']
+
+#separate subj-id plots
+included_subjs = np.array(subj_ids)[~np.isin(subj_ids, ignored_subjects)]
+plot_subjs = included_subjs.tolist() + ['all']
+
+for subj in plot_subjs:
+    if subj == 'all':
+        plot_mets = amp_done
+    else:
+        plot_mets = amp_done[(amp_done['pre_subj_id'] == subj)]
+
+#plot
+    fig, axs = plt.subplots(2, 2, figsize = (8, 8), layout = 'constrained', sharex = True, sharey = True)
+    fig.suptitle('Reward Peak Amplitude, Comparing Previous & Current(Post) Trials, {}'.format(subj))
+    
+    ax = axs[0,0]
+    sb.scatterplot(data = plot_mets[plot_mets['post_category'] == 'contra, rewarded'], x = 'pre_peak_height', y = 'post_peak_height', hue = 'pre_category', hue_order = order, ax = ax, alpha = 0.5)
+    x_lim = ax.get_xlim()
+    y_lim = ax.get_ylim()
+    ax.set_xlim(x_lim[0], x_lim[1])
+    ax.set_ylim(y_lim[0], y_lim[1])
+    min_lim = min(x_lim[0], y_lim[0])
+    max_lim = max(x_lim[1], y_lim[1])
+    ax.plot([min_lim, max_lim], [min_lim, max_lim], '--', color = 'black')
+    ax.set_title('Post: Contra, Rewarded')
+    ax.set_xlabel('Pre Peak Height')
+    ax.set_ylabel('Post Peak Height')
+    
+    ax = axs[0,1]
+    sb.scatterplot(data = plot_mets[plot_mets['post_category'] == 'contra, unrewarded'], x = 'pre_peak_height', y = 'post_peak_height', hue = 'pre_category', hue_order = order, ax = ax, alpha = 0.5)
+    x_lim = ax.get_xlim()
+    y_lim = ax.get_ylim()
+    ax.set_xlim(x_lim[0], x_lim[1])
+    ax.set_ylim(y_lim[0], y_lim[1])
+    min_lim = min(x_lim[0], y_lim[0])
+    max_lim = max(x_lim[1], y_lim[1])
+    ax.plot([min_lim, max_lim], [min_lim, max_lim], '--', color = 'black')
+    ax.set_title('Post: Contra, Unrewarded')
+    ax.set_xlabel('Pre Peak Height')
+    ax.set_ylabel('Post Peak Height')
+    
+    ax = axs[1,0]
+    sb.scatterplot(data = plot_mets[plot_mets['post_category'] == 'ipsi, rewarded'], x = 'pre_peak_height', y = 'post_peak_height', hue = 'pre_category', hue_order = order, ax = ax, alpha = 0.5)
+    x_lim = ax.get_xlim()
+    y_lim = ax.get_ylim()
+    ax.set_xlim(x_lim[0], x_lim[1])
+    ax.set_ylim(y_lim[0], y_lim[1])
+    min_lim = min(x_lim[0], y_lim[0])
+    max_lim = max(x_lim[1], y_lim[1])
+    ax.plot([min_lim, max_lim], [min_lim, max_lim], '--', color = 'black')
+    ax.set_title('Post: Ipsi, Rewarded')
+    ax.set_xlabel('Pre Peak Height')
+    ax.set_ylabel('Post Peak Height')
+    
+    ax = axs[1,1]
+    sb.scatterplot(data = plot_mets[plot_mets['post_category'] == 'ipsi, unrewarded'], x = 'pre_peak_height', y = 'post_peak_height', hue = 'pre_category', hue_order = order, ax = ax, alpha = 0.5)
+    x_lim = ax.get_xlim()
+    y_lim = ax.get_ylim()
+    ax.set_xlim(x_lim[0], x_lim[1])
+    ax.set_ylim(y_lim[0], y_lim[1])
+    min_lim = min(x_lim[0], y_lim[0])
+    max_lim = max(x_lim[1], y_lim[1])
+    ax.plot([min_lim, max_lim], [min_lim, max_lim], '--', color = 'black')
+    ax.set_title('Post: Ipsi, Unrewarded')
+    ax.set_xlabel('Pre Peak Height')
+    ax.set_ylabel('Post Peak Height')
+
+# %% value = peak height change trial-by-trial / stripplot & box plot / categories = current[(contra/ipsi)&(rew/unrew)] / color = pre[(contra/ipsi)&(rew/unrew)]
+
+#construct dataframe
+rew_amp = filt_peak_metrics[['subj_id', 'signal_type', 'sess_id', 'region', 'peak_height', 'align', 'trial', 'rewarded', 'L_or_R', 'side', 'peak_time']]
+rew_amp = rew_amp[(rew_amp['region'] == 'DMS') & (rew_amp['align'] == 'reward') & (rew_amp['signal_type'] == 'z_dff_iso')]
+
+#build up categories
+amp_done = []
+
+for item in np.unique(rew_amp['sess_id']):
+    
+    new_amp = rew_amp[(rew_amp['sess_id'] == item)]
+    new_table = [new_amp[:-1].reset_index(), new_amp[1:].reset_index()]
+    
+    prefixes = ['pre_', 'post_']
+    for i, df in enumerate(new_table):
+        df.columns = [prefixes[i] + col for col in df.columns]
+        
+    amp_raw_table = pd.concat(new_table, axis = 1)
+    
+    amp_done.append(amp_raw_table)
+
+amp_done = pd.concat(amp_done, ignore_index = True)
+
+def pre_type_define(row):
+    if row['pre_rewarded'] == True:
+        return'{}, rewarded'.format(row['pre_side'])
+    else:
+        return'{}, unrewarded'.format(row['pre_side'])
+    
+amp_done['pre_catagory'] = amp_done.apply(pre_type_define, axis=1)
+
+def post_type_define(row):
+    if row['post_rewarded'] == True:
+        return'{}, rewarded'.format(row['post_side'])
+    else:
+        return'{}, unrewarded'.format(row['post_side'])
+
+amp_done['post_catagory'] = amp_done.apply(post_type_define, axis=1)
+order = ['contra, rewarded', 'contra, unrewarded', 'ipsi, rewarded', 'ipsi, unrewarded']
+
+amp_done['peak_height_dff'] = amp_done['post_peak_height'] - amp_done['pre_peak_height']
+
+included_subjs = np.array(subj_ids)[~np.isin(subj_ids, ignored_subjects)]
+plot_subjs = included_subjs.tolist() + ['all']
+
+#seperate subj-id plots
+for subj in plot_subjs:
+    if subj == 'all':
+        plot_mets = amp_done
+    else:
+        plot_mets = amp_done[(amp_done['pre_subj_id'] == subj)]
+        
+    #stirpplot
+    fig, axs = plt.subplots(4, 1, figsize = (8, 8), layout = 'constrained', sharey = True)
+    fig.suptitle('Peak Height Trail-by-trial Change, {}'.format(subj))
+        
+    ax = axs[0]
+    sb.swarmplot(data = plot_mets[plot_mets['post_catagory'] == 'contra, rewarded'], x = 'pre_catagory', y = 'peak_height_dff', hue = 'pre_catagory', hue_order = order, ax = axs[0], alpha = 0.5, legend = False, order = order, size = 1.5)
+    axs[0].set_title('Contra, Post-Rewarded')
+    axs[0].set_xlabel('Pre Catagory')
+    axs[0].set_ylabel('Peak Height Difference')
+    axs[0].axhline(y = 0, linestyle = '--', color = 'black')
+        
+    ax = axs[1]
+    sb.swarmplot(data = plot_mets[plot_mets['post_catagory'] == 'contra, unrewarded'], x = 'pre_catagory', y = 'peak_height_dff', hue = 'pre_catagory', hue_order = order, ax = axs[1], alpha = 0.5, legend = False, order = order, size = 1.5)
+    axs[1].set_title('Contra, Post-Unrewarded')
+    axs[1].set_xlabel('Pre Catagory')
+    axs[1].set_ylabel('Peak Height Difference')
+    axs[1].axhline(y = 0, linestyle = '--', color = 'black')
+        
+    ax = axs[2]
+    sb.swarmplot(data = plot_mets[plot_mets['post_catagory'] == 'ipsi, rewarded'], x = 'pre_catagory', y = 'peak_height_dff', hue = 'pre_catagory', hue_order = order, ax = axs[2], alpha = 0.5, legend = False, order = order, size = 1.5)
+    axs[2].set_title('Ipsi, Post-Rewarded')
+    axs[2].set_xlabel('Pre Catagory')
+    axs[2].set_ylabel('Peak Height Difference')
+    axs[2].axhline(y = 0, linestyle = '--', color = 'black')
+        
+    ax = axs[3]
+    sb.swarmplot(data = plot_mets[plot_mets['post_catagory'] == 'ipsi, unrewarded'], x = 'pre_catagory', y = 'peak_height_dff', hue = 'pre_catagory', hue_order = order, ax = axs[3], alpha = 0.5, legend = False, order = order, size = 1.5)
+    axs[3].set_title('Ipsi, Post-Unrewarded')
+    axs[3].set_xlabel('Pre Catagory')
+    axs[3].set_ylabel('Peak Height Difference')
+    axs[3].axhline(y = 0, linestyle = '--', color = 'black')
+    
+    #box plot
+    fig, axs = plt.subplots(2, 2, figsize = (12, 12), layout = 'constrained', sharey = True)
+    fig.suptitle('Peak Height Trail-by-trial Change, {}'.format(subj))
+    
+    ax = axs[0,0]
+    sb.boxplot(data = plot_mets[plot_mets['post_catagory'] == 'contra, rewarded'], x = 'pre_catagory', y = 'peak_height_dff', hue = 'pre_catagory', hue_order = order, ax = ax, order = order)
+    ax.set_title('Contra, Post-Rewarded')
+    ax.set_xlabel('Pre Catagory')
+    ax.set_ylabel('Peak Height Difference')
+    ax.axhline(y = 0, linestyle = '--', color = 'black')
+    ax.legend_.remove()
+    
+    ax = axs[0,1]
+    sb.boxplot(data = plot_mets[plot_mets['post_catagory'] == 'contra, unrewarded'], x = 'pre_catagory', y = 'peak_height_dff', hue = 'pre_catagory', hue_order = order, ax = ax, order = order)
+    ax.set_title('Contra, Post-Unrewarded')
+    ax.set_xlabel('Pre Catagory')
+    ax.set_ylabel('Peak Height Difference')
+    ax.axhline(y = 0, linestyle = '--', color = 'black')
+    ax.legend_.remove()
+    
+    ax = axs[1,0]
+    sb.boxplot(data = plot_mets[plot_mets['post_catagory'] == 'ipsi, rewarded'], x = 'pre_catagory', y = 'peak_height_dff', hue = 'pre_catagory', hue_order = order, ax = ax, order = order)
+    ax.set_title('Ipsi, Post-Rewarded')
+    ax.set_xlabel('Pre Catagory')
+    ax.set_ylabel('Peak Height Difference')
+    ax.axhline(y = 0, linestyle = '--', color = 'black')
+    ax.legend_.remove()
+    
+    ax = axs[1,1]
+    sb.boxplot(data = plot_mets[plot_mets['post_catagory'] == 'ipsi, unrewarded'], x = 'pre_catagory', y = 'peak_height_dff', hue = 'pre_catagory', hue_order = order, ax = ax, order = order)
+    ax.set_title('Ipsi, Post-Unrewarded')
+    ax.set_xlabel('Pre Catagory')
+    ax.set_ylabel('Peak Height Difference')
+    ax.axhline(y = 0, linestyle = '--', color = 'black')
+    ax.legend_.remove()
+
+# %% value = peak amplitude / x_axis:y_axis = cue:reward / filtering condition = cpoke_in_time 12s
+
+#making rough dataframe
+amp_comparing = filt_peak_metrics[['subj_id', 'signal_type', 'sess_id', 'region', 'peak_height', 'align', 'trial', 'rewarded', 'RT', 'cpoke_in_time', 'side']] # 'cpoke_in_time', 'RT', 'side'
+
+#refining: pick out DMS & rewarded
+amp_refined = amp_comparing[(amp_comparing['region'] == 'DMS') & (amp_comparing['rewarded']) & (amp_comparing['signal_type'] == 'z_dff_iso')]
+
+#use pivot to separate cue and reward
+amp_pivoted = amp_refined.pivot(index = ['subj_id', 'sess_id', 'trial', 'RT', 'cpoke_in_time', 'side'], 
+                            columns = 'align', values = 'peak_height'
+                            ).rename(columns = {'cue':'cue_amp', 'reward':'reward_amp'}
+                                     ).reset_index() 
+    
+def time_set(row):
+    if row['cpoke_in_time'] <= 12:
+        return 'below'
+    else:
+        return'above'
+
+amp_pivoted['cpoke_threshold'] = amp_pivoted.apply(time_set, axis = 1)
+
+order = ['below', 'above']
+
+included_subjs = np.array(subj_ids)[~np.isin(subj_ids, ignored_subjects)]
+plot_subjs = included_subjs.tolist() + ['all']
+    
+for subj in plot_subjs:
+        
+        if subj == 'all':
+            plot_mets = amp_pivoted
+            
+        else:
+            plot_mets = amp_pivoted[amp_pivoted['subj_id'] == subj]
+        
+        fig, ax = plt.subplots(1, 1, figsize = (4, 4), layout = 'constrained')
+        
+        sb.scatterplot(data = plot_mets, x = 'cue_amp', y = 'reward_amp', hue = 'cpoke_threshold', hue_order = order, ax = ax, alpha = 0.5, s = 10)
+        
+        x_lim = ax.get_xlim()
+        y_lim = ax.get_ylim()
+        new_lims = [min(x_lim[0], y_lim[0]), max(x_lim[1], y_lim[1])]
+        ax.set_xlim(new_lims)
+        ax.set_ylim(new_lims)
+        ax.plot(new_lims, new_lims, '--', color = 'black')
+        
+        ax.set_title('Cue vs Reward Amplitude, cpoke_in_time 12s, {}'.format(subj))
+        ax.set_xlabel('Cue Amplitude')
+        ax.set_ylabel('Reward Amplitude')
+                
+# %% value = reward peak amplitude / x_axis:y_axis = PL:DMS (current) / categories = L/R side switch / color = rewarded/unrewarded switch
+
+amp_comp = filt_peak_metrics[['subj_id', 'sess_id', 'trial', 'signal_type', 'align', 'region', 'peak_height', 'rewarded', 'L_or_R']]
+amp_comp = amp_comp[(amp_comp['signal_type'] == 'z_dff_iso') & (amp_comp['align'] == "reward")]
+
+amp_PL = amp_comp[(amp_comp['region'] == 'PL')].rename(columns = {'peak_height' : 'PL_amp'})
+amp_DMS = amp_comp[(amp_comp['region'] == 'DMS')].rename(columns = {'peak_height' : 'DMS_amp'})
+
+amp_done = amp_PL.merge(amp_DMS, on=['subj_id', 'sess_id', 'trial', 'align'], how = 'inner')
+amp_done = amp_done.drop(columns = ['signal_type_y', 'region_x', 'region_y', 'rewarded_y'])
+amp_done.rename(columns = {'signal_type_x': 'signal_type', 'rewarded_x': 'rewarded', 'L_or_R_x': 'L_or_R'}, inplace = True)
+                                   
+def rew(row):
+    if row['rewarded'] == True:
+        return"Rewarded"
+    else:
+        return"Unrewarded"
+amp_done['rew'] = amp_done.apply(rew, axis = 1)
+
+amp_all = []
+for item in np.unique(amp_done['sess_id']):
+    
+    new_amp = amp_done[(amp_done['sess_id'] == item)]
+    new_comp = [new_amp[:-1].reset_index(), new_amp[1:].reset_index()]
+    prefix = ['pre_', 'post_']
+    for i, df in enumerate(new_comp):
+        df.columns = [prefixes[i] + col for col in df.columns]
+    amp_raw = pd.concat(new_comp, axis = 1)
+    amp_all.append(amp_raw)
+amp_fin = pd.concat(amp_all, ignore_index = True)
+
+amp_fin['pre_post'] = amp_fin.apply(lambda row: f'{row["pre_rew"]}->{row["post_rew"]}', axis = 1)
+amp_fin['side_change'] = amp_fin.apply(lambda row: f'{row["pre_L_or_R"]}->{row["post_L_or_R"]}', axis = 1)
+
+order = ['Rewarded->Rewarded', 'Rewarded->Unrewarded', 'Unrewarded->Rewarded', 'Unrewarded->Unrewarded']#['left->left', 'left->right', 'right->right', 'right->left']#['Rewarded->Rewarded', 'Rewarded->Unrewarded', 'Unrewarded->Rewarded', 'Unrewarded->Unrewarded']
+
+included_subjs = np.array(subj_ids)[~np.isin(subj_ids, ignored_subjects)]
+plot_subjs = included_subjs.tolist() + ['all']
+
+for subj in plot_subjs:
+    if subj == 'all':
+        plot_mets = amp_fin
+    else:
+        plot_mets = amp_fin[(amp_fin['pre_subj_id'] == subj)]
+    
+    fig, axs = plt.subplots(2, 2, figsize = (8, 8), layout = 'constrained', sharex = True, sharey = True)
+    fig.suptitle('PL vs. DMS amplitude, Comparing Side-choice and Rewarded-situation Switch, {}'.format(subj))
+    
+    ax = axs[0,0]
+    sb.scatterplot(data = plot_mets[plot_mets['side_change'] == 'left->left'], x = 'post_DMS_amp', y = 'post_PL_amp', hue = 'pre_post', hue_order = order, ax = ax, alpha = 0.5, s = 10)
+    x_lim = ax.get_xlim()
+    y_lim = ax.get_ylim()
+    new_lims = [min(x_lim[0], y_lim[0]), max(x_lim[1], y_lim[1])]
+    ax.set_xlim(new_lims)
+    ax.set_ylim(new_lims)
+    ax.plot(new_lims, new_lims, '--', color = 'black')
+    ax.set_title("Left -> Left")
+    ax.set_xlabel('post_DMS_amp')
+    ax.set_ylabel('post_PL_amp')
+    
+    ax = axs[0,1]
+    sb.scatterplot(data = plot_mets[plot_mets['side_change'] == 'left->right'], x = 'post_DMS_amp', y = 'post_PL_amp', hue = 'pre_post', hue_order = order, ax = ax, alpha = 0.5, s = 10)
+    x_lim = ax.get_xlim()
+    y_lim = ax.get_ylim()
+    new_lims = [min(x_lim[0], y_lim[0]), max(x_lim[1], y_lim[1])]
+    ax.set_xlim(new_lims)
+    ax.set_ylim(new_lims)
+    ax.plot(new_lims, new_lims, '--', color = 'black')
+    ax.set_title("Left -> Right")
+    ax.set_xlabel('post_DMS_amp')
+    ax.set_ylabel('post_PL_amp')
+    
+    ax = axs[1,0]
+    sb.scatterplot(data = plot_mets[plot_mets['side_change'] == 'right->right'], x = 'post_DMS_amp', y = 'post_PL_amp', hue = 'pre_post', hue_order = order, ax = ax, alpha = 0.5, s = 10)
+    x_lim = ax.get_xlim()
+    y_lim = ax.get_ylim()
+    new_lims = [min(x_lim[0], y_lim[0]), max(x_lim[1], y_lim[1])]
+    ax.set_xlim(new_lims)
+    ax.set_ylim(new_lims)
+    ax.plot(new_lims, new_lims, '--', color = 'black')
+    ax.set_title("Right -> Right")
+    ax.set_xlabel('post_DMS_amp')
+    ax.set_ylabel('post_PL_amp')
+    
+    ax = axs[1,1]
+    sb.scatterplot(data = plot_mets[plot_mets['side_change'] == 'right->left'], x = 'post_DMS_amp', y = 'post_PL_amp', hue = 'pre_post', hue_order = order, ax = ax, alpha = 0.5, s = 10)
+    x_lim = ax.get_xlim()
+    y_lim = ax.get_ylim()
+    new_lims = [min(x_lim[0], y_lim[0]), max(x_lim[1], y_lim[1])]
+    ax.set_xlim(new_lims)
+    ax.set_ylim(new_lims)
+    ax.plot(new_lims, new_lims, '--', color = 'black')
+    ax.set_title("Right -> Left")
+    ax.set_xlabel('post_DMS_amp')
+    ax.set_ylabel('post_PL_amp')
+    
+# %% value = reward peak amplitude / x_axis:y_axis = trail_gap_time:peak height / scatterplot & stripplot / categories = current side choice
+
+amp_time = filt_peak_metrics[['align', 'region', 'signal_type', 'subj_id', 'sess_id', 'trial', 'rewarded', 'side', 'cpoke_in_time', 'RT', 'reward_time', 'peak_height']]
+amp_time = amp_time[(amp_time['align'] == 'reward') & (amp_time['region'] =='PL') & (amp_time['signal_type'] == 'z_dff_iso')]
+
+amp_done = []
+
+for item in np.unique(amp_time['sess_id']):
+    amp_seg = amp_time[(amp_time['sess_id'] == item)]
+    amp_seg = [amp_seg[:-1].reset_index(), amp_seg[1:].reset_index()]
+    prefix = ['pre_', 'post_']
+    
+    for i, df in enumerate(amp_seg):
+        df.columns = [prefix[i] + col for col in df.columns]
+    amp_set = pd.concat(amp_seg, axis = 1)
+    amp_done.append(amp_set)
+
+amp_fin = pd.concat(amp_done, ignore_index = True)
+
+def pre_combine(row):
+    if row['pre_rewarded'] == True:
+        return'{}, rewarded'.format(row['pre_side'])
+    else:
+        return'{}, unrewarded'.format(row['pre_side'])
+
+def post_combine(row):
+    if row['post_rewarded'] == True:
+        return'Post_trial: {}, rewarded'.format(row['post_side'])
+    else:
+        return'Post_trial: {}, unrewarded'.format(row['post_side'])
+
+amp_fin['Pre_trial_info'] = amp_fin.apply(pre_combine, axis = 1)
+amp_fin['Post_trial_info'] = amp_fin.apply(post_combine, axis = 1)
+
+# order = ['contra, rewarded', 'contra, unrewarded', 'ipsi, rewarded', 'ipsi, unrewarded']
+order = ['contra', 'ipsi']
+
+amp_fin['true_block'] = amp_fin['post_rewarded'].cumsum()
+unrewarded_term = amp_fin[~amp_fin['post_rewarded']].groupby('true_block')['post_reward_time'].sum()
+amp_rewarded = amp_fin[amp_fin['post_rewarded'] == True]
+amp_rewarded['rewarded_gap'] = amp_rewarded['true_block'].map(unrewarded_term)
+amp_rewarded['rewarded_gap'] = amp_rewarded['rewarded_gap'].fillna(0) + amp_rewarded['post_reward_time']
+
+included_subjs = np.array(subj_ids)[~np.isin(subj_ids, ignored_subjects)]
+plot_subjs = included_subjs.tolist() + ['all']
+
+plot_data_all = amp_rewarded[amp_rewarded['post_subj_id'].isin(included_subjs)]
+y_min = plot_data_all['post_peak_height'].min()
+y_max = plot_data_all['post_peak_height'].max()
+x_min = plot_data_all['rewarded_gap'].min()
+x_max = plot_data_all['rewarded_gap'].max()
+# x_max = 20
+x_lims = [x_min, x_max]
+y_lims = [y_min, y_max]
+
+for subj in plot_subjs:
+    if subj == 'all':
+        plot_mets = amp_rewarded
+    else:
+        plot_mets = amp_rewarded[(amp_rewarded['post_subj_id'] == subj)]
+    
+    #scatterplot
+    fig, ax = plt.subplots(1, 1, figsize = (4, 4), layout = 'constrained', sharex = True, sharey = True)
+    
+    sb.scatterplot(data = plot_mets, x = 'rewarded_gap', y = 'post_peak_height', hue = 'post_side', hue_order = order, ax = ax, alpha = 0.5, s = 10)
+    
+    ax.set_xlim(x_lims)
+    ax.set_ylim(y_lims)
+    ax.plot(x_lims, y_lims, '--', color = 'black')
+    
+    ax.set_title('Rewarded Trial Gap vs. Peak Height, {}'.format(subj))
+    ax.set_xlabel('Rewarded Trail Gap Time')
+    ax.set_ylabel('Reward Amplitude')
+    
+    #stripplot
+    fig, axs = plt.subplots(4, 1, figsize = (8, 8), layout = 'constrained', sharey = True)
+    fig.suptitle('Peak Height, DMS, Rewarded Trial Gap Time distribution {}'.format(subj))
+    
+    ax = axs[0]
+    sb.swarmplot(data = plot_mets[plot_mets['Pre_trial_info'] == 'contra, rewarded'], x = 'post_side', y = 'post_peak_height', hue = 'rewarded_gap', palette = 'viridis', ax = axs[0], alpha = 0.5, legend = True, order = order, size = 1.5)
+    axs[0].set_title('Pre_trial: Contra, Rewarded')
+    axs[0].set_xlabel('Side Choice')
+    axs[0].set_ylabel('Peak Height')
+    axs[0].axhline(y = 0, linestyle = '--', color = 'black')
+    
+    ax = axs[1]
+    sb.swarmplot(data = plot_mets[plot_mets['Pre_trial_info'] == 'contra, unrewarded'], x = 'post_side', y = 'post_peak_height', hue = 'rewarded_gap', palette = 'viridis', ax = axs[1], alpha = 0.5, legend = True, order = order, size = 1.5)
+    axs[1].set_title('Pre_trial: Contra, Unrewarded')
+    axs[1].set_xlabel('Side Choice')
+    axs[1].set_ylabel('Peak Height')
+    axs[1].axhline(y = 0, linestyle = '--', color = 'black')
+    
+    ax = axs[2]
+    sb.swarmplot(data = plot_mets[plot_mets['Pre_trial_info'] == 'ipsi, rewarded'], x = 'post_side', y = 'post_peak_height', hue = 'rewarded_gap', palette = 'viridis', ax = axs[2], alpha = 0.5, legend = True, order = order, size = 1.5)
+    axs[2].set_title('Pre_trial: Ipsi, Rewarded')
+    axs[2].set_xlabel('Side Choice')
+    axs[2].set_ylabel('Peak Height')
+    axs[2].axhline(y = 0, linestyle = '--', color = 'black')
+    
+    ax = axs[3]
+    sb.swarmplot(data = plot_mets[plot_mets['Pre_trial_info'] == 'ipsi, unrewarded'], x = 'post_side', y = 'post_peak_height', hue = 'rewarded_gap', palette = 'viridis', ax = axs[3], alpha = 0.5, legend = True, order = order, size = 1.5)
+    axs[3].set_title('Pre_trial: Ipsi, Unrewarded')
+    axs[3].set_xlabel('Side Choice')
+    axs[3].set_ylabel('Peak Height')
+    axs[3].axhline(y = 0, linestyle = '--', color = 'black')
 
 # %% Plot peak properties
 
@@ -918,7 +1817,6 @@ for signal_type in plot_signals:
                 ax.set_xlabel('# Rewards in last {} Trials'.format(rew_rate_n_back))
                 
         fpah.save_fig(fig, fpah.get_figure_save_path('Two-armed Bandit', 'Reward History', plot_name), format='pdf')
-
 
 # %% Perform statistical tests on the peak properties
 
