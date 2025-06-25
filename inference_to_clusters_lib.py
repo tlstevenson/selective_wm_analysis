@@ -108,9 +108,22 @@ def BasisChangeMatrix(basis1, basis2):
     change_of_basis_matrix = np.linalg.inv(M) @ M_old 
     return change_of_basis_matrix
 
+def Angle(v1, v2):
+    return np.arccos(np.dot(np.transpose(v1),v2)/(np.linalg.norm(v1)*np.linalg.norm(v2)))
+
 def RotationMatrix(original_x_vect, new_x_vect):
     #Check to see if over or un
     print("Hi")
+    cross_product = original_x_vect[0]*new_x_vect[1]-original_x_vect[1]*new_x_vect[0]
+    #+ is rotated counterclockwise (Corrected clockwise to local)
+    #- is rotated clockwise (Corrected counterclockise to local)
+    angle = Angle(original_x_vect, new_x_vect)
+    if cross_product > 0:
+        return [[np.cos(-angle), -np.sin(-angle)],
+                [np.sin(-angle), np.cos(-angle)]]
+    else:
+        return [[np.cos(angle), -np.sin(angle)],
+                [np.sin(angle), np.cos(angle)]]
     
     
 
@@ -124,7 +137,7 @@ def NodePositionsLocal(frame, processed_dict, origin_node="body", basis_node="ne
     origin: the point (0,0)
     basis_node: the node used to define the first basis vector
     right_ortho: is the second basis vector on the right side of the body'''
-    local_locations = np.zeros((processed_dict["locations"].shape[1]))
+    local_locations = np.zeros(np.shape(frame))
     #print(local_locations.shape)
     #get the positions of the body, neck
     origin_idx = processed_dict["node_names"].index(origin_node)
@@ -143,11 +156,13 @@ def NodePositionsLocal(frame, processed_dict, origin_node="body", basis_node="ne
     for n in range(len(frame)): 
         v = np.append(frame[n], 1)
         v = np.reshape(v, (3, 1))
+        #print(v)
         #if n == origin_idx:
             #print("Original")
             #print(v)
             #print("Translational Matrix")
-        centered_pos = TranslationMatrix(p_origin, inverted=True) @ v
+        centered_pos = np.dot(TranslationMatrix(p_origin, inverted=True), v)
+        print((centered_pos + p_origin)[1] == frame[n][1])
         #if n == origin_idx:
             #print("Centered Pos")
             #print(centered_pos)
@@ -157,11 +172,9 @@ def NodePositionsLocal(frame, processed_dict, origin_node="body", basis_node="ne
             #print(BasisChangeMatrix(b1, b2))
             #print("New Pos")
             #print(new_pos)
-        frame[n][:] = np.reshape(new_pos, (2,1))
-    return frame
-
-def Angle(v1, v2):
-    return np.arccos(np.dot(np.transpose(v1),v2)/(np.linalg.norm(v1)*np.linalg.norm(v2)))
+        #frame[n][:] = np.reshape(new_pos, (2,1))
+        local_locations[n][:] = np.reshape(new_pos, (2,1))
+    return local_locations
 
 def AngleToPorts(frame, processed_dict, port_pos_list):
     '''Returns the angle between the head-nose vector and all three ports

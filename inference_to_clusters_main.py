@@ -44,6 +44,7 @@ new_dict = itcl.process_hdf5_data(file_path)
 pickle.dump(new_dict["edge_inds"], open("Skeleton_Edges.bin","wb"))
 
 
+"""
 port_pos_list = np.array([[969, 1068.5, 974],
                           [330.5, 484.5, 641]])
 overallAngles = np.zeros((port_pos_list.shape[1], len(new_dict["locations"])))
@@ -52,7 +53,7 @@ print(itcl.AngleToPorts(new_dict["locations"][0], new_dict, port_pos_list))
 
 
 for frame_idx in range(len(new_dict["locations"])):
-    itcl.PlotSkeleton(new_dict["locations"][frame_idx], new_dict) #REMOVE ANGLES MAKES IT UNUSABLE
+    itcl.PlotSkeleton(new_dict["locations"][frame_idx], new_dict)
     itcl.PlotPorts(port_pos_list)
     angles = itcl.AngleToPorts(new_dict["locations"][frame_idx], new_dict, port_pos_list)
     offset = [20,0]
@@ -60,7 +61,7 @@ for frame_idx in range(len(new_dict["locations"])):
     plt.xlim((0,1280))
     plt.ylim(960,0)
 
-    plt.show()
+    plt.show()"""
     
 
 local_pos = np.zeros(np.shape(new_dict["locations"]))
