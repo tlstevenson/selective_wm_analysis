@@ -24,13 +24,13 @@ path_settings = "inference_paths.json"
 new_model = False #Do you have a new centroid or centered model
 change_python_loc = False #Do the environment's python location change
 new_video = False #Upload new video (will be automated by entering subject+date)
-json_exists = True #False if you deleted inference_paths or first run
+json_exists = False #False if you deleted inference_paths or first run
 new_write_loc = False #Do you want to write it to a new directory
 
 
 data = {}
 if json_exists:
-    #Read current values
+    #Read current path settings
     try:
         with open(path_settings, "r") as file:
             data = json.load(file)

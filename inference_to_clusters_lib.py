@@ -31,8 +31,6 @@ def process_hdf5_data(filename):
         locations = f["tracks"][:].T
         node_names = [n.decode() for n in f["node_names"][:]]
         edge_inds = [edgeInd for edgeInd in f["edge_inds"]]
-        #print(f["edge_inds"])
-
         
         frame_count, node_count, _, instance_count = locations.shape
 
@@ -43,13 +41,20 @@ def process_hdf5_data(filename):
                 'locations': locations,
                 'edge_inds': edge_inds}
 
-#filename = r"/Users/alex/Downloads/ResultInference.hdf5"
-# Open the HDF5 file in read mode ('r')
-#new_dict = process_hdf5_data(filename)
-"""for Key in new_dict:
-    print(Key)
-    print(np.shape(new_dict[Key]))    
-print(new_dict["node_names"])"""
+def view_hdf5_data(unpacked_hdf5):
+    '''Takes the dictionary given by proces_hdf5_data and prints out keys and shape
+    ---
+    Params: 
+    unpacked_hdf5: the return value of process_hdf5_data (Or any dictionary)
+    ---
+    Returns: None
+    ---
+    Prints: The key and then shape for entries indexed by that key
+    '''
+    for key in unpacked_hdf5:
+        print(key)
+        print(np.shape(unpacked_hdf5[key]))
+            
 def PlotPorts(port_pos_list):
     for c_idx in range(port_pos_list.shape[1]):
         port_pos = port_pos_list[:,c_idx]
@@ -81,7 +86,14 @@ def PlotSkeleton(frame, processed_dict):
         plt.plot(x, y, color = "black")
 
 def TranslationMatrix(point, inverted=False):
-    #print(point)
+    '''Returns a matrix that translates a vector by point
+    ---
+    Params: 
+    point: a vector to be added or subtracted from other points
+    inverted: if True it subtracts point instead of adding
+    ---
+    Returns: Matrix that translates by point
+    '''
     ans = None
     if(inverted):
         ans = [[1,0,float(-point[0])],
@@ -89,8 +101,6 @@ def TranslationMatrix(point, inverted=False):
     else:
         ans = [[1,0,float(point[0])],
                [0,1,float(point[1])]]
-    #print(ans)
-    #print(np.shape(ans))
     return np.array(ans)
 
 def BasisChangeMatrix(basis1, basis2):
@@ -119,11 +129,11 @@ def RotationMatrix(original_x_vect, new_x_vect):
     #- is rotated clockwise (Corrected counterclockise to local)
     angle = Angle(original_x_vect, new_x_vect)
     if cross_product > 0:
-        return [[np.cos(-angle), -np.sin(-angle)],
-                [np.sin(-angle), np.cos(-angle)]]
+        return np.array([[np.cos(-angle), -np.sin(-angle)],
+                [np.sin(-angle), np.cos(-angle)]])
     else:
-        return [[np.cos(angle), -np.sin(angle)],
-                [np.sin(angle), np.cos(angle)]]
+        return np.array([[np.cos(angle), -np.sin(angle)],
+                [np.sin(angle), np.cos(angle)]])
     
     
 
@@ -166,7 +176,10 @@ def NodePositionsLocal(frame, processed_dict, origin_node="body", basis_node="ne
         #if n == origin_idx:
             #print("Centered Pos")
             #print(centered_pos)
-        new_pos = BasisChangeMatrix(b1, b2) @ centered_pos
+        #new_pos = BasisChangeMatrix(b1, b2) @ centered_pos
+        original_rot = RotationMatrix(np.array([1,0]), b1)
+        reformat_rot_matrix = np.reshape(original_rot, (original_rot.shape[0], original_rot.shape[1]))
+        new_pos = np.dot(reformat_rot_matrix, centered_pos)
         #if n == origin_idx: 
             #print("Basis Change Matrix")
             #print(BasisChangeMatrix(b1, b2))
@@ -190,24 +203,13 @@ def AngleToPorts(frame, processed_dict, port_pos_list):
     nose_idx = processed_dict["node_names"].index("nose")
     p_head = frame[head_idx]
     p_nose = frame[nose_idx]
-    #print("Head")
-    #print(p_head)
-    #print("Nose")
-    #print(p_nose)
     nose_head_v = p_nose-p_head
-    #print("Nose head vector:")
-    #print(nose_head_v) 
     for c_idx in range(port_pos_list.shape[1]):
         port_pos = port_pos_list[:,c_idx]
         #Makes positions into column vectors for the next step
         port_pos = np.reshape(port_pos, (2,1)) 
-        #print(f"Port {c_idx + 1}")
-        #print(port_pos)
-        #print(np.shape(port_pos))
         #Calculate vectors
         port_head_v = np.subtract(port_pos, p_head)
-        #print("Port head vector")
-        #print(port_head_v)
         #Use helper function to calculate angle b.w. two vectors
         angle = Angle(nose_head_v, port_head_v)
         angles[c_idx] = angle
@@ -240,6 +242,16 @@ def PlotLocalPosNode(processed_dict, node_name, local_pos_list):
     plt.show();
     
 def ReformatToOriginal(df):
+    '''Calculates differences in position over time and marks any suspiciously 
+    rapid movement.
+    
+    Parameters
+    ---
+    locations: locations data from hdf5 file(frames x nodes x (x,y) x 1)
+    
+    Returns
+    ---
+    flags: same shape with 0 for normal and 1 for outliers'''
     num_nodes = (len(df.iloc[0])-5)//2 #4 components + cluster
     locations = np.zeros((len(df),num_nodes, 2))
     node_names = []
@@ -251,40 +263,7 @@ def ReformatToOriginal(df):
     return {"node_names" : node_names,
             "locations" : locations}
 
-def VelocityOutlierDetection(locations, num_std=3):
-    '''Calculates differences in position over time and marks any suspiciously 
-    rapid movement.
-    
-    Parameters
-    ---
-    locations: locations data from hdf5 file(frames x nodes x (x,y) x 1)
-    
-    Returns
-    ---
-    flags: same shape with 0 for normal and 1 for outliers'''
-    mask = np.zeros(np.shape(locations))
-    for n_idx in range(locations.shape[1]):
-        x_list = locations[:,n_idx,0,0]
-        y_list = locations[:,n_idx,1,0]
-        
-        x_dIff = np.diff(x_list)
-        y_diff = np.diff(y_list)
-        
-        x_std = np.std(x_dIff)
-        y_std = np.std((y_diff))
-        
-        x_mean = np.mean(x_dIff)
-        y_mean = np.mean(y_diff)
-        
-        #Creates bounds num_std standard deviations above/below the mean
-        x_bounds = [x_mean-x_std*num_std, x_mean+x_std*num_std]
-        y_bounds = [y_mean-y_std*num_std, y_mean+y_std*num_std]
-        
-        #Checks those bounds at all points
-        for frame_idx in range(locations.shape[0]):
-            mask[frame_idx, n_idx, 0,0] = (locations[frame_idx, n_idx, 0,0] < x_bounds[0] or locations[frame_idx, n_idx, 0,0] > x_bounds[1])
-            mask[frame_idx, n_idx, 1,0] = (locations[frame_idx, n_idx, 1,0] < y_bounds[0] or locations[frame_idx, n_idx, 1,0] > y_bounds[1])
-    return mask
+
         
         
         
