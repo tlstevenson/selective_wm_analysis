@@ -79,6 +79,31 @@ def VelocityOutlierDetection(locations, z_score=2):
     plt.show()
     return mask
 
+def GetDiff(vect, plot=False):
+    '''Returns and plots the differences between neighboring entries of an array.
+    Parameters
+    ---
+    vect: the vector to take a derivative of
+    plot: should the returned vector be plotted? default:True
+    Returns
+    ---
+    vect_diff: an array of differences between values (one less entry than vect)'''
+    #Reshapes vect if it has a second dimension of one
+    vect=np.reshape(vect, (np.shape(vect)[0],))
+    print(np.shape(vect))
+    #Removes nan by interpolation
+    vect = pd.Series(vect)
+    vect = vect.interpolate(method='linear')
+    vect_diff = np.diff(vect)
+    
+    #Plots the vector if needed
+    if plot:
+        plt.plot(range(len(vect_diff)), vect_diff)
+        plt.show()
+        print(np.mean(vect))
+        print(np.std(vect))
+    return vect_diff
+
 def PlotOutliers(frame_bounds=[0,60]):
     '''Takes an hdf5 file, processes it, and plots areas near outliers by velocity
     Additionally, it returns the total outliers in whole file
@@ -89,29 +114,5 @@ def PlotOutliers(frame_bounds=[0,60]):
     Returns
     ---
     Number of outliers'''
-    hdf5_file_path  = fsui.GetFile("Select an Analysis File")
-    processed_dict  = itcl.process_hdf5_data(hdf5_file_path)
-    mask = VelocityOutlierDetection(processed_dict["locations"])
-    mask= mask==1
-    fig, ax = plt.subplots(nrows=processed_dict["locations"].shape[1], ncols=1)
-    for node_idx in range(processed_dict["locations"].shape[1]):
-        #Plot each node's position over time
-        x=processed_dict["locations"][frame_bounds[0]:min(frame_bounds[1],processed_dict["locations"].shape[0]),node_idx,0,:]
-        y=processed_dict["locations"][frame_bounds[0]:min(frame_bounds[1],processed_dict["locations"].shape[0]),node_idx,1,:] 
-        f_axis = np.linspace(1, len(x), len(x))
-        ax[node_idx].plot(f_axis, x, color="blue", linestyle='--')        
-        ax[node_idx].plot(f_axis, y, color="red", linestyle='--')
-        for frame_idx in range(frame_bounds[0], frame_bounds[1]):
-            #x is an outlier
-            if mask[frame_idx, node_idx,0,:]:
-                x_val = frame_idx+2 #One since it starts at 1, one since the second point is outlier
-                y_val_x = processed_dict["locations"][frame_idx+1,node_idx, 0,:]
-                ax[node_idx].scatter(x_val, y_val_x, color="purple")
-            #y is an outlier
-            if mask[frame_idx, node_idx,1,:]:
-                x_val = frame_idx+2 #One since it starts at 1, one since the second point is outlier
-                y_val_y = processed_dict["locations"][frame_idx+1,node_idx, 1,:]
-                ax[node_idx].scatter(x_val, y_val_y, color="purple")
-    plt.show()
-    return np.sum(mask)
+    
 
