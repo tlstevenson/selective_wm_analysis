@@ -22,10 +22,10 @@ print("inference_paths.json")
 path_settings = "inference_paths.json"
 #Setup instructions for changing setting file
 new_model = False #Do you have a new centroid or centered model
-change_python_loc = False #Do the environment's python location change
+change_python_loc = True #Do the environment's python location change
 new_video = False #Upload new video (will be automated by entering subject+date)
-json_exists = False #False if you deleted inference_paths or first run
 new_write_loc = False #Do you want to write it to a new directory
+json_exists = False #False if you deleted inference_paths or first run
 
 
 data = {}
@@ -49,11 +49,10 @@ if json_exists:
         data["write_dir"] = fsu.GetDirectory("Select Analysis File Write Directory") + "/" + input("Name file(no .hdf5): ") + ".hdf5"
     else:
         print("Select Analysis File Write Directory")
-        data["write_dir"] = data["write_dir"][:data["write_dir"].rfind("/")] + "/" + input("Name file(no .hdf5): ") + ".hdf5"
-    print(data["write_dir"])
-        
+        data["write_dir"] = data["write_dir"][:data["write_dir"].rfind("/")] + "/" + input("Name file(no .hdf5): ") + ".hdf5"        
     if change_python_loc:
         data["sleap_python"] = fsu.GetFile("Select SLEAP Python Location")
+        #data["sleap_python"] = fsu.GetDirectory("Select SLEAP Python Location") + "/python"
         print("Changing python location")
     if new_video:
         print("Adding new video")
@@ -74,6 +73,7 @@ else:
     data["write_dir"] = fsu.GetDirectory("Select Analysis File Write Directory") + "/" + input("Name file(no .hdf5): ") + ".hdf5"
     print(data["write_dir"])
     data["sleap_python"] = fsu.GetFile("Select SLEAP Python Location")
+    #data["sleap_python"] = fsu.GetDirectory("Select SLEAP Python Location") + "/python"
     data["vid_path"] = fsu.GetFile("Select Video Location")
     #Push to file
     try:
@@ -93,8 +93,9 @@ except Exception as error:
     print(error)
 print(env_python)
 print(script_path)
+settings_path = "" #MAKE SURE TO SET THIS (JSON MANAGEMENT FUNCTION)
 #Run inference with environment's python version
-command = [env_python, script_path]
+command = [env_python, script_path, settings_path]
 try:
     subprocess.run(command, check=True)
 except Exception as e:

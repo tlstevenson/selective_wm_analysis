@@ -24,10 +24,10 @@ def RunInference(vid_path, centroid_path, centered_path, write_path):
     print(video.shape, video.dtype)
 
     # Load frames
-    imgs = video[:10]
+    imgs = video[:60]
     print(f"imgs.shape: {imgs.shape}")
 
-    # Predict on nthe array.
+    # Predict on the array.
     predictions = predictor.predict(imgs)
     predictions.export(write_path)
     

@@ -7,7 +7,12 @@ Created on Tue Jun 24 13:08:25 2025
 """
 import vid_to_inference_lib
 import json
-json_path = "/Users/alex/Documents/HanksLabGithub/selective_wm_analysis/inference_paths.json"
+import sys
+
+
+#NOT USE ABSOLUTE PATH
+#json_path = "/Users/alex/Documents/HanksLabGithub/selective_wm_analysis/inference_paths.json"
+json_path = sys.argv[1]
 with open(json_path, "r") as file:
     data = json.load(file)
     vid_path = data["vid_path"]
