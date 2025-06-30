@@ -6,8 +6,10 @@ Created on Thu Jun 26 12:13:20 2025
 @author: alex
 """
 
+import init
+from sys_neuro_tools import sleap_utils
 import inference_to_outliers_lib as itol
-import file_select_ui as fsui
+from pyutils import file_select_ui as fsui
 import inference_to_clusters_lib as itcl 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -15,7 +17,7 @@ import math
 
 #Initial file reading
 hdf5_file_path  = fsui.GetFile("Select an Analysis File")
-processed_dict  = itcl.process_hdf5_data(hdf5_file_path)
+processed_dict  = sleap_utils.process_hdf5_data(hdf5_file_path)
 frame_bounds= [0,60]
 
 #region Plot position

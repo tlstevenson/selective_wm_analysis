@@ -8,15 +8,15 @@ Created on Mon Jun 16 14:55:33 2025
 """
 
 #%% Imports
-
-import inference_to_clusters_lib as itcl
+import init
 import numpy as np
 import matplotlib.pyplot as plt
 import os
 import json
-import file_select_ui as fsu
+from pyutils import file_select_ui as fsu
 import pandas as pd
 import pickle
+from sys_neuro_tools import sleap_utils
 
 
 from sklearn.preprocessing import StandardScaler
@@ -40,7 +40,7 @@ else:
 #filename = r"/Users/alex/Downloads/ResultInference.hdf5"
 # Process the hdf5 to a dictionary 
 print(file_path)
-new_dict = itcl.process_hdf5_data(file_path)
+new_dict = sleap_utils.process_hdf5_data(file_path)
 pickle.dump(new_dict["edge_inds"], open("Skeleton_Edges.bin","wb"))
 
 
@@ -67,26 +67,10 @@ for frame_idx in range(len(new_dict["locations"])):
 local_pos = np.zeros(np.shape(new_dict["locations"]))
 print(np.shape(local_pos))
 for frame_idx in range(len(new_dict["locations"])):
-    local_pos[frame_idx,:] = itcl.NodePositionsLocal(new_dict["locations"][frame_idx], new_dict)
+    local_pos[frame_idx,:] = sleap_utils.NodePositionsLocal(new_dict["locations"][frame_idx], new_dict)
     
 print(np.shape(local_pos))
 #itcl.PlotLocalPosNode(new_dict, "nose", local_pos)
-
-def LocationToDataframe(locations_data, node_names):
-    df = pd.DataFrame()
-    for name in node_names:
-        df[f"{name}_x"] = []
-        df[f"{name}_y"] = []
-    #print(df)
-    for frame_idx in range(len(locations_data)):
-        row_data = np.zeros((df.shape[1],))
-        for n in range(len(locations_data[frame_idx])):
-            #print(locations_data[frame_idx][n][0])
-            #print(locations_data[frame_idx,n,0,:])
-            row_data[2*n] = float(locations_data[frame_idx,n,0,0])
-            row_data[2*n+1] = float(locations_data[frame_idx,n,1,0])
-        df.loc[len(df)] = row_data
-    return df
 
 def ColFill(dataframe, column_name):
     time_series = dataframe[column_name]
@@ -164,7 +148,7 @@ def PCA_analysis(local_pos, processed_dict, num_test = 10):
 
 new_dict["locations"] = local_pos
 for frame in new_dict["locations"]:
-    itcl.PlotSkeleton(frame, new_dict)
+    sleap_utils.PlotSkeleton(frame, new_dict)
     plt.show()
 #df_final_kmeans = PCA_analysis(local_pos, new_dict)
 #pickle.dump(df_final_kmeans, open("DataframeKMeans.bin", "wb"))
