@@ -92,7 +92,7 @@ def PCA_analysis(local_pos, processed_dict, num_test = 10):
     #Need an array such that the index is the 10,000 points
     #However, it should be nose x, nose y, body x, body y, etc. not 3d
     #Normalize all the positions
-    raw_df = LocationToDataframe(local_pos, processed_dict["node_names"])
+    raw_df = sleap_utils.LocationToDataframe(local_pos, processed_dict["node_names"])
     no_nan = raw_df.dropna()
     #ColFill(raw_df, "nose_x")
     #ColFill(raw_df, "nose_y")
