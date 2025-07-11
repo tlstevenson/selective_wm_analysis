@@ -36,7 +36,7 @@ try:
         sleap_utils_env.RunInference(vid_path, centroid_path, center_path, write_dir)
 except:
     sys.exit(7)"""
-import json
+"""import json
 from sys_neuro_tools import sleap_utils_env
 import subprocess
 #import os
@@ -54,4 +54,4 @@ with open(sleap_settings_path, "r") as file:
     center_path = sleap_settings["center_path"]
     write_dir = sleap_settings["write_dir"]
     sleap_utils_env.RunInference(vid_path, centroid_path, center_path, write_dir)
-    #sleap_utils_env.RunInference(new_name, centroid_path, center_path, write_dir)
+    #sleap_utils_env.RunInference(new_name, centroid_path, center_path, write_dir)"""

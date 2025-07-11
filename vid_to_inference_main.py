@@ -52,10 +52,11 @@ with open(settings_path, "r") as file:
     write_dir = sleap_settings["write_dir"]
     #sleap_utils_env.RunInference(vid_path, centroid_path, center_path, write_dir)
     #Run inference with environment's python version
-    command = [env_python, script_path, vid_path, single_path, centroid_path, center_path, write_dir]
+    #command = [env_python, script_path, vid_path, single_path, centroid_path, center_path, write_dir]
+    command = [env_python, script_path, settings_path]
     print(command)
     try:
-        result = subprocess.run(command, check=True, capture_output=True, cwd="C:/Users/hankslab")
+        result = subprocess.run(command, check=True, capture_output=True)
         print("STDOUT:", result.stdout)
     except subprocess.CalledProcessError as e:
         print(f"Subprocess failed with exit code {e.returncode}")
