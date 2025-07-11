@@ -9,9 +9,10 @@ import init
 #from pyutils import file_select_ui as fsu
 #from pyutils import cluster_utils
 from sys_neuro_tools import sleap_utils
-#import json
+import json
 import subprocess
-#import os
+import os
+from pyutils import file_select_ui as fsui
 
 #Settings for running inference
 print("The following files need to be in the same folder: ")
@@ -36,10 +37,26 @@ json_exists = True #False if you deleted inference_paths or first run
 sleap_utils.update_sleap_settings(path=None, new_model=new_model, change_python_loc = change_python_loc, new_video = new_video, new_write_loc = new_write_loc, json_exists = json_exists)
 
 #Get python location from file
-script_path = "vid_to_inference_sub.py"
+#home_dir = utils.get_user_home() #NEEDS TO BE C:\ NOT C:\\ ? FIX NECESSARY
+script_path = fsui.GetFile("Select sleap_utils_env.py")#os.path.join(home_dir, "repos\python\sys_neuro_tools\sleap_utils_env.py")
 env_python = sleap_utils.load_sleap_settings()["sleap_python"]
 sleap_settings = sleap_utils.load_sleap_settings()
 settings_path = sleap_utils.get_settings_path() #MAKE SURE TO SET THIS (JSON MANAGEMENT FUNCTION)
-#Run inference with environment's python version
-command = [env_python, script_path, settings_path]
-result = subprocess.run(command, check=True)
+
+with open(settings_path, "r") as file:
+    sleap_settings = json.load(file)
+    vid_path = sleap_settings["vid_path"]
+    single_path = sleap_settings["single_path"]
+    centroid_path = sleap_settings["centroid_path"]
+    center_path = sleap_settings["center_path"]
+    write_dir = sleap_settings["write_dir"]
+    #sleap_utils_env.RunInference(vid_path, centroid_path, center_path, write_dir)
+    #Run inference with environment's python version
+    command = [env_python, script_path, vid_path, single_path, centroid_path, center_path, write_dir]
+    print(command)
+    try:
+        result = subprocess.run(command, check=True, capture_output=True, cwd="C:/Users/hankslab")
+        print("STDOUT:", result.stdout)
+    except subprocess.CalledProcessError as e:
+        print(f"Subprocess failed with exit code {e.returncode}")
+        print("STDERR:", e.stderr)
