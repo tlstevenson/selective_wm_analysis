@@ -43,21 +43,14 @@ env_python = sleap_utils.load_sleap_settings()["sleap_python"]
 sleap_settings = sleap_utils.load_sleap_settings()
 settings_path = sleap_utils.get_settings_path() #MAKE SURE TO SET THIS (JSON MANAGEMENT FUNCTION)
 
-with open(settings_path, "r") as file:
-    sleap_settings = json.load(file)
-    vid_path = sleap_settings["vid_path"]
-    single_path = sleap_settings["single_path"]
-    centroid_path = sleap_settings["centroid_path"]
-    center_path = sleap_settings["center_path"]
-    write_dir = sleap_settings["write_dir"]
-    #sleap_utils_env.RunInference(vid_path, centroid_path, center_path, write_dir)
-    #Run inference with environment's python version
-    #command = [env_python, script_path, vid_path, single_path, centroid_path, center_path, write_dir]
-    command = [env_python, script_path, settings_path]
-    print(command)
-    try:
-        result = subprocess.run(command, check=True, capture_output=True)
-        print("STDOUT:", result.stdout)
-    except subprocess.CalledProcessError as e:
-        print(f"Subprocess failed with exit code {e.returncode}")
-        print("STDERR:", e.stderr)
+#sleap_utils_env.RunInference(vid_path, centroid_path, center_path, write_dir)
+#Run inference with environment's python version
+#command = [env_python, script_path, vid_path, single_path, centroid_path, center_path, write_dir]
+command = [env_python, script_path, settings_path]
+print(command)
+try:
+    result = subprocess.run(command, check=True, capture_output=True)
+    print("STDOUT:", result.stdout)
+except subprocess.CalledProcessError as e:
+    print(f"Subprocess failed with exit code {e.returncode}")
+    print("STDERR:", e.stderr)

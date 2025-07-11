@@ -4,8 +4,13 @@
 Created on Thu Jun 26 12:13:20 2025
 
 @author: alex
-"""
 
+Takes an hdf5 file and calculates velocity and acceleration of all nodes
+Uses the acceleration to set a threshold for outliers
+Clusters the outliers by local position or by jumpy node
+Plots some of the skeletons of each outlier group
+"""
+#import statements
 import init
 from sys_neuro_tools import sleap_utils
 from sys_neuro_tools import math_utils
@@ -15,6 +20,13 @@ import numpy as np
 import math
 from scipy.ndimage import gaussian_filter
 import pandas as pd
+import random
+
+from sklearn.preprocessing import StandardScaler
+from sklearn.cluster import KMeans
+from sklearn.decomposition import PCA
+
+import cv2
 
 #Initial file reading
 hdf5_file_path  = fsui.GetFile("Select an Analysis File")
@@ -113,26 +125,139 @@ for node_idx in range(v.shape[0]):
     fig3_s.suptitle("Acceleration Smoothed")
     
 #See how many outliers each threshold produces
-for accel_thresh in range(1,101, 10):
-    print(f"Accel thresh: {accel_thresh}")
-    mask = accel > accel_thresh
-    mask_s = accel_s > accel_thresh
-    print(f"Shape mask: {np.shape(mask)}")
-    print("Sum Shape")
-    print(np.shape(np.sum(mask, axis=0)))
-    #print(len(np.argwhere(np.sum(mask, axis=0))))
+#Automatically sets a threshold where 5 percent or less are outliers
+accel_thresh = None
+
+for accel_thresh_temp in range(1,101, 5):
+    print(f"Accel thresh: {accel_thresh_temp}")
+    mask = accel > accel_thresh_temp
+    mask_s = accel_s > accel_thresh_temp
     a_idxs = np.argwhere(np.sum(mask, axis=0)) #Get frame indices where there is at least one outlier
     a_idxs_s = np.argwhere(np.sum(mask_s, axis=0))
     #a0 comes from v0 and v1 which come from x0, x1, and x
     #If a0 is outlier then plot 0,1,2 for position
     print(f"Number Outliers: {len(a_idxs)}")
     print(f"Number Outliers Smoothed: {len(a_idxs_s)}")
+    if accel_thresh == None and len(a_idxs) < .01 * mask.shape[1]:
+        accel_thresh = accel_thresh_temp
+        break
 
-accel_thresh = 20
-mask = accel > accel_thresh
-a_idxs = np.argwhere(np.sum(mask, axis=0)) #Get frame indices where there is at least one outlier
-
-#NOTE: Must be run with inline plots
+#Visualizes outliers if a threshold was found
+if accel_thresh != None:
+    mask = accel > accel_thresh
+    a_idxs = np.argwhere(np.sum(mask, axis=0)) #Get frame indices where there is at least one outlier
+    
+    name_classify = False
+    cluster_classify = True
+    
+    if name_classify:
+        #Create a figure for each node
+        for node_idx in range(mask.shape[0]):
+            #Gets outliers and skips node if there aren't any
+            outlier_frames= [i for i in range(len(mask[node_idx])) if mask[node_idx][i]]
+            #outlier_frames=np.argwhere(mask[node_idx])
+            if len(outlier_frames)==0:
+                print(f'No outliers for {processed_dict["node_names"][node_idx]}')
+                continue
+            
+            #Plots max five random outliers
+            num_plots = min(6, len(outlier_frames))
+            node_fig, node_ax = plt.subplots(nrows=math.ceil(num_plots/2), ncols=2)
+            node_fig.suptitle(f'{processed_dict["node_names"][node_idx]} Outliers')
+            chosen_frames = random.sample(outlier_frames, num_plots)
+            plot_idx = 0
+            for frame in chosen_frames:
+                sleap_utils.PlotSkeleton(locations[frame], processed_dict, ax=node_ax[plot_idx//2,plot_idx%2])
+                plot_idx = plot_idx + 1
+            plt.show()
+    if cluster_classify:
+        #Find all the frames where any node is an outlier
+        mask = accel > accel_thresh_temp
+        outlier_frames = np.argwhere(np.sum(mask, axis=0)) #Get frame indices where there is at least one outlier
+        print(np.shape(locations[outlier_frames[0]]))
+        local_pos = np.array([sleap_utils.NodePositionsLocal(np.squeeze(locations[frame_idx]), processed_dict) for frame_idx in outlier_frames])
+        
+        #Need an array such that the index is the 10,000 points
+        #However, it should be nose x, nose y, body x, body y, etc. not 3d
+        #Normalize all the positions
+        raw_df = sleap_utils.LocationToDataframe(local_pos, processed_dict["node_names"])
+        no_nan = raw_df.dropna()
+        scaler = StandardScaler()
+        segmentation_std = scaler.fit_transform(no_nan)
+        
+        #Fit PCA on local position df
+        pca = PCA()
+        pca.fit(segmentation_std)
+        
+        #Check how many components are needed to account for 80% of variability
+        #Use that number to train the final pca model
+        num_pcs = np.argmax(pca.explained_variance_ratio_.cumsum() > .80)
+        pca = PCA(n_components=num_pcs)
+        pca.fit(segmentation_std)
+        scores_pca = pca.transform(segmentation_std)
+        #Check which number of clusters works best
+        wcss = []
+        num_test = 20
+        for i in range(1,num_test):
+            kmeans_pca = KMeans(n_clusters=i, init = 'k-means++', random_state = 42)
+            kmeans_pca.fit(scores_pca)
+            wcss.append(kmeans_pca.inertia_)
+        
+        fig_k, ax_k = plt.subplots()
+        ax_k.plot(range(1,num_test), wcss, marker='o')
+        ax_k.set_xlabel("Number of Clusters")
+        ax_k.set_ylabel("Within Cluster Sum of Squares")
+        ax_k.set_title("K-means with PCA Clustering")
+        plt.show()
+        
+        num_clusters = int(input("Best Num Clusters: "))
+        kmeans_pca = KMeans(n_clusters=num_clusters, init = 'k-means++', random_state = 42)
+        kmeans_pca.fit(scores_pca)
+        
+        #Add new data to dataframe
+        df_scores = pd.DataFrame(scores_pca, columns=[f"component {i}" for i in range(num_pcs)])
+        print(df_scores.head())
+        df_segmentation_std_kmeans = pd.concat([no_nan, df_scores], axis=1)
+        #Rename the columns
+        print(df_segmentation_std_kmeans.head())
+        df_clusters = pd.DataFrame(kmeans_pca.labels_, columns=["cluster"])
+        print(df_clusters.head())
+        df_segmentation_std_kmeans = pd.concat([df_segmentation_std_kmeans, df_clusters], axis=1)
+        
+        vid_path = fsui.GetFile("Select Video File")
+        cap = cv2.VideaCapture(vid_path)
+        
+        #Plot a random sample of six frames from each cluster
+        for i in range(num_clusters):
+            #Get all instances of a cluster 
+            cluster = df_segmentation_std_kmeans[df_segmentation_std_kmeans["cluster"] == i]
+            #Sample six of them
+            num_plots = min(6, len(cluster))
+            print(cluster.index)
+            sample_idx = random.sample(cluster.index.tolist(), num_plots)
+            print(sample_idx)
+            #Plot each on a seperate subplot
+            group_fig, group_ax = plt.subplots(nrows=math.ceil(num_plots/2), ncols=2)
+            group_fig.suptitle(f'Cluster {i} Outliers')
+            plot_idx = 0
+            for entry in sample_idx:
+                sleap_utils.PlotSkeleton(locations[entry], processed_dict, ax=group_ax[plot_idx//2,plot_idx%2])
+                plot_idx = plot_idx + 1
+                
+                #Also show video
+                cap.set(cv2.CAP_PROP_POS_FRAMES, entry)
+                ret, frame = cap.read()
+                
+                if ret:
+                    cv2.imshow("Specific Frame", frame)
+                else:
+                    print(f"Error: Could not read frame {entry}")
+            plt.show()
+        cap.release()
+else:
+    print("Could not find a reasonable threshold in supplied range.")
+    
+#NOTE: Must be run with inline plots (Plots all outliers)
 """for a_idx in a_idxs:
     fig4, ax4 = plt.subplots()
     #print(locations[a_idx])
