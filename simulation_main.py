@@ -2,47 +2,30 @@
 """
 Created on Thu Jun 26 12:23:54 2025
 
-@author: atruo
+@author: atruo - Alex Truong
 
 relevant data/graphs stored here: https://docs.google.com/document/d/1VdKfUvVSoFxo4LlaEtMhj-IyLhX59fA6npD_ieepOV0/edit?usp=sharing
 """
-import init
 
 import matplotlib.pyplot as plt
-
 import numpy as np
-
-import json
 import simulation_lib as sl
-
 import random
 
 #%% define recording length
 
-fs = 20  # Sampling freq. 
+fs = 20  # sampling freq. 
 duration = 500
 total_t = np.linspace(0, duration, num=fs*duration, endpoint=False)   # for the entire duration 
 
 
-# %% Simulate baselines
-
-a_mean = 4
-a_sd = 1
-b_mean = 100
-b_sd = 20
-c_mean = 2e-6
-c_sd = 2e-7
-d_mean = 10
-d_sd = 1
-
-
 #%% simulate signals
 
-n = 50
+n = 100
 time = total_t
-param_name = 'SNR'
-param_range = [0.1, 5]
-param_step = 0.2
+param_name = 'SAR'
+param_range = [0.5, 5]
+param_step = 0.5
 f_range_sig = [0.1, 10]
 f_range_noise = [1, 10]
 max_art_count = 5
@@ -50,11 +33,11 @@ art_duration_range = [1, 50]
 f_range_art = [0.01, 10]
 form_type = 'exp_linear'
 sim_type = 2
-SD_frac_default = 0.1
-alpha_default = 0
+SD_frac_default = 0.05
+alpha_default = 0.01
 SNR_default = 10
 SAR_default = 1
-scale = 0.01
+scale = 0.1
 
 simulated_signals = sl.simulate_n_signals(n, time,
     param_name, param_range, param_step,
@@ -96,32 +79,30 @@ total_steps = n_DVs * n_methods * n_signals_per_DV
 
 step = 0  # to track progress
 
-for DV, signal_list in simulated_signals.items():  # Iterate over SD_frac keys
-    processed_signals[DV] = {}  # Create nested dictionary for each SD_frac
+for DV, signal_list in simulated_signals.items():  # iterate over SD_frac keys
+    processed_signals[DV] = {}  # create nested dictionary for each SD_frac
 
     for smooth_fit in [True, False]:
         for vary_t in [True, False]:
             key = f"smooth_fit_{smooth_fit}_vary_t_{vary_t}"
-            processed_signals[DV][key] = []  # Store results in list
+            processed_signals[DV][key] = []  # store results in list
 
-            for entry in signal_list:  # Iterate over stored signal lists
+            for entry in signal_list:  # iterate over stored signal lists
                 raw_lig = entry["raw_lig"]
                 raw_iso = entry["raw_iso"]
                 baseline_iso = entry["baseline_iso"]
 
-                # Process signals and store results
+                # process signals and store results
                 processed_output = sl.process_signals(
                     raw_lig, raw_iso, baseline_iso, total_t, fs,
                     smooth_fit=smooth_fit, vary_t=vary_t, smooth_lpf=smooth_lpf
                 )
                 processed_signals[DV][key].append(processed_output)
 
-                # Update progress
+                # update progress
                 step += 1
                 
                 print(f"Processing signal {step}/{total_steps}...", end="\r")
-                
-                
 
 
 #%% report average clamping after processing signals
@@ -138,23 +119,23 @@ else:
 
 ev_results = {}
 
-for DV, method in processed_signals.items():  # Iterate over SD_frac keys
-    ev_results[DV] = {}  # Create nested dictionary for each SD_frac
+for DV, method in processed_signals.items():  # iterate over SD_frac keys
+    ev_results[DV] = {}  # create nested dictionary for each SD_frac
     
-    # Extract the correct true_sig for each signal in simulated_signals
-    signal_list = simulated_signals[DV]  # List of signals for this SD_frac
+    # extract the correct true_sig for each signal in simulated_signals
+    signal_list = simulated_signals[DV]  # list of signals for this SD_frac
 
-    for method_key, processed_list in method.items():  # Iterate over different methods
-        ev_results[DV][method_key] = []  # Store results
+    for method_key, processed_list in method.items():  # iterate over different methods
+        ev_results[DV][method_key] = []  # store results
 
         for signal_entry, processed_entry in zip(signal_list, processed_list):  
-            scaled_true_sig = signal_entry["scaled_true_sig"]  # Extract true signal from simulated_signals
-            dff_iso = processed_entry["dff"]  # Extract dff_iso from processed_signals
+            scaled_true_sig = signal_entry["scaled_true_sig"]  # extract true signal from simulated_signals
+            dff_iso = processed_entry["dff"]  # extract dff_iso from processed_signals
 
-            # Compute evaluation metric
+            # compute evaluation metric
             ev_output = sl.ev(scaled_true_sig, dff_iso)  
 
-            # Store result
+            # store result
             ev_results[DV][method_key].append(ev_output)
 
 
@@ -164,39 +145,42 @@ for DV, method in processed_signals.items():  # Iterate over SD_frac keys
 # for key, signals in processed_signals.items():
 #     ev_results[key] = ev(test_signals['true_sig'], signals["dff_iso"])
 
+
 #%% debugging, testing if jitter = 0 
 #_ = sl.generate_baseline('exp_linear', 0.5, total_t)
+
 
 #%% debugging for signal = 0
 
 
-# Grab one existing simulated signal from the first DV group (e.g., SNR = 0.1)
-DV_key = list(simulated_signals.keys())[0]  # e.g., '0.10'
-example_idx = 0  # index of signal to plot
-signal_data = simulated_signals[DV_key][example_idx]
+ # get one existing simulated signal from the first DV group (e.g., SNR = 0.1)
+#DV_key = list(simulated_signals.keys())[0]  # e.g., '0.10'
+#example_idx = 0  # index of signal to plot
+#signal_data = simulated_signals[DV_key][example_idx]
 
-# Extract components to plot
-scaled_true_sig = signal_data["scaled_true_sig"]
-baseline_lig = signal_data["baseline_lig"]
-baseline_iso = signal_data["baseline_iso"]
+ # extract components to plot
+#scaled_true_sig = signal_data["scaled_true_sig"]
+#baseline_lig = signal_data["baseline_lig"]
+#baseline_iso = signal_data["baseline_iso"]
 
-# Plot
-plt.figure(figsize=(12, 5))
-plt.plot(total_t, scaled_true_sig, label='Scaled True Signal', linewidth=2)
-plt.plot(total_t, baseline_lig, label='Baseline LIG', alpha=0.8)
-plt.plot(total_t, baseline_iso, label='Baseline ISO', alpha=0.8)
-plt.xlabel("Time (s)")
-plt.ylabel("Signal Amplitude")
-plt.title(f"Simulated Signal Components (DV = {DV_key}, Index = {example_idx})")
-plt.legend()
-plt.grid(True)
-plt.tight_layout()
-plt.show()
+ 
+#plt.figure(figsize=(12, 5))
+#plt.plot(total_t, scaled_true_sig, label='Scaled True Signal', linewidth=2)
+#plt.plot(total_t, baseline_lig, label='Baseline LIG', alpha=0.8)
+#plt.plot(total_t, baseline_iso, label='Baseline ISO', alpha=0.8)
+#plt.xlabel("Time (s)")
+#plt.ylabel("Signal Amplitude")
+#plt.title(f"Simulated Signal Components (DV = {DV_key}, Index = {example_idx})")
+#plt.legend()
+#plt.grid(True)
+#plt.tight_layout()
+#plt.show()
+
 
 #%% plot statistical test results and signals
 
-sl.plot_ev_results(ev_results, param_name, exclude_outliers=False)  # explained variance
-sl.plot_ev_results(ev_results, param_name, exclude_outliers=True)
+sl.plot_ev_results(ev_results, param_name, exclude_outliers=False, alpha_default=alpha_default, SD_frac_default=SD_frac_default, SNR_default=SNR_default, SAR_default=SAR_default)  # explained variance
+sl.plot_ev_results(ev_results, param_name, exclude_outliers=True, alpha_default=alpha_default, SD_frac_default=SD_frac_default, SNR_default=SNR_default, SAR_default=SAR_default)
 
 # plot signal that gave the abs minimum EV value across the entire DV range
 
@@ -223,7 +207,7 @@ i = min_idx
 
 print(f"Lowest EV = {correct_ev:.4f} from DV group: {min_DV:.4f}, method: {min_method}, index: {i}")
 
-# Print baseline parameters for lowest EV signal
+# print baseline parameters for lowest EV signal
 lig_params = sim_list[i]["lig_params"]
 iso_params = sim_list[i]["iso_params"]
 
@@ -245,12 +229,12 @@ sl.plot_comparative_figures(
     true_sig=sim_list[i]['scaled_true_sig'],
     fs=fs,
     ev=min_ev,
-    dv=min_DV
+    dv=min_DV,
+    param_name=param_name
 )
 
  
-#%%
-# plot random signal that is not the lowest-EV
+#%% plot random signal that is not the lowest EV
 
 ev_list = ev_results[min_DV][min_method]
 non_min_indices = [j for j in range(len(ev_list)) if j != min_idx]
@@ -268,16 +252,18 @@ sl.plot_comparative_figures(
     true_sig=sim_list[other_idx]['scaled_true_sig'],
     fs=fs,
     ev=other_ev,
-    dv=min_DV
-)
+    dv=min_DV,
+    param_name=param_name
+)   
 
 
-#%%
+#%% plot true sig, raw iso, raw lig, and fitted iso for worst EV signal
 
 lowest_processed = processed_signals[min_DV][min_method][i].copy()
 lowest_processed["raw_lig"] = simulated_signals[min_DV][i]["raw_lig"]
 lowest_processed["raw_iso"] = simulated_signals[min_DV][i]["raw_iso"]
 
+true_sig = simulated_signals[min_DV][i]["scaled_true_sig"]
 
 fig = sl.plot_signals(
     processed_signals=lowest_processed,
@@ -285,24 +271,23 @@ fig = sl.plot_signals(
     t=total_t,
     ev=min_ev,
     fs=fs,
-    window_sec=500,
     title=f"Lowest EV: {float(min_DV):.2f} | {min_method} | idx={i}"
 )
 plt.show()
 
 
-#%% Plot artifact and noise from the lowest EV signal
+#%% plot artifact and noise from the lowest EV signal
 
-# Get signal from simulated_signals with the lowest EV
+# get signal from simulated_signals with the lowest EV
 sim_list = simulated_signals[min_DV]
 i = min_idx
 lowest_ev_signal = sim_list[i]
 
-# Extract artifact and noise
+# extract artifact and noise
 artifact = lowest_ev_signal["artifact"]
 noise = lowest_ev_signal["noise"]
 
-# Plot them separately
+# plot them separately
 plt.figure(figsize=(12, 5))
 plt.plot(total_t, artifact, label='Artifact', color='orange')
 plt.plot(total_t, noise, label='Noise', color='purple', alpha=0.7)
@@ -315,10 +300,10 @@ plt.tight_layout()
 plt.show()
 
 
-#%% Regression Coefficients for All Methods at Lowest EV Index
+#%% regression coefficients for all methods at lowest EV index
 print(f"\nRegression Coefficients for All Methods at DV = {min_DV}, index = {min_idx}:")
 
-# Iterate over all 4 combinations of smooth_fit and vary_t
+# iterate over all 4 combinations of smooth_fit and vary_t
 for smooth_fit in [True, False]:
     for vary_t in [True, False]:
         method_key = f"smooth_fit_{smooth_fit}_vary_t_{vary_t}"
@@ -335,87 +320,5 @@ for smooth_fit in [True, False]:
                 print(f"  Param {idx + 1}: {coeff:.6g}")
         else:
             print("  No fit_params found.")
-
-#%% plotting lig - fit_iso
-fig2, ax2 = plt.subplots()
-my_raw = np.array(processed_signals[min_DV]["raw_lig"])
-my_fit = np.array(processed_signals[min_DV]["fitted_iso"])
-ax2.plot(time, my_raw)
-ax2.plot(time, my_fit)
-ax2.plot(time, my_raw-my_fit)
-#%%
-
-# fig, ax = plt.subplots(4,2)
-
-# idx = 0
-
-#for vary_t_var in [True, False]:
-#    for vary_smooth in [True, False]:
-#        signal_list = process_signals(raw_lig, raw_iso, baseline_iso, time, fs, smooth_fit = vary_smooth, vary_t = vary_t_var, filt_denom=True, smooth_lpf=0.1)
-        
-#        if vary_t_var and vary_smooth:
-#        elif vary_t_var and not vary_smooth:
-#       elif not vary_t_var and vary_smooth:
-#        else:
-                
-#        ax[idx%4, idx//4 + 1].plot(x,y)
-#        ax[idx%4, idx//4].plot(x,y)
-        
-#        idx = idx + 2
-                                
-
-
-"""
-# Plotting: Show 4-panel plots for multiple signals across conditions
-max_examples = 2  # Number of signals to visualize per condition
-window_sec = 5    # How many seconds to show at the start of the signal
-
-max_plots = 2
-plots_created = 0
-
-for DV in processed_signals:
-    for method_key in processed_signals[DV]:
-        signal_list = processed_signals[DV][method_key]
-        sim_list = simulated_signals[DV]
-        ev_list = ev_results[DV][method_key]
-
-        for i in range(min(len(signal_list), max_examples)):
-            if plots_created >= max_plots:
-                break
-
-            processed = signal_list[i]
-            print(f"sim_list[{i}] keys:", sim_list[i].keys())
-            true_sig = sim_list[i]["true_sig"]
-            ev_val = ev_list[i]
-
-            fig = sl.plot_signals(
-                processed_signals=processed,
-                true_sig=true_sig,
-                t=total_t,
-                ev=ev_val,
-                fs=fs,
-                window_sec=5,
-                title=f"{DV} | {method_key} | Example {i}"
-            )
-            plt.show()
-            plots_created += 1
-        
-        if plots_created >= max_plots:
-            break
-    if plots_created >= max_plots:
-        break
-"""
-
-
-# for key, signals in processed_signals.items():
-#    plot_signals(signals, test_signals['true_sig'], test_signals['baseline_lig'], test_signals['baseline_iso'], total_t, key, ev_results[key])
-#    plt.savefig(f"Type1_{key}.png", dpi=300)
-#    plt.show()
-
-
-# Save fig 
-
-# for key, signals in processed_signals.items():
-#     plot_signals(signals, baselines, true_sig, total_t, key, ev_results[key])
-#     plt.savefig(f"Type1_{key}_290-300.png", dpi=300)
-#     plt.show()
+            
+            

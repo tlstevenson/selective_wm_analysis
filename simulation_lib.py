@@ -22,7 +22,7 @@ import warnings
 
 import json
 
-#%%load the param data calculated from actual recordings 
+#%% load the param data calculated from actual recordings 
 with open("param_range_comb.json", "rb") as f:
     param_range_comb = json.load(f)
 
@@ -31,7 +31,7 @@ with open("param_range_comb.json", "rb") as f:
                                   
 def make_signal(time, n_terms = 10, amp_range = [0.1, 1], f_range = [0.01, 10]):
     
-    signal = np.zeros_like(time) #Creates a NumPy array filled with zeros, having the same length as time
+    signal = np.zeros_like(time) # creates a NumPy array filled with zeros, having the same length as time
    
     for i in range(n_terms):  # accumulates sine wave at random amp & freq for the # of times specified by n_terms 
         random_amp = np.random.uniform(amp_range[0], amp_range[1])
@@ -51,32 +51,28 @@ def make_signal(time, n_terms = 10, amp_range = [0.1, 1], f_range = [0.01, 10]):
 
 def make_art(time, max_art_count=10, art_duration_range=[1,50], n_terms = 5, amp_range = [0.1, 1], f_range = [0.01, 5]):  
     
-    # Randomly determine n (number of selected time points). 
-    n = np.random.randint(1, max_art_count+1) # Return random integers from low (inclusive) to high (exclusive)
+    # randomly determine n (number of selected time points). 
+    n = np.random.randint(1, max_art_count+1) # return random integers from low (inclusive) to high (exclusive)
     
     art_sig_comb = np.zeros_like(time)
     
     fs = 1/(time[1] - time[0])
     
     selected_t_idx = np.random.choice((time * fs).astype(int), n, replace=False)   # picked timepoint (index) to add artifacts. replace=False argument ensures that each selected time point is unique.
-    selected_m_idx = np.random.uniform(art_duration_range[0], art_duration_range[1] + 1, size=n) * fs  # Return random integers from low (inclusive) to high (exclusive).
+    selected_m_idx = np.random.uniform(art_duration_range[0], art_duration_range[1] + 1, size=n) * fs  # return random integers from low (inclusive) to high (exclusive).
     selected_m_idx = selected_m_idx.astype(int)
 
-    for t_idx, m_idx in zip(selected_t_idx, selected_m_idx):   #zip create pairs of selected_t and m    
+    for t_idx, m_idx in zip(selected_t_idx, selected_m_idx):   # zip create pairs of selected_t and m    
     
-        # Ensure m_idx does not exceed the available range in art_sig_com. If exceeds, use the available length instead 
+        # ensure m_idx does not exceed the available range in art_sig_com. if exceeds, use the available length instead 
         valid_m_idx = min(m_idx, len(art_sig_comb) - t_idx)
     
         art_t = np.linspace(0, valid_m_idx*1/fs, num=valid_m_idx, endpoint=False)   # define artifact t. linspace produce 50 values by default evenly spaced between the specified range 
         
         art_sig = make_signal(time=art_t, f_range = f_range, n_terms=n_terms, amp_range=amp_range)
         
-        art_sig_comb[t_idx:t_idx+valid_m_idx] = art_sig_comb[t_idx:t_idx+valid_m_idx] + art_sig #Add the artifact signal from t_idx for the duration set by m_idx
+        art_sig_comb[t_idx:t_idx+valid_m_idx] = art_sig_comb[t_idx:t_idx+valid_m_idx] + art_sig # add the artifact signal from t_idx for the duration set by m_idx
         
-        # amplitude normalization
-        current_max_amp = np.max(np.abs(art_sig_comb))  # find the maximum absolute amplitude
-        art_sig_comb = art_sig_comb / current_max_amp  # scale to make the |amplitude| <= 1 
-                
         
         # amplitude normalization with safety check to avoid divide-by-zero
         current_max_amp = np.max(np.abs(art_sig_comb))
@@ -97,7 +93,7 @@ def param_selector (form_name):   # add a way to be able to adjust the max and m
         limit_min = max(df['mean_minus_SD4'], df['min_value']) # min value is 0 when the param > 0. 
         limit_max = min(df['mean_plus_SD4'], df['max_value']) # this should always be mean_plus_SD4 if using Z = 10 as a cut off  
 
-        #pick a param randomly from the range 
+        # pick a param randomly from the range 
         
         if form_name == 'exp_linear' and param == 'param_1':  
             selected_params[param] = np.exp(np.random.uniform(np.log(limit_min), np.log(limit_max))) # pick from logged ver, then change it back using exp 
@@ -121,27 +117,24 @@ def param_jitter (selected_params, SD_frac, form_name):
     jit_selected_params = {}
     for param in selected_params.keys():
         df = param_range_comb[form_name][param]
+        prev_val = selected_params[param]
         
         # DEBUG PRINT
         #print(f"{param}: SD = {df['SD']}, SD_frac = {SD_frac}")
         
         if form_name == 'exp_linear' and param == 'param_1':
-            jitter = np.exp(np.random.normal(loc=0, scale=np.log(df['SD'])*SD_frac))
+            new_val = np.exp(np.log(prev_val) + np.random.normal(loc=0, scale=np.log(df['SD'])*SD_frac))
         else:
-            jitter = np.random.normal(loc=0, scale=df['SD']*SD_frac)
+            new_val = prev_val + np.random.normal(loc=0, scale=df['SD']*SD_frac)
        
-        # DEBUG: Show how much jitter was added
-        before = selected_params[param]
-        after = before + jitter
-        
         # set the same min and max as the input (lig) params     
         limit_min = max(df['mean_minus_SD4'], df['min_value']) 
         limit_max = min(df['mean_plus_SD4'], df['max_value'])
         
         if form_name == 'exp_linear' and param in ['param_3']:  
-            clipped = np.clip(after, 0, limit_max)
+            clipped = np.clip(new_val, 0, limit_max)
         else:
-            clipped = np.clip(after, limit_min, limit_max)
+            clipped = np.clip(new_val, limit_min, limit_max)
 
         #print(f"[JITTER DEBUG] {param}: before={before:.4g}, jitter={jitter:.4g}, after={after:.4g}, clipped={clipped:.4g}")
         
@@ -157,7 +150,7 @@ def get_baseline_form (form_type):
         
         case 'double_exp_decay':
             baseline_form = lambda x, a, b, c, d, e: a*np.exp(-x/b) + c*np.exp(-x/(b*d)) + e
-            #double exponential decay 
+            # double exponential decay 
             
             # specifying the boundary for each parameter (only for the exponential ones) 
             #               a       b      c     d     e 
@@ -194,10 +187,10 @@ def generate_baseline (form_type, SD_frac, time):
         lig_param_list = [lig_params[key] for key in sorted(lig_params.keys(), key=lambda x: int(x.split("_")[1]))]
         iso_param_list = [iso_params[key] for key in sorted(iso_params.keys(), key=lambda x: int(x.split("_")[1]))]
         
-       	#get the one baseline_form to use
+       	# get the one baseline_form to use
         baseline_form = get_baseline_form(form_type)
        
-        #generate baselines 
+        # generate baselines 
         baseline_lig = baseline_form ['formula'] (np.arange(len(time)), *lig_param_list)
         baseline_iso = baseline_form ['formula'] (np.arange(len(time)), *iso_param_list)
     
@@ -209,7 +202,6 @@ def generate_baseline (form_type, SD_frac, time):
                     "baseline_iso": baseline_iso
                     }
 
-#baselines  = generate_baseline ('exp_linear', 0.5, total_t)
 
 #%% combine baseline, signal, artifact and noise
 
@@ -227,9 +219,17 @@ def simulate_signal (time, true_sig, art, noise, sim_type, form_type, current_SD
 
     # rescale noise and art to get exact RMS ratios
     noise_rms = np.sqrt(np.mean(noise ** 2))
+    
+    if noise_rms < 1e-12 or np.isnan(noise_rms):
+        noise_rms = 1
+    
     noise = noise / noise_rms * (true_rms / SNR)
 
     art_rms = np.sqrt(np.mean(art ** 2))
+    
+    if art_rms < 1e-12 or np.isnan(art_rms):
+        art_rms = 1
+        
     art = art / art_rms * (true_rms / SAR)
     
     # debug to check for NaNs or 0
@@ -262,7 +262,7 @@ clamp_total_calls = 0
 def process_signals(raw_lig, raw_iso, baseline_iso, time, fs, smooth_fit=True, vary_t=True, filt_denom=True, smooth_lpf=0.1): 
     global clamp_total_points, clamp_total_calls
 
-    epsilon = 1e-3  # minimum denominator to avoid division by zero or near zero
+    epsilon = 1e-12  # minimum denominator to avoid division by zero or near zero
 
     if smooth_fit: 
         smooth_lig = fp_utils.filter_signal(raw_lig, smooth_lpf, fs)   
@@ -278,24 +278,24 @@ def process_signals(raw_lig, raw_iso, baseline_iso, time, fs, smooth_fit=True, v
             s_to_fit = raw_iso
             baseline_to_fit = baseline_iso
 
-        #for smooth fit, get new fitted iso , using the smooth_fit_info 
+        # for smooth fit, get new fitted iso , using the smooth_fit_info 
         fitted_iso = smooth_fit_info['formula'](s_to_fit, *smooth_fit_info['params'])
 
-        #also regress baseline to see how close baseline_iso goes to baseline_lig 
+        # also regress baseline to see how close baseline_iso goes to baseline_lig 
         fitted_iso_baseline = smooth_fit_info['formula'](baseline_to_fit, *smooth_fit_info['params'])
 
-        # Clamp denominator to avoid division by zero or near-zero
+        # clamp denominator to avoid division by zero or near-zero
         denom = fitted_smooth_iso if filt_denom else fitted_iso
         denom = np.clip(denom, epsilon, None)
 
-        # Count how many points were clamped (denominator was below epsilon)
+        # count how many points were clamped (denominator was below epsilon)
         num_clamped = np.sum(denom == epsilon)
         clamp_total_points += num_clamped
         clamp_total_calls += 1
 
         dff = ((raw_lig - fitted_iso) / denom)
 
-        #Added raw_lig
+        # added raw_lig
         return {
             'raw_lig': raw_lig,
             'smooth_lig':smooth_lig,
@@ -315,7 +315,7 @@ def process_signals(raw_lig, raw_iso, baseline_iso, time, fs, smooth_fit=True, v
             fitted_iso, fit_info = fp_utils.fit_signal(raw_iso, raw_lig, time, vary_t=False)  
             baseline_to_fit = baseline_iso       
 
-        #also regress baseline to see how close baseline_iso goes to baseline_lig 
+        # also regress baseline to see how close baseline_iso goes to baseline_lig 
         fitted_iso_baseline = fit_info['formula'](baseline_to_fit, *fit_info['params'])       
 
         if filt_denom:
@@ -468,7 +468,7 @@ def outliers (data, threshold=2):
 
 #%% plot ev  - line plot 
 
-def plot_ev_results(ev_results, DV_name, exclude_outliers=False):
+def plot_ev_results(ev_results, DV_name, exclude_outliers=False, alpha_default=None, SD_frac_default=None, SNR_default=None, SAR_default=None):
     plt.figure(figsize=(10, 10))
     
     DVs = sorted([float(k) for k in ev_results.keys()])
@@ -494,18 +494,31 @@ def plot_ev_results(ev_results, DV_name, exclude_outliers=False):
     plt.ylabel("EV")
     
     if exclude_outliers:
-        plt.title(f"EV Results - n = 500 per x, Outlier excluded at z=2, varying {DV_name}")
+        title = f"EV Results - n = 50 per x, Outlier excluded at z=2, varying {DV_name}\n"
     else:
-        plt.title(f"EV Results - n = 500 per x, Outlier not excluded, varying {DV_name}")
+        title = f"EV Results - n = 50 per x, Outlier not excluded, varying {DV_name}\n"
+       
+    match DV_name:
+        case "alpha":
+            title += f"SD_frac = {SD_frac_default}, SNR = {SNR_default}, SAR = {SAR_default}"
+        case "SD_frac":
+            title += f"alpha = {alpha_default}, SNR = {SNR_default}, SAR = {SAR_default}"
+        case "SNR":
+            title += f"alpha = {alpha_default}, SD_frac = {SD_frac_default}, SAR = {SAR_default}"
+        case "SAR":
+            title += f"alpha = {alpha_default}, SD_frac = {SD_frac_default}, SNR = {SNR_default}"
+            
+    plt.title(title)
     
     plt.legend()
     plt.grid()
+    plt.ylim(-0.5, 1.0)
     plt.show()
 
 
-#%% Plot the signals that are processed with each of the 4 different processing steps against each other
+#%% plot the signals that are processed with each of the 4 different processing steps against each other
 
-def plot_comparative_figures(raw_lig, raw_iso, baseline_iso, time, true_sig, fs=200, smooth_lpf=0.1, suptitle_text=None, ev=None, dv=None):
+def plot_comparative_figures(raw_lig, raw_iso, baseline_iso, time, true_sig, fs=200, smooth_lpf=0.1, suptitle_text=None, ev=None, dv=None, param_name=None):
     processing_conditions = [
         (True, True),
         (True, False),
@@ -534,7 +547,8 @@ def plot_comparative_figures(raw_lig, raw_iso, baseline_iso, time, true_sig, fs=
     # Prepare EV/DV text for titles if provided
     ev_dv_str = ""
     if ev is not None and dv is not None:
-        ev_dv_str = f" | Lowest EV = {ev:.2f} | DV = {dv:.2f}"
+        label = param_name if param_name is not None else "DV"
+        ev_dv_str = f" | Lowest EV = {ev:.2f} | {label} = {float(dv):.2f}"
 
     # === FIGURE 1: 4x2 GRID === #
     fig1, axs = plt.subplots(4, 2, figsize=(14, 12), sharex=True)
@@ -588,37 +602,33 @@ def plot_comparative_figures(raw_lig, raw_iso, baseline_iso, time, true_sig, fs=
     plt.tight_layout(rect=[0, 0, 1, 0.95])
     plt.show()
 
-#%% For troubleshooting / visualization, plot some of the signals as needed 
+#%% for troubleshooting / visualization, plot some of the signals as needed 
 
-def plot_signals(processed_signals, true_sig, t, ev, fs = 200, window_sec = 5, title = "Signal Overview"):
-    end_idx = int(fs * window_sec)
+def plot_signals(processed_signals, true_sig, t, ev, fs=200, title="Signal Overview"):
+  
+    raw_iso = processed_signals['raw_iso']
+    fitted_iso = processed_signals['fitted_iso']
+    raw_lig = processed_signals['raw_lig']
 
-    # Trim to window
-    t = t[:end_idx]
-    true_sig = true_sig[:end_idx]
-    raw_iso = processed_signals['raw_iso'][:end_idx]
-    fitted_iso = processed_signals['fitted_iso'][:end_idx]
-    raw_lig = processed_signals['raw_lig'][:end_idx]
+    fig, axs = plt.subplots(4, 1, figsize=(9, 10), sharex=True, constrained_layout=True)
+    plt.suptitle(f"{title} (EV = {ev:.2f})")
 
-    fig, axs = plt.subplots(4, 1, figsize = (9, 10), sharex = True, constrained_layout = True)
-    plt.suptitle(f"{title} (First {window_sec}s, EV = {ev:.2f})")
-
-    axs[0].plot(t, true_sig, color = 'black', label = 'True Signal')
+    axs[0].plot(t, true_sig, color='black', label='True Signal')
     axs[0].set_ylabel("True Sig (V)")
     axs[0].set_title("True Signal")
     axs[0].legend()
 
-    axs[1].plot(t, raw_iso, color = 'red', label = 'Raw Iso')
+    axs[1].plot(t, raw_iso, color='red', label='Raw Iso')
     axs[1].set_ylabel("Raw Iso (V)")
     axs[1].set_title("Raw Isosbestic Signal")
     axs[1].legend()
 
-    axs[2].plot(t, fitted_iso, color = 'blue', label = 'Fitted Iso')
+    axs[2].plot(t, fitted_iso, color='blue', label='Fitted Iso')
     axs[2].set_ylabel("Fitted Iso (V)")
     axs[2].set_title("Fitted Isosbestic Signal")
     axs[2].legend()
 
-    axs[3].plot(t, raw_lig, color = 'green', label = 'Raw Ligand')
+    axs[3].plot(t, raw_lig, color='green', label='Raw Ligand')
     axs[3].set_ylabel("Raw Lig (V)")
     axs[3].set_title("Raw Ligand Signal")
     axs[3].set_xlabel("Time (s)")
@@ -626,62 +636,3 @@ def plot_signals(processed_signals, true_sig, t, ev, fs = 200, window_sec = 5, t
 
     return fig
 
-
-#def plot_signals(processed_signals, true_sig, baseline_lig, baseline_iso, t, title, ev):
-#    fig, axs = plt.subplots(4,1, figsize=(9, 10), sharex=True, constrained_layout=True)
-#    plt.suptitle(title)
-#    
-    # if the dff is cut off, use the same length for time, true signal 
-#    if len(processed_signals['fitted_iso']) != len(t):
-#        t = t[:len(processed_signals['fitted_iso'])] 
-#        true_sig = true_sig[:len(processed_signals['fitted_iso'])] 
-#        baseline_lig = baseline_lig[:len(processed_signals['fitted_iso'])] 
-#        baseline_iso = baseline_iso[:len(processed_signals['fitted_iso'])] 
- 
- 
-#    ax = axs[0]  
-#    ax.plot(t, processed_signals['raw_lig'], label='Raw Lig', alpha=0.5)
-#    ax.plot(t, processed_signals['raw_iso'], label='Raw iso', alpha=0.5)
-#    ax.plot(t, baseline_lig, label='Baseline_lig', alpha=0.5)
-#    ax.plot(t, baseline_iso, label='Baseline_iso', alpha=0.5)
-#    ax.set_xlabel('Time (s)')
-#    ax.set_ylabel('Fluorescent Signal (V)')
-#    ax.xaxis.set_tick_params(which='both', labelbottom=True)
-#    ax.set_title('Simulated ligand and iso signals')
-#    ax.legend(loc='upper right')
-    
-#    if 'smooth_lig' in processed_signals:
-#        ax = axs[1] 
-#        ax.plot(t, processed_signals['smooth_lig'], label='smooth_lig', alpha=0.5)
-#        ax.plot(t, processed_signals['smooth_iso'], label='smooth_iso', alpha=0.5)
-#        ax.plot(t, processed_signals['fitted_smooth_iso'], label='fitted_smooth_iso', alpha=0.5)
-#        ax.set_xlabel('Time (s)')
-#        ax.set_ylabel('Fluorescent Signal (V)')
-#        ax.xaxis.set_tick_params(which='both', labelbottom=True)
-#        ax.set_title('Smooth fit')
-#        ax.legend(loc='upper right')
-        
-
-#    ax = axs[2] 
-#    ax.plot(t, processed_signals['denoised_lig'], label='denoised_lig', alpha=0.5)
-#    ax.plot(t, processed_signals['fitted_iso'], label='fitted_iso', alpha=0.5)
-#    ax.plot(t, baseline_lig, label='Baseline_lig', alpha=0.5)
-#    ax.plot(t, processed_signals['fitted_iso_baseline'], label='fitted_iso_baseline', alpha=0.5)
-#    ax.set_xlabel('Time (s)')
-#    ax.set_ylabel('Fluorescent Signal (V)')
-#    ax.xaxis.set_tick_params(which='both', labelbottom=True)
-#    ax.set_title('Denoised lig and fitted iso')
-#    ax.legend(loc='upper right')
-#    
-#    ax = axs[3] 
-#    ax.plot(t, true_sig, label='true signal', alpha=0.5)
-#    ax.plot(t, processed_signals['dff'], label='dF/F', alpha=0.5)
-#    ax.set_xlabel('Time (s)')
-#    ax.set_ylabel('dF/F or Fluorescent Signal (V)')
-#    ax.xaxis.set_tick_params(which='both', labelbottom=True)
-#    ax.set_title(f'dF/F vs. true signal: Explained variance = {ev}')
-#    ax.legend(loc='upper right')
-    #ax.set_xlim(290, 300)
-
-    
-#    return fig
