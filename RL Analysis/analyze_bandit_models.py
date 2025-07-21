@@ -28,13 +28,16 @@ import seaborn as sb
 from os import path
 import pickle
 from scipy.stats import pearsonr
+from pathlib import Path
+
+script_dir = Path(__file__).parent.resolve()
 
 
 # %% Load data
 
 subj_ids = [179, 188, 191, 207] # 182
 
-save_path = r'C:\Users\tanne\repos\python\selective_wm_analysis\RL Analysis\fit_models_local.json'
+save_path = path.join(script_dir, 'fit_models_local.json')
 if path.exists(save_path):
     all_models = agents.load_model(save_path)
 else:
@@ -71,11 +74,12 @@ model_names = [n for n in model_names if not any(im in n for im in ignore_models
 fit_mets = []
 for subj in subjids:
     for model_name in model_names:
-        for i in range(len(all_models[subj][model_name])):
-            model = all_models[subj][model_name][i]['model']
-            perf = all_models[subj][model_name][i]['perf']
-            
-            fit_mets.append({'subjid': subj, 'model': '{} ({})'.format(model_name, th.count_params(model)), 'n_params': th.count_params(model), **perf})
+        if model_name in all_models[subj]:
+            for i in range(len(all_models[subj][model_name])):
+                model = all_models[subj][model_name][i]['model'].model
+                perf = all_models[subj][model_name][i]['perf']
+                
+                fit_mets.append({'subjid': subj, 'model': '{} ({})'.format(model_name, th.count_params(model)), 'n_params': th.count_params(model), **perf})
             
 fit_mets = pd.DataFrame(fit_mets)
 fit_mets['n_trials'] = (fit_mets['ll_total']/fit_mets['ll_avg']).astype(int)
@@ -771,17 +775,17 @@ if len(compare_models) > 1:
     
 # %% Plot model fits
 
-use_simple_plot = False
+use_simple_plot = True
 
-limit_mask = True
+limit_mask = False
 n_limit_hist = 2
 
 n_plots = 3
 
-model_name = 'Q - All Alpha Shared, All K Fixed'
-agent_names = ['State'] #['Value', 'Perseverative']
+model_name = 'Q/Persev - All Alpha Shared, All K Fixed'
+agent_names = ['Value', 'Perseverative'] # ['State'] #
 
-subjids = [179, 188, 191, 207] # [179, 188, 191, 207]
+subjids = [188] # [179, 188, 191, 207]
 
 for subj in subjids: 
 
@@ -811,7 +815,7 @@ for subj in subjids:
 
     if use_simple_plot:
         th.plot_simple_multi_val_fit_results(sess_data, output, agent_states, 
-                                             agent_names, betas=betas, 
+                                             agent_names, betas=betas, use_ratio=False,
                                              title_prefix='Subj {}, {} - '.format(subj, model_name))
     else:
         th.plot_multi_val_fit_results(sess_data, output, agent_states, agent_names, n_sess=n_plots, trial_mask=training_data['trial_mask_train'],

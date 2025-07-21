@@ -22,13 +22,15 @@ import numpy as  np
 wm_loc_db = wm_db.LocalDB_ToneCatDelayResp()
 rl_loc_db = rl_db.LocalDB_BasicRLTasks('twoArmBandit')
 
-sess_ids = {180: [101447]}
+#sess_ids = {180: [101447]}
 #sess_ids = {191: [101617]}
-#sess_ids = {207: [100752]}
-fp_data, implant_info = fpah.load_fp_data(wm_loc_db, sess_ids, iso_lpf=10)
-sess_data = wm_loc_db.get_behavior_data(utils.flatten(sess_ids))
-#fp_data, implant_info = fpah.load_fp_data(rl_loc_db, sess_ids)
-#sess_data = rl_loc_db.get_behavior_data(utils.flatten(sess_ids))
+
+#fp_data, implant_info = fpah.load_fp_data(wm_loc_db, sess_ids, iso_lpf=10)
+#sess_data = wm_loc_db.get_behavior_data(utils.flatten(sess_ids))
+
+sess_ids = {207: [100752]}
+fp_data, implant_info = fpah.load_fp_data(rl_loc_db, sess_ids)
+sess_data = rl_loc_db.get_behavior_data(utils.flatten(sess_ids))
 
 # %% define plotting routine
 
@@ -98,19 +100,18 @@ for subj_id in subj_ids:
 
 
 # %% Create cleaned up example data plot
-loc_db = wm_db.LocalDB_ToneCatDelayResp()
 
-# subj_id = 207
-# sess_id = 100752
-subj_id = 180
-sess_id = 101447
+subj_id = 207
+sess_id = 100752
+# subj_id = 180
+# sess_id = 101447
 sess_ids = {subj_id: [sess_id]}
 sess_fp = fp_data[subj_id][sess_id]
 trial_data = sess_data[sess_data['sessid'] == sess_id]
-t_range = [2730, 2770] #[1155, 1195] #[0, np.inf] # [1150, 1250] #  #[1420, 1470]
+t_range = [1420, 1470] #[0, np.inf] #[2730, 2780] #[1155, 1195] # [1150, 1250] # 
 regions = ['DMS', 'PL']
 signal_type = 'dff_iso'
-dec = 1
+dec = 2
 filt_f = {'DMS': 8, 'PL': 4}
 
 region_colors = {'DMS': '#53C43B', 'PL': '#BB6ED8'}
@@ -126,7 +127,7 @@ lines_dict = {'Response Cue': cue_ts, 'Reward Delivery': reward_ts}
 
 t_sel = (t > t_range[0]) & (t < t_range[1])
 
-fig, axs = plt.subplots(len(regions), 1, layout='constrained', figsize=[6,4*len(regions)], sharex=True)
+fig, axs = plt.subplots(len(regions), 1, layout='constrained', figsize=[8,4*len(regions)], sharex=True)
 
 axs = np.array(axs).reshape((len(regions)))
 

@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 import torch
 import scipy.stats as sts
-import utils
+from pyutils import utils
 import matplotlib.pyplot as plt
 
 def simulate_behavior(model, n_trials, n_sess, input_formatter, output_choice, output_transform=None, access_data=None, **kwargs):
@@ -442,12 +442,12 @@ def _get_new_block_var_vol(prev_var=None, prev_vol=None, no_high_high=True):
     
 
 # %%
-d=3
-h=21
+d=6
+h=18
 l=6
-s_h=7
+s_h=4
 s_l=4
-n_s=4
+n_s=2
 
 x_h = np.concatenate((np.flip(np.arange(h, h-n_s*s_h-d, -d)), np.arange(h+d, h+n_s*s_h+d, d))) 
 x_l = np.concatenate((np.flip(np.arange(l, l-n_s*s_l-d, -d)), np.arange(l+d, l+n_s*s_l+d, d))) 
@@ -455,6 +455,27 @@ plt.bar(x_h, sts.norm.pdf(x_h, loc=h, scale=s_h), alpha=0.5)
 plt.bar(x_l, sts.norm.pdf(x_l, loc=l, scale=s_l), alpha=0.5)
 
 plt.title('μ high: {}, μ low: {}, σ high: {}, σ low: {}, step: {}'.format(h, l, s_h, s_l, d))
+
+
+# %%
+d=5
+h=25
+l=10
+n_l=5
+n_h=9
+s_h=10
+s_l=6
+
+x_h = np.concatenate((np.flip(np.arange(h, h-np.ceil(n_h/2)*d, -d)), np.arange(h+d, h+np.ceil(n_h/2)*d, d))) 
+x_l = np.concatenate((np.flip(np.arange(l, l-np.ceil(n_l/2)*d, -d)), np.arange(l+d, l+np.ceil(n_l/2)*d, d))) 
+
+x_h = x_h[x_h >= 0]
+x_l = x_l[x_l >= 0]
+
+plt.bar(x_h, sts.norm.pdf(x_h, loc=h, scale=s_h), alpha=0.5) 
+plt.bar(x_l, sts.norm.pdf(x_l, loc=l, scale=s_l), alpha=0.5)
+
+plt.title('μ high: {}, μ low: {}, σ high: {}, σ low: {}, n high: {}, n low: {}, step: {}'.format(h, l, s_h, s_l, n_h, n_l, d))
 
 
 # %%

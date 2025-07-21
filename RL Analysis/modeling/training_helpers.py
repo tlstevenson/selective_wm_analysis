@@ -581,7 +581,7 @@ def plot_multi_val_fit_results(sess_data, output, agent_activity, agent_names, c
             _draw_choices(trial_data, ax)
             _draw_blocks(block_switch_trials, block_rates, ax)
             
-def plot_simple_multi_val_fit_results(sess_data, output, agent_activity, agent_names, choice_names=['Left', 'Right'], betas=None, title_prefix='', n_sess=np.inf):
+def plot_simple_multi_val_fit_results(sess_data, output, agent_activity, agent_names, choice_names=['Left', 'Right'], betas=None, title_prefix='', n_sess=np.inf, use_ratio=False):
     # common plotting method to plot output of model fits maintaining values for more than one choice
     # this method will plot the difference between side values for each agent on one axis
     
@@ -598,6 +598,19 @@ def plot_simple_multi_val_fit_results(sess_data, output, agent_activity, agent_n
     # compute the agent value differences over the choices
     agent_diffs = -np.diff(agent_activity, axis=2)[:,:,0,:]
     
+    if use_ratio:
+        new_names = []
+        agent_ratios = []
+        first_agent_vals = agent_diffs[:,:,0]
+        # compute the ratio of the differences
+        for i in range(len(agent_names)-1):
+            comp_agent_vals = agent_diffs[:,:,i+1]
+            agent_ratios.append(first_agent_vals/comp_agent_vals)
+            new_names.append(agent_names[0]+'/'+agent_names[i+1])
+        
+        agent_names = new_names
+        agent_diffs = np.stack(agent_ratios, axis=2)
+    
     sess_ids = sess_data['sessid'].unique()
     if n_sess < len(sess_ids):
         sess_ids = sess_ids[:n_sess]
@@ -613,12 +626,12 @@ def plot_simple_multi_val_fit_results(sess_data, output, agent_activity, agent_n
             
         fig.suptitle('{}Session {}'.format(title_prefix, sess_id))
 
-        x = np.arange(len(trial_data)-1)+1
+        x = np.arange(len(trial_data))+1
         
         # plot model output versus actual choices
         ax = axs[0]
         #start plotting from trial 1 to the last trial
-        ax.plot(x, output[i,:len(trial_data)-1,:], label='Model Output')
+        ax.plot(x[1:], output[i,:len(trial_data)-1,:], label='Model Output')
         ax.set_ylabel('p(Choose {})'.format(choice_names[0]))
         ax.set_xlabel('Trial')
         ax.set_title('Model Output vs Choices')
@@ -635,14 +648,20 @@ def plot_simple_multi_val_fit_results(sess_data, output, agent_activity, agent_n
             agent_vals = agent_diffs[i,:len(trial_data)-1,j]
                 
             if not betas is None:
-                ax.plot(x, agent_vals*betas[j], alpha=0.7, label=agent)
-                ax.set_ylabel('Weighted State Difference')
+                ax.plot(x[1:], agent_vals*betas[j], alpha=0.7, label=agent)
+                if use_ratio:
+                    ax.set_ylabel('Agent Value Ratio')
+                else:
+                    ax.set_ylabel('Weighted State Difference')
             else:
-                ax.plot(x, agent_vals, alpha=0.7, label=agent)
+                ax.plot(x[1:], agent_vals, alpha=0.7, label=agent)
                 ax.set_ylabel('State Difference')
 
         ax.set_xlabel('Trial')
-        ax.set_title('Agent State Differences ({}-{})'.format(choice_names[0], choice_names[1]))
+        if use_ratio:
+            ax.set_title('Agent Value Difference Ratios ({}-{})'.format(choice_names[0], choice_names[1]))
+        else:
+            ax.set_title('Agent State Differences ({}-{})'.format(choice_names[0], choice_names[1]))
 
         ax.legend(title='Agents', fontsize=8, loc='upper left', bbox_to_anchor=(1.01, 1), borderaxespad=0)
         ax.xaxis.set_major_locator(ticker.MultipleLocator(50))

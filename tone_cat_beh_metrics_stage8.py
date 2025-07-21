@@ -28,19 +28,19 @@ exclude_instruct_from_hitrate = True
 # %% LOAD DATA
 
 stage = 8
-n_back = 15
+stage_name = 'learnMultiTone'
+n_back = 10
 active_subjects_only = True
 reload = False
 
-subject_info = db_access.get_active_subj_stage('ToneCatDelayResp')
 if active_subjects_only:
-    subject_info = subject_info[subject_info['stage'] == stage]
+    subject_info = db_access.get_active_subj_stage(protocol='ToneCatDelayResp', stage_num=stage)
 else:
-    subject_info = subject_info[subject_info['stage'] >= stage]
+    subject_info = db_access.get_protocol_subject_info(protocol='ToneCatDelayResp', stage_num=stage, stage_name=stage_name)
 
-subj_ids = subject_info['subjid']
+#subj_ids = subject_info['subjid']
 #subj_ids = subj_ids[subj_ids != 187]
-#subj_ids = [193,192]
+subj_ids = [187,190,192,193,198,199,400,402]
 
 # get session ids
 sess_ids = db_access.get_subj_sess_ids(subj_ids, stage_num=stage, protocol='ToneCatDelayResp')
@@ -54,7 +54,7 @@ all_sess = loc_db.get_behavior_data(utils.flatten(sess_ids), reload=reload)
 # remove trials where the stimulus didn't start
 all_sess = all_sess[all_sess['trial_started']]
 
-# %% Add formatted information columns to ease analysis and plotting
+# Add formatted information columns to ease analysis and plotting
 
 # group stimulus durations into bins
 bin_size = 1
@@ -67,11 +67,15 @@ all_sess['stim_dur_bin'] = all_sess['stim_dur'].apply(lambda x: dur_bin_labels[n
 
 # calculate the delay from the last relevant tone and group delays into bins
 def calc_rel_tone_delay(row):
+    # make sure this is a 1-D array
+    tone_end_times = np.array(row['rel_tone_end_times'])
+    if utils.is_scalar(row['rel_tone_end_times']):
+        tone_end_times = tone_end_times[None]
     rel_tone_pos = np.array(row['tone_info']) == row['relevant_tone_info']
     if not any(rel_tone_pos):
-        rel_tone_time = row['rel_tone_end_times'][-1]
+        rel_tone_time = tone_end_times[-1]
     else:
-        rel_tone_time = row['rel_tone_end_times'][rel_tone_pos][-1]
+        rel_tone_time = tone_end_times[rel_tone_pos][-1]
         
     return row['stim_dur'] - rel_tone_time
 
@@ -90,13 +94,13 @@ def simplify_tone_info(x):
     return x.replace('low', 'L').replace('high', 'H').replace('left', 'L').replace('right', 'R')
 
 all_sess['tone_info_str'] = all_sess['tone_info'].apply(
-    lambda x: x if not type(x) is list else ', '.join(x)).apply(simplify_tone_info)
+    lambda x: x if not utils.is_list(x) else ', '.join(x)).apply(simplify_tone_info)
 all_sess['variant_tone_info_str'] = all_sess['relevant_tone_info'].apply(simplify_tone_info) + ' - (' + all_sess['tone_info_str'] + ')'
 all_sess['trial_type'] = all_sess['tone_info'].apply(
-    lambda x: '1 tone' if not type(x) is list else
+    lambda x: '1 tone' if (not utils.is_list(x) or len(x) == 1) else
     '{0} tones - same'.format(len(x)) if x[0] == x[-1] else '{0} tones - diff'.format(len(x)))
-all_sess['first_tone_info'] = all_sess['tone_info'].apply(lambda x: x if not type(x) is list else x[0]).apply(simplify_tone_info)
-all_sess['second_tone_info'] = all_sess['tone_info'].apply(lambda x: '' if not type(x) is list else x[1]).apply(simplify_tone_info)
+all_sess['first_tone_info'] = all_sess['tone_info'].apply(lambda x: x[0] if utils.is_list(x) else x).apply(simplify_tone_info)
+all_sess['second_tone_info'] = all_sess['tone_info'].apply(lambda x: x[1] if (utils.is_list(x) and len(x) == 2) else '').apply(simplify_tone_info)
 
 # get custom sorted values
 tone_pitch_labels = np.array(sorted(all_sess['tone_info_str'].unique().tolist(), key=lambda x: str(len(x)) + x))
@@ -136,7 +140,7 @@ plotCounts(count_dict, 'h', subj_ids, 'Trial Counts', '# Trials')
 
 # %% LOOK AT HIT & BAIL RATES
 
-subj_ids = [190, 198, 199, 400] 
+#subj_ids = [190, 198, 199, 400] 
 
 plot_bail = False
 ind_subj = False
@@ -178,7 +182,7 @@ for subj_id in plot_subjs:
         rel_subj_sess = subj_sess[subj_sess['relevant_tone_info'] == rel_tone]
         rel_subj_sess_no_bails = rel_subj_sess[(rel_subj_sess['bail'] == False) & (rel_subj_sess['choice'] != 'none')]
         if exclude_instruct_from_hitrate:
-            rel_subj_sess_no_bails = rel_subj_sess_no_bails[rel_subj_sess_no_bails['tone_db_offsets'].apply(lambda x: all(x == 0))]
+            rel_subj_sess_no_bails = rel_subj_sess_no_bails[rel_subj_sess_no_bails['tone_db_offsets'].apply(lambda x: all(np.array(x) == 0) if utils.is_list(x) else x == 0)]
         
         rel_subj_sess_tone_heard = rel_subj_sess[rel_subj_sess['abs_tone_start_times'].str[0] < rel_subj_sess['cpoke_out_time']]
 
@@ -220,7 +224,7 @@ for subj_id in plot_subjs:
         ind_sess = subj_sess[subj_sess['sessid'] == sess_id]
         ind_sess_no_bails = ind_sess[(ind_sess['bail'] == False) & (ind_sess['choice'] != 'none')]
 
-        if len(ind_sess) == 0:
+        if len(ind_sess_no_bails) == 0:
             continue
 
         # p(incorrect side|tone presence)

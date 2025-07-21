@@ -182,15 +182,44 @@ def count_block_lengths(sess_data, meta_subj=True, ind_subj=True, block_bin_widt
         ax.set_ylabel('Proportion')
         ax.legend()
     
+# %% Filter session data to be last half of epochs
+
+def filter_last_half_epoch_trials(sess_data):
+    
+    sess_ids = np.unique(sess_data['sessid'])
+    filtered_sess_data = []
+    
+    for sess_id in sess_ids:
+        ind_sess = sess_data[sess_data['sessid'] == sess_id].reset_index()
+        
+        trial_sel = np.full(len(ind_sess), False)
+        
+        epoch_end_idxs = np.where(np.diff(ind_sess['block_num']) < 0)[0] + 1
+        epoch_end_idxs = np.append(epoch_end_idxs, len(ind_sess))
+        
+        epoch_start_idx = 0
+        
+        for end_idx in epoch_end_idxs:
+            mid_idx = int((epoch_start_idx + end_idx)/2)
+            trial_sel[mid_idx:end_idx] = True
+            epoch_start_idx = end_idx
+            
+        filtered_sess_data.append(ind_sess[trial_sel].reset_index())
+        
+    return pd.concat(filtered_sess_data)
+
 # %% Choice Probability Methods
 
-def analyze_choice_behavior(sess_data, plot_simple_summary=False, meta_subj=True, ind_subj=True, plot_suffix=''):
+def analyze_choice_behavior(sess_data, plot_simple_summary=False, meta_subj=True, ind_subj=True, plot_suffix='', last_half_only=False):
     
     subj_ids = []
     if ind_subj:
         subj_ids.extend(np.unique(sess_data['subjid']).tolist())
     if meta_subj:
         subj_ids.append('all')
+        
+    if last_half_only:
+        sess_data = filter_last_half_epoch_trials(sess_data)
     
     for subj in subj_ids:
         if subj == 'all':
@@ -328,13 +357,16 @@ def analyze_choice_behavior(sess_data, plot_simple_summary=False, meta_subj=True
 
 # %% Choice Probabilities over trials
 
-def analyze_trial_choice_behavior(sess_data, plot_simple_summary=False, meta_subj=True, ind_subj=True, plot_suffix=''):
+def analyze_trial_choice_behavior(sess_data, plot_simple_summary=False, meta_subj=True, ind_subj=True, plot_suffix='', last_half_only=False):
     
     subj_ids = []
     if ind_subj:
         subj_ids.extend(np.unique(sess_data['subjid']).tolist())
     if meta_subj:
         subj_ids.append('all')
+        
+    if last_half_only:
+        sess_data = filter_last_half_epoch_trials(sess_data)
     
     for subj in subj_ids:
         if subj == 'all':
