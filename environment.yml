@@ -1,19 +1,23 @@
 name: neuropy
 channels:
-  - defaults
-  - conda-forge
-dependencies:
-  - h5py
-  - matplotlib
-  - notebook
-  - numpy
-  - pandas
-  - python-pptx
   - pytorch
+  - conda-forge
+  - defaults
+dependencies:
+  - notebook
   - scikit-learn
-  - scipy
+  - pandas
   - seaborn
+  - mysql-connector-python=8.3.0
+  - h5py
+  - python-pptx
+  - scipy
   - spyder-kernels
+  - numpy
+  - pytorch
   - statsmodels
-  - mysql-connector-python
-prefix: C:\Users\tanne\miniconda3\envs\neuropy
+  - matplotlib
+  - qtpy
+  - pyqt
+  - python=3.12
+prefix: C:\Users\Tanner\miniconda3\envs\neuropy

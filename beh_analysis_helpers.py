@@ -27,6 +27,9 @@ def limit_sess_ids(sess_id_dict, n_back=np.inf, last_idx=0):
 
 def get_count_dict(data, groupby_col, count_cols, normalize=False):
     count_dict = {}
+    
+    if not utils.is_list(count_cols):
+        count_cols = [count_cols]
 
     pivot_vals = 'proportion' if normalize else 'count'
 
@@ -86,6 +89,10 @@ def get_rate_dict(data, rate_col, groupby_cols, ci_level=0.95):
 
 def calc_rate_info(data, rate_col, groupby_col, ci_level=0.95):
 
+    # remove any NA or nan values that may be in the rate column and cast to int
+    data = data.dropna(subset=rate_col)
+    data[rate_col] = data[rate_col].astype(int)
+
     rate_info = data.groupby(groupby_col).agg(
         n=(rate_col, 'count'), sum=(rate_col, 'sum'), rate=(rate_col, 'mean')).infer_objects().reset_index()
 
@@ -111,7 +118,7 @@ def get_rate_avg_err(bin_mat):
     return avg, err
 
 
-def plot_counts(counts, ax, title, y_label, stack):
+def plot_counts(counts, ax, title, y_label, stack, legend_cols=1):
     x_labels = counts.index.to_list()
     val_labels = counts.columns.tolist()
     vals = [counts[k].tolist() for k in val_labels]
@@ -119,6 +126,7 @@ def plot_counts(counts, ax, title, y_label, stack):
     plot_utils.plot_stacked_bar(vals, val_labels, x_labels, stack, ax)
     ax.set_ylabel(y_label)
     ax.set_title(title)
+    ax.legend(ncols=legend_cols)
 
 
 def plot_rate_heatmap(rate_dict, column_key, column_name, row_key, row_name, ax=None,
@@ -156,7 +164,9 @@ def plot_rate_heatmap(rate_dict, column_key, column_name, row_key, row_name, ax=
         ax.axhline(len(values)-1, linewidth=4, color='w')
 
 
-def get_rew_rate_hist(sess_data, n_back=5, kernel='uniform'):
+# %% Trial History Methods
+
+def calc_rew_rate_hist(sess_data, n_back=5, kernel='uniform'):
 
     hist_cols = ['rew_rate_hist_all', 'rew_rate_hist_left_all', 'rew_rate_hist_right_all',
                  'rew_rate_hist_left_only', 'rew_rate_hist_right_only']
@@ -255,3 +265,53 @@ def get_rew_rate_hist(sess_data, n_back=5, kernel='uniform'):
     # calculate differences between side rew histories
     sess_data['rew_rate_hist_diff_all'] = sess_data['rew_rate_hist_left_all'] - sess_data['rew_rate_hist_right_all']
     sess_data['rew_rate_hist_diff_only'] = sess_data['rew_rate_hist_left_only'] - sess_data['rew_rate_hist_right_only']
+
+    
+def calc_trial_hist(sess_data, n_back=5):
+
+    hist_cols = ['choice_hist', 'rew_hist']
+
+    for col in hist_cols:
+        sess_data[col] = None
+        sess_data[col] = sess_data[col].astype(object) 
+
+    sess_ids = np.unique(sess_data['sessid'])
+
+    for sess_id in sess_ids:
+        sess_sel = sess_data['sessid'] == sess_id
+        ind_sess_data = sess_data[sess_sel]
+        resp_sel = ind_sess_data['choice'] != 'none'
+        resp_data = ind_sess_data[resp_sel]
+        
+        rewards = resp_data['rewarded'].to_numpy().astype(int)
+        choices = resp_data['choice'].to_numpy()
+
+        # make buffered vectors
+        buffer = np.full(n_back, np.nan)
+        buff_rewards = np.concatenate((buffer, rewards))
+        buff_choices = np.concatenate((buffer, choices))
+        choice_hist = [buffer]
+        rew_hist = [buffer]
+        
+        for i in range(sum(resp_sel)-1):
+            choice_hist.append(np.flip(buff_choices[i+1:i+n_back+1]))
+            rew_hist.append(np.flip(buff_rewards[i+1:i+n_back+1]))
+
+        # to fill in the missing values, first fill in a dataframe copy then use ffill
+        hist_data = ind_sess_data[hist_cols].copy()
+        # have to use to_numpy to ignore indexes because pandas is too particular
+        hist_data.loc[resp_sel, 'choice_hist'] = pd.Series(choice_hist).to_numpy()
+        hist_data.loc[resp_sel, 'rew_hist'] = pd.Series(rew_hist).to_numpy()
+
+        # fill missing values with the value before it
+        hist_data.ffill(inplace=True)
+        # fill any remaining nans at the beginning with the buffer
+        nan_sel = hist_data[hist_cols[0]].isna()
+        for col in hist_cols:
+            hist_data.loc[nan_sel, col] = pd.Series([buffer]).repeat(sum(nan_sel)).to_numpy()
+
+        # update the original table
+        sess_data.loc[sess_sel, hist_cols] = hist_data
+
+def trial_hist_exists(sess_data):
+    return set(['choice_hist', 'rew_hist']).issubset(sess_data.columns)
