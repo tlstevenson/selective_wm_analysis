@@ -2,6 +2,8 @@
 """
 Created on Thu Dec 21 14:58:30 2023
 
+WILL EVENTUALLY WANT TO SEPARATE THESE METHODS INTO GENERAL PURPOSE AND RESEARCH PROJECT SPECIFIC
+
 @author: tanne
 """
 import init
@@ -23,13 +25,6 @@ from pptx.util import Inches, Pt
 import time
 import copy
 import warnings
-
-# %% trial start timestamps
-
-# def get_trial_start_ts(fp_start_ts, sess_data):
-#     fp_ts_diffs = np.diff(fp_start_ts)
-#     beh_ts_diffs = np.diff(trial_data['trialtime'])
-
 
 
 # %% Session Limiting Lookup Table
@@ -110,16 +105,16 @@ def load_fp_data(loc_db, sess_ids, isos=None, ligs=None, reload=False, fit_basel
                 iso_sel = np.array([k in raw_signals[region].keys() for k in subj_isos])
 
                 if sum(lig_sel) > 1:
-                    lig = ligs[0]
-                    print('Found {} matching ligand wavelengths. Choosing {} nm'.format(sum(lig_sel), ligs[0]))
+                    lig = ligs[lig_sel][0]
+                    print('Found {} matching ligand wavelengths. Choosing {} nm'.format(sum(lig_sel), ligs[lig_sel][0]))
                 elif sum(lig_sel) == 1:
                     lig = ligs[lig_sel][0]
                 else:
                     raise Exception('No ligand wavelength found')
 
                 if sum(iso_sel) > 1:
-                    iso = subj_isos[0]
-                    print('Found {} matching iso wavelengths. Choosing {} nm'.format(sum(iso_sel), subj_isos[0]))
+                    iso = subj_isos[iso_sel][0]
+                    print('Found {} matching iso wavelengths. Choosing {} nm'.format(sum(iso_sel), subj_isos[iso_sel][0]))
                 elif sum(iso_sel) == 1:
                     iso = subj_isos[iso_sel][0]
                 else:
@@ -143,7 +138,7 @@ def load_fp_data(loc_db, sess_ids, isos=None, ligs=None, reload=False, fit_basel
     return fp_data, implant_info
 
 
-def get_all_processed_signals(raw_lig, raw_iso, t, sess_id=None, region=None, trial_start_ts=None, fit_baseline=True,
+def get_all_processed_signals(raw_lig, raw_iso, t, sess_id=None, region=None, trial_start_ts=None, fit_baseline=False,
                               lig_lpf=10, iso_lpf=1, filter_dropout_outliers=True):
     ''' Gets all possible processed signals and intermediaries for the given raw signals.
         Will check to see if any signals should be excluded. Also will also optionally exclude signals before and after the behavior.'''
@@ -251,7 +246,7 @@ def get_all_processed_signals(raw_lig, raw_iso, t, sess_id=None, region=None, tr
             sub_filt_iso = fp_utils.filter_signal(sub_raw_iso, iso_lpf, sr)
 
             # isosbestic correction
-            sub_dff_iso, sub_fitted_iso = fp_utils.calc_iso_dff(sub_filt_lig, sub_filt_iso, t[start_idx:end_idx])
+            sub_dff_iso, sub_fitted_iso, _ = fp_utils.calc_iso_dff(sub_filt_lig, sub_filt_iso, t[start_idx:end_idx])
 
             sub_empty_signal = np.full_like(sub_raw_lig, np.nan)
             sub_baseline_lig = sub_empty_signal.copy()
@@ -265,15 +260,15 @@ def get_all_processed_signals(raw_lig, raw_iso, t, sess_id=None, region=None, tr
 
                 # Try hybrid approach with baseline correction to approximate photobleaching before calculating dF/F
                 try:
-                    sub_baseline_lig = fp_utils.fit_baseline(sub_filt_lig)
-                    sub_baseline_iso = fp_utils.fit_baseline(sub_filt_iso)
+                    sub_baseline_lig, _ = fp_utils.fit_baseline(sub_filt_lig)
+                    sub_baseline_iso, _ = fp_utils.fit_baseline(sub_filt_iso)
 
                     # first subtract the baseline fit to each signal to correct for photobleaching
                     sub_baseline_corr_lig = sub_filt_lig - sub_baseline_lig
                     sub_baseline_corr_iso = sub_filt_iso - sub_baseline_iso
 
                     # scale the isosbestic signal to best fit the ligand-dependent signal
-                    sub_fitted_baseline_iso = fp_utils.fit_signal(sub_baseline_corr_iso, sub_baseline_corr_lig, t[start_idx:end_idx])
+                    sub_fitted_baseline_iso, _ = fp_utils.fit_signal(sub_baseline_corr_iso, sub_baseline_corr_lig, t[start_idx:end_idx])
 
                     # then use the baseline corrected signals to calculate dF, which is a residual fluorescence
                     sub_dff_iso_baseline = ((sub_baseline_corr_lig - sub_fitted_baseline_iso)/sub_baseline_lig)*100
@@ -531,9 +526,14 @@ def calc_iqr_multiple(table, group_by_cols, parameters):
 
     return table
 
+# %% Behavior Specific Analysis Methods
+
+
+
+
 # %% Plotting Methods
 
-def view_processed_signals(processed_signals, t, dec=10, title='Full Signals', vert_marks=[],
+def view_processed_signals(processed_signals, t, dec=10, title='Full Signals', vert_marks=[], plot_baseline_corr=False,
                            filter_outliers=False, pos_outlier_zthresh=15, neg_outlier_zthresh=-5, t_min=0, t_max=np.inf):
 
     if utils.is_dict(list(processed_signals.values())[0]):
@@ -574,29 +574,35 @@ def view_processed_signals(processed_signals, t, dec=10, title='Full Signals', v
         # plot raw signals and baseline
         ax = axs[i,0]
         l3 = ax.plot(t, sub_signals['raw_iso'][::dec], label='Raw Iso', color='C1', alpha=0.5)
-        l4 = ax.plot(t, sub_signals['baseline_iso'][::dec], '--', label='Iso Baseline', color='C1')
+        if plot_baseline_corr:
+            l4 = ax.plot(t, sub_signals['baseline_iso'][::dec], '--', label='Iso Baseline', color='C1')
         l1 = ax.plot(t, sub_signals['raw_lig'][::dec], label='Raw Lig', color='C0', alpha=0.5)
-        l2 = ax.plot(t, sub_signals['baseline_lig'][::dec], '--', label='Lig Baseline', color='C0')
+        if plot_baseline_corr:
+            l2 = ax.plot(t, sub_signals['baseline_lig'][::dec], '--', label='Lig Baseline', color='C0')
         plot_utils.plot_dashlines(vert_marks, ax=ax)
         ax.set_title(gen_sub_title.format('Raw Signals'))
         ax.set_xlabel('Time (s)')
         ax.set_ylabel('Fluorescent Signal (V)')
         ax.xaxis.set_tick_params(which='both', labelbottom=True)
-        ls = [l1[0], l2[0], l3[0], l4[0]]
+        if plot_baseline_corr:
+            ls = [l1[0], l2[0], l3[0], l4[0]]
+        else:
+            ls = [l1[0], l3[0]]
         labs = [l.get_label() for l in ls]
         ax.legend(ls, labs, loc='center right')
 
         # plot baseline corrected signals
-        ax = axs[i,1]
-        ax.plot(filt_t, sub_signals['baseline_corr_lig'][::dec][filt_sel], label='Baseline Corrected Lig', alpha=0.5)
-        ax.plot(filt_t, sub_signals['baseline_corr_iso'][::dec][filt_sel], label='Baseline Corrected Iso', alpha=0.5)
-        ax.plot(filt_t, sub_signals['fitted_baseline_corr_iso'][::dec][filt_sel], label='Fitted Baseline Corrected Iso', alpha=0.5)
-        plot_utils.plot_dashlines(vert_marks, ax=ax)
-        ax.set_title(gen_sub_title.format('Baseline Subtracted Signals'))
-        ax.set_xlabel('Time (s)')
-        ax.set_ylabel('Fluorescent Signal (dV)')
-        ax.xaxis.set_tick_params(which='both', labelbottom=True)
-        ax.legend(loc='upper right')
+        if plot_baseline_corr:
+            ax = axs[i,1]
+            ax.plot(filt_t, sub_signals['baseline_corr_lig'][::dec][filt_sel], label='Baseline Corrected Lig', alpha=0.5)
+            ax.plot(filt_t, sub_signals['baseline_corr_iso'][::dec][filt_sel], label='Baseline Corrected Iso', alpha=0.5)
+            ax.plot(filt_t, sub_signals['fitted_baseline_corr_iso'][::dec][filt_sel], label='Fitted Baseline Corrected Iso', alpha=0.5)
+            plot_utils.plot_dashlines(vert_marks, ax=ax)
+            ax.set_title(gen_sub_title.format('Baseline Subtracted Signals'))
+            ax.set_xlabel('Time (s)')
+            ax.set_ylabel('Fluorescent Signal (dV)')
+            ax.xaxis.set_tick_params(which='both', labelbottom=True)
+            ax.legend(loc='upper right')
 
         # plot raw ligand and fitted iso
         ax = axs[n_panel_stacks+i,0]
@@ -611,14 +617,18 @@ def view_processed_signals(processed_signals, t, dec=10, title='Full Signals', v
 
         # plot iso dFF and baseline corrected dFF
         ax = axs[n_panel_stacks+i,1]
-        l2 = ax.plot(filt_t, sub_signals['dff_iso_baseline'][::dec][filt_sel], label='Baseline Corrected ΔF/F', color='C1', alpha=0.5)
+        if plot_baseline_corr:
+            l2 = ax.plot(filt_t, sub_signals['dff_iso_baseline'][::dec][filt_sel], label='Baseline Corrected ΔF/F', color='C1', alpha=0.5)
         l1 = ax.plot(filt_t, sub_signals['dff_iso'][::dec][filt_sel], label='Iso ΔF/F', color='C0', alpha=0.5)
         plot_utils.plot_dashlines(vert_marks, ax=ax)
         ax.set_title(gen_sub_title.format('Iso Corrected Ligand Signals'))
         ax.set_xlabel('Time (s)')
         ax.set_ylabel('% ΔF/F')
         ax.xaxis.set_tick_params(which='both', labelbottom=True)
-        ls = [l1[0], l2[0]]
+        if plot_baseline_corr:
+            ls = [l1[0], l2[0]]
+        else:
+            ls = [l1[0]]
         labs = [l.get_label() for l in ls]
         ax.legend(ls, labs, loc='upper right')
 
@@ -839,8 +849,12 @@ def get_signal_type_labels(signal_type):
     return title, ax_label
 
 
-def get_implant_side_type(side, implant_side):
-    return 'ipsi' if implant_side == side else 'contra'
+def get_implant_rel_side(abs_side, implant_side):
+    return 'ipsi' if implant_side == abs_side else 'contra'
+
+def get_implant_abs_side(rel_side, implant_side):
+    sides = np.array(['left', 'right'])
+    return implant_side if rel_side == 'ipsi' else sides[sides != implant_side][0]
 
 
 def plot_power_spectra(signals, dt, f_max=20, title='', log_x=True, signal_names=None):

@@ -5,18 +5,17 @@ Script to investigate performance on the two-arm bandit task
 @author: tanner stevenson
 """
 
-
 # %% imports
 
-import init    # when opening this file, add a breakpoint, debug line, remove the break point and then run the secion 
-import pandas as pd    # loading the library called panda. Can use it as pd 
-from pyutils import utils 
+import init
+import pandas as pd
+from pyutils import utils
 from sys_neuro_tools import plot_utils
-import hankslab_db.basicRLtasks_db as db 
+import hankslab_db.basicRLtasks_db as db
 from hankslab_db import db_access
 import beh_analysis_helpers as bah
-import fp_analysis_helpers as fpah
 import bandit_beh_helpers as bbh
+import vol_bandit_beh_helpers as vbbh
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
@@ -28,51 +27,50 @@ import statsmodels.api as sm
 import re
 
 # %% LOAD DATA
-
-subject_info = db_access.get_active_subj_stage(protocol='ClassicRLTasks', stage_num=2)
+task_name = 'rewVolBandit'
+subject_info = db_access.get_active_subj_stage(protocol='ClassicRLTasks', stage_name=task_name)
 subj_ids = subject_info['subjid']
 
 #sess_ids = db_access.get_fp_protocol_subj_sess_ids('ClassicRLTasks', 2)
 
 # optionally limit sessions based on subject ids
-subj_ids = [179, 188, 191, 207] # [401, 218, 216] #[404, 275, 217] # 
+#subj_ids = [401, 218, 217, 216] #[404, 275, 217] # #[179, 188, 191, 207, 182]
 # sess_ids = {k: v for k, v in sess_ids.items() if k in subj_ids}
 
+n_back = 10
+
 #sess_ids = db_access.get_fp_data_sess_ids(protocol='ClassicRLTasks', stage_num=2, subj_ids=subj_ids)
-sess_ids = db_access.get_subj_sess_ids(subj_ids, protocol='ClassicRLTasks', stage_num=2)
-sess_ids = {subj: sess[2:] for subj, sess in sess_ids.items()}
-#sess_ids = bah.limit_sess_ids(sess_ids, 8)
-#sess_ids = {179: [95201, 95312, 95347]}
+sess_ids = db_access.get_subj_sess_ids(subj_ids, protocol='ClassicRLTasks', stage_name=task_name)
+#sess_ids = {subj: sess[2:] for subj, sess in sess_ids.items()}
+sess_ids = bah.limit_sess_ids(sess_ids, n_back)
 
 # get trial information
 reload = False
-loc_db = db.LocalDB_BasicRLTasks('twoArmBandit')
-
-#using the function created in the db
+loc_db = db.LocalDB_BasicRLTasks(task_name)
 all_sess = loc_db.get_behavior_data(utils.flatten(sess_ids), reload=reload)
 
-# make sure RT column is filled in (it wasn't initially)
-all_sess['RT'] = all_sess['response_time'] - all_sess['response_cue_time']
-all_sess['cpoke_out_latency'] = all_sess['cpoke_out_time'] - all_sess['response_cue_time']
+# # make sure RT column is filled in (it wasn't initially)
+# all_sess['RT'] = all_sess['response_time'] - all_sess['response_cue_time']
+# all_sess['cpoke_out_latency'] = all_sess['cpoke_out_time'] - all_sess['response_cue_time']
 
-# update reward rates
+# # update reward rates
 
-bah.calc_trial_hist(all_sess, 5)
-bbh.make_trial_hist_labels(all_sess, 3)
-bbh.make_rew_hist_labels(all_sess, 3)
+# bah.calc_trial_hist(all_sess, 5)
+# bbh.make_trial_hist_labels(all_sess, 3)
+# bbh.make_rew_hist_labels(all_sess, 3)
 
 all_sess_resp = all_sess[all_sess['choice'] != 'none']
 
 # %%
 
-ind_subj = False
+ind_subj = True
 meta_subj = True
 
 # %% TRIAL COUNTS
 
 # aggregate count tables into dictionary
-count_columns = ['side_prob', 'block_prob', 'high_side']  # this seems to simply create a table 
-column_titles = ['Side Probability (L/R)', 'Block Probabilities', 'High Side']
+count_columns = ['high_side', 'epoch_label']
+column_titles = ['High Side', 'Epoch Type (Stochasticity/Volatility)', ]
 count_dict = bah.get_count_dict(all_sess_resp, 'subjid', count_columns, normalize=False)
 count_dict_pct = bah.get_count_dict(all_sess_resp, 'subjid', count_columns, normalize=True)
 
@@ -87,24 +85,18 @@ fig, axs = plt.subplots(len(count_dict.keys()), 1, layout='constrained',
                         figsize=(3+0.25*len(subj_ids), 3*len(count_dict.keys())))
 for i, (col_name, title) in enumerate(zip(count_columns, column_titles)):
     bah.plot_counts(count_dict_pct[col_name], axs[i], title, '% Trials', 'v')
-    
-# %% Plot trial history counts
-
-bbh.analyze_trial_hist_counts(all_sess_resp, 3)
 
 # %% Count Block Lengths
 
-bbh.count_block_lengths(all_sess_resp,  ind_subj=ind_subj, meta_subj=meta_subj)
+vbbh.count_block_lengths(all_sess_resp,  ind_subj=ind_subj, meta_subj=meta_subj)
 
 # %% Analyze response metrics
 
-plot_simple_summary = True
+plot_simple_summary = False
+last_half_only = False
 
-figs = bbh.analyze_choice_behavior(all_sess, n_back_hist=3, plot_simple_summary=plot_simple_summary, meta_subj=meta_subj, ind_subj=ind_subj)
-figs = bbh.analyze_trial_choice_behavior(all_sess, plot_simple_summary=plot_simple_summary, meta_subj=meta_subj, ind_subj=ind_subj)
-
-# fpah.save_fig(figs['all'][1], r'C:\Users\tanne\OneDrive\Desktop\choose_high', format='pdf')
-# fpah.save_fig(figs['all'][1], r'C:\Users\tanne\OneDrive\Desktop\choose_high', format='svg')
+vbbh.analyze_choice_behavior(all_sess, plot_simple_summary=plot_simple_summary, meta_subj=meta_subj, ind_subj=ind_subj, last_half_only=last_half_only)
+vbbh.analyze_trial_choice_behavior(all_sess, plot_simple_summary=plot_simple_summary, meta_subj=meta_subj, ind_subj=ind_subj, last_half_only=last_half_only)
 
 # %% Logistic regression of choice by past choices and trial outcomes
 separate_block_rates = True
