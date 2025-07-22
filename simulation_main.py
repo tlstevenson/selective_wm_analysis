@@ -12,12 +12,15 @@ import numpy as np
 import simulation_lib as sl
 import random
 
+
 #%% define recording length
 
 fs = 20  # sampling freq. 
 duration = 500
 total_t = np.linspace(0, duration, num=fs*duration, endpoint=False)   # for the entire duration 
 
+#%% define  save file path
+# savefile = "simulated_signals.pkl"
 
 #%% simulate signals
 
@@ -52,8 +55,11 @@ simulated_signals = sl.simulate_n_signals(n, time,
     scale
 )
 
+# save the simulated signals after generation
+# sl.save_simulated_signals(savefile, param_name, simulated_signals)
+# print(f"Simulated signals saved to {savefile}")
 
-#%%troubleshoot for specific signals 
+#%% troubleshoot for specific signals 
 # test_list = simulated_signals['0.30']
 # test_signals= test_list[192]
 
@@ -230,7 +236,8 @@ sl.plot_comparative_figures(
     fs=fs,
     ev=min_ev,
     dv=min_DV,
-    param_name=param_name
+    param_name=param_name,
+    extra_title=None
 )
 
  
@@ -253,7 +260,8 @@ sl.plot_comparative_figures(
     fs=fs,
     ev=other_ev,
     dv=min_DV,
-    param_name=param_name
+    param_name=param_name,
+    extra_title=None
 )   
 
 
@@ -321,4 +329,65 @@ for smooth_fit in [True, False]:
         else:
             print("  No fit_params found.")
             
-            
+
+#%% plotting the signal for the largest delta EV between two specific methods 
+
+# methods to compare
+method1 = "smooth_fit_True_vary_t_True"
+method2 = "smooth_fit_False_vary_t_False"
+
+max_delta_ev = -np.inf
+max_delta_info = {
+    "DV": None,
+    "index": None,
+    "method1": method1,
+    "method2": method2,
+    "ev1": None,
+    "ev2": None,
+}
+
+# Loop through all DVs and their signals
+for DV, methods_dict in ev_results.items():
+    if method1 not in methods_dict or method2 not in methods_dict:
+        continue  # Skip if either method is missing for this DV group
+
+    evs1 = methods_dict[method1]
+    evs2 = methods_dict[method2]
+    n_signals = len(evs1)
+
+    for idx in range(n_signals):
+        ev1 = evs1[idx]
+        ev2 = evs2[idx]
+        delta = abs(ev1 - ev2)
+
+        if delta > max_delta_ev:
+            max_delta_ev = delta
+            max_delta_info = {
+                "DV": DV,
+                "index": idx,
+                "method1": method1,
+                "method2": method2,
+                "ev1": ev1,
+                "ev2": ev2,
+            }
+
+# extract signal info
+DV_target = max_delta_info["DV"]
+index_target = max_delta_info["index"]
+sim_list = simulated_signals[DV_target]
+
+title = f"Largest ΔEV ({method1} vs {method2}) = {max_delta_ev:.4f} at DV = {float(DV_target):.2f}, index = {index_target}"
+
+sl.plot_comparative_figures(
+    raw_lig=sim_list[index_target]['raw_lig'],
+    raw_iso=sim_list[index_target]['raw_iso'],
+    baseline_iso=sim_list[index_target]['baseline_iso'],
+    time=total_t,
+    true_sig=sim_list[index_target]['scaled_true_sig'],
+    fs=fs,
+    ev=max_delta_ev,
+    dv=DV_target,
+    param_name=param_name,
+    suptitle_text=None,
+    extra_title=title
+)
