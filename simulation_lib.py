@@ -22,6 +22,9 @@ import warnings
 
 import json
 
+import pickle
+import os
+
 #%% load the param data calculated from actual recordings 
 with open('param_range_comb.json', 'rb') as f:
     param_range_comb = json.load(f)
@@ -135,6 +138,7 @@ def param_jitter (selected_params, SD_frac, form_name, use_custom_params=True):
     params = custom_param_range if use_custom_params else param_range_comb
     
     jit_selected_params = {}
+    jitter = np.random.normal(loc=0, scale=SD_frac)
     for param in selected_params.keys():
         df = params[form_name][param]
         prev_val = selected_params[param]
@@ -150,6 +154,7 @@ def param_jitter (selected_params, SD_frac, form_name, use_custom_params=True):
         # always make intercept be smaller for iso
         elif form_name == 'exp_linear' and param in ['param_0', 'param_3']:
             new_val = prev_val - df['SD']*np.abs(jitter)
+        elif form_name == 'exp_linear' and param == 'param_3':
         else:
             new_val = prev_val + df['SD']*jitter
        
@@ -574,7 +579,10 @@ def plot_ev_results(ev_results, DV_name, exclude_outliers=False, alpha_default=N
 
 #%% plot the signals that are processed with each of the 4 different processing steps against each other
 
-def plot_comparative_figures(raw_lig, raw_iso, baseline_iso, time, true_sig, fs=200, smooth_lpf=0.1, suptitle_text=None, ev=None, dv=None, param_name=None):
+def plot_comparative_figures(
+    raw_lig, raw_iso, baseline_iso, time, true_sig, fs=200, smooth_lpf=0.1,
+    suptitle_text=None, ev=None, dv=None, param_name=None, extra_title=None
+):
     processing_conditions = [
         (True, True),
         (True, False),
@@ -609,8 +617,15 @@ def plot_comparative_figures(raw_lig, raw_iso, baseline_iso, time, true_sig, fs=
     # === FIGURE 1: 4x2 GRID === #
     fig1, axs = plt.subplots(4, 2, figsize=(14, 12), sharex=True)
 
+    if suptitle_text is not None:
+        main_title_fig1 = suptitle_text  # Optionally override main suptitle
+
     main_title_fig1 = 'Signal Comparison Across Processing Methods' + ev_dv_str
     fig1.suptitle(main_title_fig1, fontsize=16, y=0.98)
+
+    # add extra subtitle text below main title if provided
+    if extra_title is not None:
+        fig1.text(0.5, 0.93, extra_title, ha='center', fontsize=12, color='gray')
 
     for i, res in enumerate(results):
         label = f'smooth={res['smooth_fit']}, vary_t={res['vary_t']}'
@@ -636,8 +651,15 @@ def plot_comparative_figures(raw_lig, raw_iso, baseline_iso, time, true_sig, fs=
     # === FIGURE 2: Overlayed comparisons === #
     fig2, axs2 = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
 
+    if suptitle_text is not None:
+        main_title_fig2 = suptitle_text  # Optionally override main suptitle
+
     main_title_fig2 = 'Overlayed Signal Comparisons Across Methods' + ev_dv_str
     fig2.suptitle(main_title_fig2, fontsize=16, y=0.98)
+
+    # add extra subtitle text below main title if provided
+    if extra_title is not None:
+        fig2.text(0.5, 0.93, extra_title, ha='center', fontsize=12, color='gray')
 
     for res in results:
         label = f'smooth={res['smooth_fit']}, vary_t={res['vary_t']}'
@@ -691,4 +713,40 @@ def plot_signals(processed_signals, true_sig, t, ev, fs=200, title='Signal Overv
     axs[3].legend()
 
     return fig
+
+#%% saving signals in a nested dictionary ordered by varying DV type
+
+def save_simulated_signals(filename, dv_name, simulated_signals):
+    """
+    Save simulated signals organized by DV name into a nested dict in a pickle file.
+    If file exists, it loads existing data and appends the new simulated_signals
+    under the corresponding dv_name key (keeps multiple batches).
+    """
+    # load existing data if file exists
+    if os.path.exists(filename):
+        with open(filename, 'rb') as f:
+            all_data = pickle.load(f)
+    else:
+        all_data = {}
+
+    # append new simulated signals under dv_name key
+    if dv_name not in all_data:
+        all_data[dv_name] = []
+
+    all_data[dv_name].append(simulated_signals)
+
+    # save back the updated dictionary
+    with open(filename, 'wb') as f:
+        pickle.dump(all_data, f)
+
+def load_simulated_signals(filename):
+    """
+    Load the nested dict of simulated signals keyed by DV name from a pickle file.
+    Returns empty dict if file does not exist.
+    """
+    if os.path.exists(filename):
+        with open(filename, 'rb') as f:
+            return pickle.load(f)
+    else:
+        return {}
 
