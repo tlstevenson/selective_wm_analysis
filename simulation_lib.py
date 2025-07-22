@@ -27,7 +27,7 @@ with open('param_range_comb.json', 'rb') as f:
     param_range_comb = json.load(f)
 
 a_range = [0.1,10]
-a_sd = 1.5
+a_sd = 2
 b_range = [1,1e5]
 b_sd = 100
 c_range = [-3e-6, 4e-6]
@@ -117,7 +117,7 @@ def param_selector (form_name, use_custom_params=True):   # add a way to be able
         if form_name == 'exp_linear' and param == 'param_1':  
             selected_params[param] = np.exp(np.random.uniform(np.log(limit_min), np.log(limit_max))) # pick from logged ver, then change it back using exp 
         
-        if form_name == 'exp_linear' and param == 'param_3':  
+        elif form_name == 'exp_linear' and param == 'param_3':  
             selected_params[param] = np.random.uniform(0, limit_max)
         
         else: 
@@ -148,7 +148,7 @@ def param_jitter (selected_params, SD_frac, form_name, use_custom_params=True):
         if form_name == 'exp_linear' and param == 'param_1':
             new_val = np.exp(np.log(prev_val) - np.log(df['SD'])*jitter)
         # always make intercept be smaller for iso
-        elif form_name == 'exp_linear' and param == 'param_3':
+        elif form_name == 'exp_linear' and param in ['param_0', 'param_3']:
             new_val = prev_val - df['SD']*np.abs(jitter)
         else:
             new_val = prev_val + df['SD']*jitter
