@@ -12,6 +12,7 @@ from sys_neuro_tools import plot_utils
 import hankslab_db.tonecatdelayresp_db as db
 from hankslab_db import db_access
 import beh_analysis_helpers as bah
+import fp_analysis_helpers as fpah
 
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
@@ -21,14 +22,14 @@ import re
 import seaborn as sb
 
 plot_timing = False
-exclude_instruct_from_hitrate = True
+exclude_instruct_from_hitrate = False
 plot_bail = False
 # plot_summary = True
 
 # %% LOAD DATA
 
-stage = 9
-n_back = 10
+stage = 10
+n_back = 8
 active_subjects_only = True
 
 subject_info = db_access.get_active_subj_stage('ToneCatDelayResp2')
@@ -38,16 +39,16 @@ else:
     subject_info = subject_info[subject_info['stage'] >= stage]
 
 subj_ids = subject_info['subjid']
-#subj_ids = [179]
+subj_ids = [180]
 
 # get session ids
-sess_ids = db_access.get_subj_sess_ids(subj_ids, stage_num=stage)
+sess_ids = db_access.get_subj_sess_ids(subj_ids, stage_num=stage, protocol='ToneCatDelayResp2') # , date_start='2024-07-10', date_end='2024-07-18'
 sess_ids = bah.limit_sess_ids(sess_ids, n_back)
 # sess_ids = {180: [80585, 80542, 80497, 80452, 80407, 81250, 81205, 81160, 81115, 81070, 81025, 80980, 80933, 80876]}
 
 # get trial information
-loc_db = db.LocalDB_ToneCatDelayResp()  # reload=True
-all_sess = loc_db.get_behavior_data(utils.flatten(sess_ids))
+loc_db = db.LocalDB_ToneCatDelayResp()  
+all_sess = loc_db.get_behavior_data(utils.flatten(sess_ids)) # reload=True
 # remove trials where the stimulus didn't start
 all_sess = all_sess[all_sess['trial_started']]
 
@@ -72,22 +73,22 @@ pos_bin_labels = ['{:.0f}-{:.0f}s'.format(pos_bins[i], pos_bins[i+1]) for i in r
 def get_tone_pos_bin_str(tone_starts):
     if utils.is_scalar(tone_starts):
         tone_starts = np.array([tone_starts])
-        
+
     tone_bins = [pos_bin_labels[np.where(ts >= pos_bins)[0][-1]] for ts in tone_starts]
     return ', '.join(tone_bins)
-        
+
 all_sess['tone_start_bins_str'] = all_sess['rel_tone_start_times'].apply(lambda x: get_tone_pos_bin_str(x))
 
 # reformat tone info arrays into strings to be hashable for value counting and for display
 all_sess['tone_info_str'] = all_sess['tone_info'].apply(
     lambda x: x if utils.is_scalar(x) else ', '.join(x)).apply(
     lambda x: x.replace('low ', 'Lo/').replace('high ', 'Hi/').replace('left', 'L').replace('right', 'R'))
-        
+
 # flatten different tone/side combos for ease of comparing across subjects
 def get_tone_side_pitch(tone_info, info_type):
     if utils.is_scalar(tone_info):
         tone_info = np.array([tone_info])
-    
+
     match info_type:
         case 'side':
             tone_side_pitch = ['L' if 'left' in ti else 'R' if 'right' in ti else '' for ti in tone_info]
@@ -158,7 +159,7 @@ irr_tone_volume = []
 for subj_id in subj_ids:
     subj_sess = all_sess[all_sess['subjid'] == subj_id]
 
-    variants = subj_sess['task_variant'].unique()
+    variants = np.unique(subj_sess['task_variant'])
 
     # CALCULATE HIT/BAIL METRICS
     # ignore bails and no responses
@@ -179,7 +180,7 @@ for subj_id in subj_ids:
 
     # COMPUTE METRICS SESSION BY SESSION
 
-    # PROBABILITY OF OUTCOME BASED ON PREVIOUS OUTCOME:
+    # CONDITIONAL OUTCOME PROBABILITIES:
     # p(incorrectly choose high|any high)
     # p(incorrectly choose low|any low)
     # p(choose right|previously chose right)
@@ -284,7 +285,7 @@ for subj_id in subj_ids:
         gs = GridSpec(3, 2*len(variants), figure=fig)
     else:
         fig = plt.figure(constrained_layout=True, figsize=(8*len(variants), 7))
-        gs = GridSpec(2, 2*len(variants), figure=fig, width_ratios=[2, 1])
+        gs = GridSpec(2, 2*len(variants), figure=fig, width_ratios=np.tile([2, 1], len(variants)))
 
     fig.suptitle('Psychometrics (subj {0})'.format(str(subj_id)))
 
@@ -319,7 +320,7 @@ for subj_id in subj_ids:
         def comp_p(n_dict): return n_dict['num']/n_dict['denom']
         prob_labels = ['p(wrong high|any high)', 'p(wrong low|any low)', 'p(wrong left|any left)', 'p(wrong right|any right)', 'p(right|prev right)',
                        'p(right|prev left)', 'p(repeat choice)', 'p(stay|correct)', 'p(switch|incorrect)', 'p(bail|bail)', 'p(bail|incorrect)', 'p(bail|correct)']
-        prob_values = [comp_p(n_high_any_high), comp_p(n_low_any_low), comp_p(n_left_any_left), comp_p(n_right_any_right), comp_p(n_right_prev_right), 
+        prob_values = [comp_p(n_high_any_high), comp_p(n_low_any_low), comp_p(n_left_any_left), comp_p(n_right_any_right), comp_p(n_right_prev_right),
                        comp_p(n_right_prev_left), comp_p(n_repeat_choice), comp_p(n_win_stay), comp_p(n_lose_switch), comp_p(n_bail_prev_bail),
                        comp_p(n_bail_prev_incorrect), comp_p(n_bail_prev_correct)]
 
@@ -423,48 +424,46 @@ plt.show(block=False)
 
 # This is updated code based on the above, just didn't want to rewrite all the prior stuff to make this
 
-# subj_ids = [179, 180, 182, 186, 188, 202]
-# sess_ids = db_access.get_subj_sess_ids(subj_ids, stage=8, date_end='2023-09-17')
+subj_ids = [179, 180, 182, 186, 188, 202]
+sess_ids = db_access.get_subj_sess_ids(subj_ids, stage=8, date_end='2023-09-17')
 
-# # get trial information
-# loc_db = db.LocalDB_ToneCatDelayResp()  # reload=True
-# all_sess = loc_db.get_behavior_data(utils.flatten_dict_array(sess_ids))
-# # remove trials where the stimulus didn't start
-# all_sess = all_sess[all_sess['trial_started']]
+# get trial information
+loc_db = db.LocalDB_ToneCatDelayResp()  # reload=True
+all_sess = loc_db.get_behavior_data(utils.flatten_dict_array(sess_ids))
+# remove trials where the stimulus didn't start
+all_sess = all_sess[all_sess['trial_started']]
 
-# variants = all_sess['task_variant'].unique()
+variants = all_sess['task_variant'].unique()
 
-# # format columns for ease of aggregating and display
-# # round stimulus duration
-# all_sess['stim_dur'] = all_sess['stim_dur'].round(2).apply(lambda x: str(x) + 's')
-# # reformat tone start times and high tones arrays into strings to be hashable for value counting and for display
-# all_sess['trial_type'] = all_sess['tone_info'].apply(
-#     lambda x: '1 tone' if not type(x) is list or len(x) == 1 else
-#         '{0} tones - same'.format(len(x)) if x[0] == x[-1] else '{0} tones - diff'.format(len(x)))
+# format columns for ease of aggregating and display
+# round stimulus duration
+all_sess['stim_dur'] = all_sess['stim_dur'].round(2).apply(lambda x: str(x) + 's')
+# reformat tone start times and high tones arrays into strings to be hashable for value counting and for display
+all_sess['trial_type'] = all_sess['tone_info'].apply(
+    lambda x: '1 tone' if not type(x) is list or len(x) == 1 else
+        '{0} tones - same'.format(len(x)) if x[0] == x[-1] else '{0} tones - diff'.format(len(x)))
 
-# rate_columns = ['stim_dur', 'trial_type', ['trial_type', 'stim_dur']]
-# hit_metrics_dict = {}
-# data_metrics = {}
+rate_columns = ['stim_dur', 'trial_type', ['trial_type', 'stim_dur']]
+hit_metrics_dict = {}
+data_metrics = {}
 
-# for variant in variants:
-#     var_sess = all_sess[all_sess['task_variant'] == variant]
-#     var_sess_no_bails = var_sess[(var_sess['bail'] == False) & (var_sess['choice'] != 'none')]
+for variant in variants:
+    var_sess = all_sess[all_sess['task_variant'] == variant]
+    var_sess_no_bails = var_sess[(var_sess['bail'] == False) & (var_sess['choice'] != 'none')]
 
-#     data_metrics[variant] = {}
-#     data_metrics[variant]['n_subjects'] = var_sess['subjid'].nunique()
-#     data_metrics[variant]['n_sessions'] = var_sess['sessid'].nunique()
-#     data_metrics[variant]['n_trials'] = len(var_sess_no_bails)
+    data_metrics[variant] = {}
+    data_metrics[variant]['n_subjects'] = var_sess['subjid'].nunique()
+    data_metrics[variant]['n_sessions'] = var_sess['sessid'].nunique()
+    data_metrics[variant]['n_trials'] = len(var_sess_no_bails)
 
-#     hit_metrics_dict[variant] = bah.get_rate_dict(var_sess_no_bails, 'hit', rate_columns)
+    hit_metrics_dict[variant] = bah.get_rate_dict(var_sess_no_bails, 'hit', rate_columns)
 
-# fig, axs = plt.subplots(1, 2, figsize=(8, 2.5), constrained_layout=True)
+fig, axs = plt.subplots(1, 2, figsize=(8, 2.5), constrained_layout=True)
 
-# for i, variant in enumerate(variants):
-#     ax = axs[i]
-#     ax.set_title('\'{0}\' Variant'.format(variant))
+for i, variant in enumerate(variants):
+    ax = axs[i]
+    ax.set_title('\'{0}\' Variant'.format(variant))
 
-#     bah.plot_rate_heatmap(hit_metrics_dict[variant], 'stim_dur', 'Stimulus Duration', 'trial_type', 'Trial Type', ax, fmt='.2f')
+    bah.plot_rate_heatmap(hit_metrics_dict[variant], 'stim_dur', 'Stimulus Duration', 'trial_type', 'Trial Type', ax, fmt='.2f')
 
-# plt.rcParams["svg.fonttype"] = 'none'
-# fig.savefig(path.join(utils.get_user_home(), 'downloads', 'beh_performance.svg'), format='svg', dpi=1200)
-
+fpah.save_fig(fig, fpah.get_figure_save_path('Sel WM - Two Tones', subj_ids, 'beh_performance'), format='pdf')

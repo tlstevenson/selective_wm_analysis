@@ -5,22 +5,37 @@ Script to investigate performance on the tone categorization task stage 5 - sing
 @author: tanner stevenson
 """
 
-import sys
-from os import path
-sys.path.append(path.join(path.dirname(path.abspath(__file__)), '..'))
+import init
 
+import pyutils.utils as utils
 from hankslab_db import db_access
 import hankslab_db.tonecatdelayresp_db as db
+import hankslab_db.pclicksdiscrim_db as discrim_db
+import beh_analysis_helpers as bah
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 import numpy as np
 import pandas as pd
 from sys_neuro_tools import plot_utils
 
-subject_info = db_access.get_active_subj_stage('ToneCatDelayResp2', stage=5)
-subj_ids = subject_info['subjid']
+#%%
+# subject_info = db_access.get_active_subj_stage('ToneCatDelayResp', stage=6)
+# subj_ids = subject_info['subjid']
 
-sess_ids = db_access.get_subj_sess_ids(subj_ids, 5)
+subj_ids = [414]
+sess_ids = db_access.get_subj_sess_ids(subj_ids, stage_num=4)
+sess_ids = bah.limit_sess_ids(sess_ids, 3)
+loc_db = discrim_db.LocalDB_PClicksDiscrim()
+
+sess = loc_db.get_behavior_data(utils.flatten(sess_ids))
+
+#%%
+
+# subject_info = db_access.get_active_subj_stage('ToneCatDelayResp', stage=6)
+# subj_ids = subject_info['subjid']
+
+subj_ids = [403]
+sess_ids = db_access.get_subj_sess_ids(subj_ids, stage_num=6)
 loc_db = db.LocalDB_ToneCatDelayResp()  # reload=True
 
 n_sessions_back = 3
@@ -42,8 +57,8 @@ trial_counts = {'side': {'left': [], 'right': []}}
 sequence_counts = {'bails': [], 'responses': [], 'correct': [], 'incorrect': [],
                    'right': [], 'left': [], 'tones': []}
 
-hit_metrics_dict[variant][key] = var_subj_sess_no_bails.groupby(col).agg(
-    n=('hit', 'count'), rate=('hit', 'mean')).astype({'rate': 'float64'})
+# hit_metrics_dict[variant][key] = var_subj_sess_no_bails.groupby(col).agg(
+#     n=('hit', 'count'), rate=('hit', 'mean')).astype({'rate': 'float64'})
 
 # hit rates over time
 n_back = 10
@@ -144,7 +159,7 @@ for subj_id in subj_ids:
         n_bail_prev_incorrect['denom'] += sum(prev_incorrect)
 
         # p(same tone repeating)
-        tones = ind_sess[ind_sess['bail'] == False]['response_tone'].to_numpy()
+        tones = ind_sess[ind_sess['bail'] == False]['relevant_tone_info'].to_numpy()
         n_repeat_tone['num'] += sum(tones[:-1] == tones[1:])
         n_repeat_tone['denom'] += len(tones)-1
 
@@ -192,7 +207,7 @@ for subj_id in subj_ids:
                 seq_len = 1
 
         # stimuli in a row
-        tones = ind_sess[ind_sess['bail'] == False]['response_tone'].to_numpy()
+        tones = ind_sess[ind_sess['bail'] == False]['relevant_tone_info'].to_numpy()
         seq_len = 1
         for i in range(len(tones)-1):
             if tones[i] == tones[i+1]:
@@ -346,7 +361,7 @@ n_cols = 1 if len(subj_ids) == 1 else 2
 n_rows = int(np.ceil(len(subj_ids)/n_cols))
 fig, axs = plt.subplots(n_rows, n_cols, sharey=True,
                         figsize=(8*n_cols, n_rows*2), constrained_layout=True)
-axs = axs.reshape((-1, n_cols))
+axs = np.array(axs).reshape((-1, n_cols))
 fig.suptitle('Rolling task performance (last {0} trials)'.format(n_back))
 for i, subj_id in enumerate(subj_ids):
     ax = axs[int(np.floor(i/2)), i % 2]
