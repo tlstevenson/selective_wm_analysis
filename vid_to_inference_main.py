@@ -46,11 +46,18 @@ settings_path = sleap_utils.get_settings_path() #MAKE SURE TO SET THIS (JSON MAN
 #sleap_utils_env.RunInference(vid_path, centroid_path, center_path, write_dir)
 #Run inference with environment's python version
 #command = [env_python, script_path, vid_path, single_path, centroid_path, center_path, write_dir]
-command = [env_python, script_path, settings_path]
-print(command)
+#command = [env_python, script_path, settings_path]
+#print(command)
+#commands_string = f"'conda activate sleap'; 'python {script_path} {settings_path}'"
+#print(commands_string)
 try:
-    result = subprocess.run(command, check=True, capture_output=True)
+    #setup_command = "set QT_API=pyside2" #Windows
+    #export QT_API=pyside2 #Mac/Linux
+    #setup = subprocess.run(setup_command, check=True, capture_output=True)
+    #result = subprocess.run(command, check=True, capture_output=True)
+    #result = subprocess.run(commands_string, shell=True, check=True, capture_output=True)
+    result = subprocess.run(["conda", "run", "-n", "sleap", "python", script_path, settings_path], check=True)
     print("STDOUT:", result.stdout)
 except subprocess.CalledProcessError as e:
     print(f"Subprocess failed with exit code {e.returncode}")
-    print("STDERR:", e.stderr)
+    print("STDERR:", e.stderr.decode("utf-8"))
