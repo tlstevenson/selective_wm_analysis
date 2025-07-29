@@ -29,18 +29,20 @@ path_settings = "inference_paths.json"
 #Setup instructions for changing setting file
 new_model = False #Do you have a new centroid or centered model
 change_python_loc = False #Do the environment's python location change
-new_video = False #Upload new video (will be automated by entering subject+date)
+#Old parameter should be removed
+#new_video = False #Upload new video (will be automated by entering subject+date)
 new_write_loc = False #Do you want to write it to a new directory
 json_exists = True #False if you deleted inference_paths or first run
+changed_script_loc = False #Did you move sleap_utils_env.py and need to reset
 
 
-sleap_utils.update_sleap_settings(path=None, new_model=new_model, change_python_loc = change_python_loc, new_video = new_video, new_write_loc = new_write_loc, json_exists = json_exists)
+sleap_utils.update_sleap_settings(path=None, new_model=new_model, change_python_loc = change_python_loc, new_write_loc = new_write_loc, json_exists = json_exists, changed_script_loc=changed_script_loc)
 
 #Get python location from file
 #home_dir = utils.get_user_home() #NEEDS TO BE C:\ NOT C:\\ ? FIX NECESSARY
-script_path = fsui.GetFile("Select sleap_utils_env.py")#os.path.join(home_dir, "repos\python\sys_neuro_tools\sleap_utils_env.py")
-env_python = sleap_utils.load_sleap_settings()["sleap_python"]
 sleap_settings = sleap_utils.load_sleap_settings()
+env_python = sleap_settings["sleap_python"]
+script_path = sleap_settings["script_loc"]
 settings_path = sleap_utils.get_settings_path() #MAKE SURE TO SET THIS (JSON MANAGEMENT FUNCTION)
 
 #sleap_utils_env.RunInference(vid_path, centroid_path, center_path, write_dir)
