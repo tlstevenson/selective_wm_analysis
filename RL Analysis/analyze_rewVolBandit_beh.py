@@ -37,7 +37,7 @@ subj_ids = subject_info['subjid']
 #subj_ids = [401, 218, 217, 216] #[404, 275, 217] # #[179, 188, 191, 207, 182]
 # sess_ids = {k: v for k, v in sess_ids.items() if k in subj_ids}
 
-n_back = 6
+n_back = 10
 
 #sess_ids = db_access.get_fp_data_sess_ids(protocol='ClassicRLTasks', stage_num=2, subj_ids=subj_ids)
 sess_ids = db_access.get_subj_sess_ids(subj_ids, protocol='ClassicRLTasks', stage_name=task_name)
@@ -63,7 +63,7 @@ all_sess_resp = all_sess[all_sess['choice'] != 'none']
 
 # %%
 
-ind_subj = False
+ind_subj = True
 meta_subj = True
 
 # %% TRIAL COUNTS
@@ -93,9 +93,10 @@ vbbh.count_block_lengths(all_sess_resp,  ind_subj=ind_subj, meta_subj=meta_subj)
 # %% Analyze response metrics
 
 plot_simple_summary = False
+last_half_only = False
 
-vbbh.analyze_choice_behavior(all_sess, plot_simple_summary=plot_simple_summary, meta_subj=meta_subj, ind_subj=ind_subj)
-vbbh.analyze_trial_choice_behavior(all_sess, plot_simple_summary=plot_simple_summary, meta_subj=meta_subj, ind_subj=ind_subj)
+vbbh.analyze_choice_behavior(all_sess, plot_simple_summary=plot_simple_summary, meta_subj=meta_subj, ind_subj=ind_subj, last_half_only=last_half_only)
+vbbh.analyze_trial_choice_behavior(all_sess, plot_simple_summary=plot_simple_summary, meta_subj=meta_subj, ind_subj=ind_subj, last_half_only=last_half_only)
 
 # %% Logistic regression of choice by past choices and trial outcomes
 separate_block_rates = True

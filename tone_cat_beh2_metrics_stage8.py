@@ -23,9 +23,9 @@ plot_bail = False
 
 # %% LOAD DATA
 
-stage = 8
+stage = 9
 active_subjects_only = False
-n_back = 2
+n_back = 5
 
 subject_info = db_access.get_active_subj_stage('ToneCatDelayResp2')
 if active_subjects_only:
@@ -34,10 +34,11 @@ else:
     subject_info = subject_info[subject_info['stage'] >= stage]
 
 subj_ids = subject_info['subjid']
-subj_ids = 188
+subj_ids = [180,188]
 
 # get session ids
-sess_ids = db_access.get_subj_sess_ids(subj_ids, stage_num=stage)
+sess_ids = db_access.get_fp_data_sess_ids(subj_ids=subj_ids, protocol='ToneCatDelayResp2', stage_num=stage)
+#sess_ids = db_access.get_subj_sess_ids(subj_ids, stage_num=stage, protocol='ToneCatDelayResp2')
 sess_ids = bah.limit_sess_ids(sess_ids, n_back)
 
 # get trial information

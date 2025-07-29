@@ -1189,6 +1189,9 @@ def logit_regress_side_choice(sess_data, n_back=5, separate_block_rates=True, in
         # plot regression coefficients over trials back
         fig, axs = plt.subplots(1, len(reg_groups), layout='constrained', figsize=(4*len(reg_groups), 4), sharey=True)
         fig.suptitle('Choice Regression Coefficients by Block Reward Rate ({}){}'.format(subj, plot_suffix))
+        
+        if len(reg_groups) == 1:
+            axs = np.array([axs])
 
         x_vals = np.arange(n_back)+1
 
