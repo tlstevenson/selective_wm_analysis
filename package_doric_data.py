@@ -16,11 +16,11 @@ import pathlib
 import os.path as path
 import numpy as np
 
-subj_ids = [207, 191, 180, 182, 202, 188]
-rec_date = date(2024,5,29)
+subj_ids = [207] #, 180, 191, 202, 188
+rec_date = date(2024,6,24)
 
 region_dict = {'PL': 1, 'DMS': 2} #'PL': 1, 'DMS': 2
-wavelength_dict = {490: 2, 420: 1} #420: 1, 465: 4, 490: 2,
+wavelength_dict = {490: 2, 420: 1} #420: 1, 465: 4, 490: 2, , 405: 3
 target_dt = 0.005
 new_format = True
 print_struct = False
@@ -28,14 +28,20 @@ print_attr = False
 
 comments = {s: {r: '' for r in region_dict.keys()} for s in subj_ids}
 # add comments below
-comments[191]['DMS'] = 'Patch cord not on all the way'
+# comments[191]['PL'] = 'Patch cord disconnected at some point'
 
-data_dir = 'E:/Tanner'
+data_dir = 'D:/Tanner'
 
 subj_sess_ids = db_access.get_subj_sess_ids_by_date(subj_ids, rec_date.isoformat())
 
-for subj_id in subj_ids:
+# to add individual sessions
+# subj_ids = [191]
+subj_sess_ids = {207: [101581]}
 
+for subj_id in subj_ids:
+    if not subj_id in subj_sess_ids.keys():
+        continue
+    
     if len(subj_sess_ids[subj_id]) > 1:
         print('Found {} sessions for subject {} on date {}. Please add them individually. Continuing...'.format(len(subj_sess_ids[subj_id]), subj_id, rec_date.isoformat()))
         continue
