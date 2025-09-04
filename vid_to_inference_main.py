@@ -4,6 +4,11 @@
 Created on Wed Jun 18 13:23:22 2025
 
 @author: alex
+
+READ ME: Before running this script, make sure all the videos you need to run 
+are all in the same directory. Make sure you ran sleap_vid_reformat.py with that
+directory. The naming convention (all reformatted videos end in _r.mp4) is
+necessary. 
 """
 import init
 #from pyutils import file_select_ui as fsu
@@ -21,22 +26,23 @@ print("vid_to_inference_sub.py")
 print("vid_to_inference_lib.py")
 print("inference_paths.json")
 
-subj_id=""
-vid_path=""
-#to_do: Replace with something that returns video path for given params
-
 path_settings = "inference_paths.json"
 #Setup instructions for changing setting file
 new_model = False #Do you have a new centroid or centered model
 change_python_loc = False #Do the environment's python location change
-#Old parameter should be removed
-#new_video = False #Upload new video (will be automated by entering subject+date)
-new_write_loc = False #Do you want to write it to a new directory
+new_video_dir = False #Upload new video (will be automated by entering subject+date)
+new_write_dir = False #Do you want to write it to a new directory
 json_exists = True #False if you deleted inference_paths or first run
 changed_script_loc = False #Did you move sleap_utils_env.py and need to reset
 
-
-sleap_utils.update_sleap_settings(path=None, new_model=new_model, change_python_loc = change_python_loc, new_write_loc = new_write_loc, json_exists = json_exists, changed_script_loc=changed_script_loc)
+#Rewrites the json file with new settings
+sleap_utils.update_sleap_settings(path=None, new_model=new_model, 
+                                  change_python_loc = change_python_loc, 
+                                  new_vid_dir = new_video_dir, 
+                                  new_write_dir = new_write_dir, 
+                                  json_exists = json_exists, 
+                                  changed_script_loc=changed_script_loc)
+print("SLEAP SETTINGS UPDATED: Turn everything except json_exists back to false")
 
 #Get python location from file
 #home_dir = utils.get_user_home() #NEEDS TO BE C:\ NOT C:\\ ? FIX NECESSARY
@@ -58,8 +64,11 @@ try:
     #setup = subprocess.run(setup_command, check=True, capture_output=True)
     #result = subprocess.run(command, check=True, capture_output=True)
     #result = subprocess.run(commands_string, shell=True, check=True, capture_output=True)
-    result = subprocess.run(["conda", "run", "-n", "sleap", "python", script_path, settings_path], check=True)
+    result = subprocess.run(["conda", "run", "-n", "sleapUpdated", "python", script_path, settings_path], check=True)
     print("STDOUT:", result.stdout)
 except subprocess.CalledProcessError as e:
     print(f"Subprocess failed with exit code {e.returncode}")
-    print("STDERR:", e.stderr.decode("utf-8"))
+    if e.stderr:
+        print("STDERR:", e.stderr.decode("utf-8"))
+    else:
+        print("No STDERR output.")
