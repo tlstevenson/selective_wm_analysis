@@ -28,9 +28,26 @@ rl_loc_db = rl_db.LocalDB_BasicRLTasks('twoArmBandit')
 #fp_data, implant_info = fpah.load_fp_data(wm_loc_db, sess_ids, iso_lpf=10)
 #sess_data = wm_loc_db.get_behavior_data(utils.flatten(sess_ids))
 
-sess_ids = {207: [100752]}
-fp_data, implant_info = fpah.load_fp_data(rl_loc_db, sess_ids)
-sess_data = rl_loc_db.get_behavior_data(utils.flatten(sess_ids))
+# sess_ids = {207: [100752]}
+# fp_data, implant_info = fpah.load_fp_data(rl_loc_db, sess_ids)
+# sess_data = rl_loc_db.get_behavior_data(utils.flatten(sess_ids))
+
+sess_ids = {198: [116607,117242,117442], 199: [117450]}
+fp_data, implant_info = fpah.load_fp_data(wm_loc_db, sess_ids, filter_dropout_outliers=False)
+#sess_data = wm_loc_db.get_behavior_data(utils.flatten(sess_ids))
+
+# %% View preprocessing
+
+gen_title = 'Subject {}, Session {}'
+sub_t = [0, np.inf] # [1100, 1120] #
+dec = 10
+
+for subj_id in sess_ids.keys():
+    for sess_id in sess_ids[subj_id]:
+        t = fp_data[subj_id][sess_id]['time']
+
+        fpah.view_processed_signals(fp_data[subj_id][sess_id]['processed_signals'], t, t_min=sub_t[0], t_max=sub_t[1], dec=dec,
+                                    title=gen_title.format(subj_id, sess_id))
 
 # %% define plotting routine
 
@@ -42,15 +59,17 @@ def plot_signal_details(processed_signals, t, title, lines_dict={}, dec=10, sign
 
     if signal_types is None:
         signal_types = ['dff_iso']
-
-    for region in regions:
-        fig, axs = plt.subplots(1*len(signal_types), 1, layout='constrained', figsize=[18,10], sharex=True)
-        plt.suptitle(title + ' - ' + region)
-
-        if len(signal_types) == 1:
+        
+    for signal_type in signal_types:
+        
+        fig, axs = plt.subplots(len(regions), 1, layout='constrained', figsize=[18,6*len(regions)], sharex=True)
+        if len(regions) == 1:
             axs = [axs]
+        
+        plt.suptitle(title + ' - ' + signal_type)
+    
+        for i, region in enumerate(regions):
 
-        for i, signal_type in enumerate(signal_types):
             ax = axs[i]
             ax.plot(t, processed_signals[region][signal_type][::dec], label='_')
 
@@ -60,7 +79,7 @@ def plot_signal_details(processed_signals, t, title, lines_dict={}, dec=10, sign
             for j, (name, lines) in enumerate(lines_dict.items()):
                 ax.vlines(lines, 0, 1, label=name, color=colors[j], linestyles='dashed', transform=ax.get_xaxis_transform())
 
-            ax.set_title(signal_type)
+            ax.set_title(region)
             _, y_label = fpah.get_signal_type_labels(signal_type)
             ax.set_ylabel(y_label)
             ax.set_xlabel('Time (s)')
@@ -71,7 +90,7 @@ def plot_signal_details(processed_signals, t, title, lines_dict={}, dec=10, sign
 # %% create plots
 subj_ids = list(sess_ids.keys())
 dec=2
-signal_types = ['dff_iso']
+signal_types = ['z_dff_iso']
 
 for subj_id in subj_ids:
     for sess_id in sess_ids[subj_id]:
@@ -150,7 +169,7 @@ for i, region in enumerate(regions):
 fpah.save_fig(fig, fpah.get_figure_save_path('Example Signals', '', '_'.join(regions)), format='pdf')
 
 # %%
-regions = ['PL', 'DMS']
+regions = ['PL', 'DMS', 'DLS', 'TS']
 signal_type = 'dff_iso'
 signals = [sess_fp['processed_signals'][region][signal_type] for region in regions]
 fpah.plot_power_spectra(signals, sess_fp['dec_info']['decimated_dt'], title='{}'.format(signal_type), signal_names=regions)
