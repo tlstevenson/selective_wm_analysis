@@ -41,7 +41,7 @@ import statsmodels.stats.multitest as smm
 sess_ids = db_access.get_fp_data_sess_ids(protocol='ClassicRLTasks', stage_num=2)
 subj_ids = list(sess_ids.keys())
 
-reload = True
+reload = False
 loc_db = db.LocalDB_BasicRLTasks('twoArmBandit')
 sess_data = loc_db.get_behavior_data(utils.flatten(sess_ids), reload=reload)
 implant_info = db_access.get_fp_implant_info(subj_ids)
@@ -77,7 +77,7 @@ avg_trial_std = np.std(trial_counts['trial'])
 
 
 # %% Set up variables
-signal_types = ['dff_iso', 'z_dff_iso']
+signal_types = ['dff_iso', 'z_dff_iso', 'dff_iso_baseline', 'z_dff_iso_baseline']
 alignments = [Align.cue, Align.cpoke_out, Align.resp, Align.reward]
 regions = ['DMS', 'PL']
 xlims = {Align.cue: {'DMS': [-1,2], 'PL': [-3,5]},
@@ -110,12 +110,15 @@ ignored_subjects = [182] # [179]
 
 # %% Build signal matrices aligned to alignment points
 
+tilt_t = True
+save_results = True
+
 for subj_id in subj_ids:
     for sess_id in sess_ids[subj_id]:
         if sess_id in fpah.__sess_ignore:
             continue
 
-        fp_data, _ = fpah.load_fp_data(loc_db, {subj_id: [sess_id]}, fit_baseline=False, iso_lpf=10)
+        fp_data, _ = fpah.load_fp_data(loc_db, {subj_id: [sess_id]}, iso_lpf=10, tilt_t=tilt_t)
         fp_data = fp_data[subj_id][sess_id]
 
         trial_data = sess_data[sess_data['sessid'] == sess_id]
@@ -176,12 +179,13 @@ for align in alignments:
     for region in regions:
         aligned_signals['t'][align][region] = np.arange(xlims[align][region][0], xlims[align][region][1]+dt, dt)
 
-with open(save_path, 'wb') as f:
-    pickle.dump({'aligned_signals': aligned_signals,
-                 'metadata': {'signal_types': signal_types,
-                             'alignments': alignments,
-                             'regions': regions,
-                             'xlims': xlims}}, f)
+if save_results:
+    with open(save_path, 'wb') as f:
+        pickle.dump({'aligned_signals': aligned_signals,
+                     'metadata': {'signal_types': signal_types,
+                                 'alignments': alignments,
+                                 'regions': regions,
+                                 'xlims': xlims}}, f)
 
 # %% look at cpoke in latencies by prior reward
 reward_trials = sess_data[sess_data['rewarded'] == True]
@@ -223,7 +227,7 @@ rew_hist_bins = pd.IntervalIndex.from_breaks(rew_hist_bin_edges)
 rew_hist_bin_strs = {b:'{:.0f}-{:.0f}%'.format(abs(b.left)*100, b.right*100) for b in rew_hist_bins}
 
 alignments = [Align.cue, Align.reward] #  
-signal_types = ['z_dff_iso', 'dff_iso'] # 
+signal_types = ['z_dff_iso', 'dff_iso', 'dff_iso_baseline', 'z_dff_iso_baseline'] # 
 
 norm_baseline = True
 analyze_peaks = True
@@ -398,6 +402,10 @@ for subj_id in subj_ids:
                             case Align.cue:
 
                                 stack_mat(stacked_signals[signal_type][align][region], 'rew_hist_'+bin_str, mat[rew_sel & responded,:])
+                                
+                                # for baseline subtraction
+                                stack_mat(stacked_signals[signal_type][align][region], 'rew_hist_'+bin_str+'_rewarded', mat[rew_sel & responded & rewarded,:])
+                                stack_mat(stacked_signals[signal_type][align][region], 'rew_hist_'+bin_str+'_unrewarded', mat[rew_sel & responded & ~rewarded,:])
 
                                 for side in sides:
                                     side_sel = choice_side == side
@@ -573,7 +581,7 @@ if ignore_outliers:
 
 plot_regions = ['DMS', 'PL'] # 'DMS', 'PL'
 plot_aligns = [Align.cue, Align.reward]
-plot_signals = ['z_dff_iso']
+plot_signals = ['z_dff_iso', 'z_dff_iso_baseline']
 
 # plot formatting
 plot_dec = {'DMS': 1, 'PL': 2}
@@ -699,7 +707,7 @@ for signal_type in plot_signals:
 
 plot_regions = ['DMS', 'PL'] # 
 plot_aligns = [Align.reward] # Align.cue, 
-plot_signal_types = ['z_dff_iso']
+plot_signal_types = ['z_dff_iso', 'z_dff_iso_baseline']
 
 # plot formatting
 plot_dec = {'DMS': 1, 'PL': 2}
@@ -1144,7 +1152,7 @@ regions = ['DMS', 'PL']
 region_colors = ['#53C43B', '#BB6ED8']
 plot_aligns = ['Response Cue', 'Reward Delivery']
 subj_ids = np.unique(filt_peak_metrics['subj_id'])
-plot_signals = ['dff_iso']
+plot_signals = ['dff_iso', 'dff_iso_baseline']
 
 # have same jitter for each subject
 noise = 0.075
@@ -1214,7 +1222,7 @@ parameters = ['peak_height'] # 'peak_time', 'peak_height', 'peak_width', 'decay_
 rew_hist_rew_colors = plt.cm.Reds(np.linspace(0.4,1,len(rew_hist_bins)))
 rew_hist_palette = sb.color_palette(rew_hist_rew_colors) 
 
-plot_signals = ['dff_iso']
+plot_signals = ['dff_iso', 'dff_iso_baseline']
 plot_aligns = ['reward'] #'cue', 
 plot_regions = ['DMS', 'PL']
 
@@ -2012,7 +2020,7 @@ def plot_regress_over_time(params, t, plot_cols, ax, ci_lower=None, ci_upper=Non
 
 regions = ['DMS', 'PL'] # 'DMS', 'PL'
 aligns = [Align.cue, Align.reward] # Align.cue, Align.reward
-signals = ['z_dff_iso']
+signals = ['z_dff_iso', 'z_dff_iso_baseline']
 included_subjs = np.array(subj_ids)[~np.isin(subj_ids, ignored_subjects)]
 
 n_back = 3
@@ -2247,7 +2255,7 @@ for subj_id in analyzed_subjs:
 # Create the reward history colormap
 cmap = LinearSegmentedColormap.from_list('red_to_blue', [plt.cm.Reds(0.7), plt.cm.Blues(0.7)])
 
-plot_signals = ['z_dff_iso']
+plot_signals = ['z_dff_iso', 'z_dff_iso_baseline']
 plot_regions = ['DMS', 'PL'] # 'DMS', 'PL'
 plot_aligns = [Align.reward] #  Align.cue, Align.reward
 

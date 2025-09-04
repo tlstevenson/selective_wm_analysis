@@ -6,6 +6,7 @@ Created on Mon Jul 15 10:53:01 2024
 """
 
 import init
+from hankslab_db import db_access
 import hankslab_db.basicRLtasks_db as db
 from pyutils import utils
 import numpy as np
@@ -22,7 +23,7 @@ import warnings
 
 # %% Declare methods
 
-def get_all_processed_signals(raw_lig, raw_iso, t, smooth_fit, vary_t, noise_lpf=10, smooth_lpf=0.1):
+def get_all_processed_signals(raw_lig, raw_iso, t, smooth_fit, vary_t, lig_lpf=10, iso_lpf=4, smooth_lpf=0.1):
     ''' Gets all possible processed signals and intermediaries for the given raw signals.
         Will check to see if any signals should be excluded. Also will also optionally exclude signals before and after the behavior.'''
 
@@ -39,8 +40,8 @@ def get_all_processed_signals(raw_lig, raw_iso, t, smooth_fit, vary_t, noise_lpf
     dff_iso_baseline = empty_signal.copy()
 
     # fit iso to ligand
-    denoised_lig = fp_utils.filter_signal(raw_lig, noise_lpf, fs)
-    denoised_iso = fp_utils.filter_signal(raw_iso, noise_lpf, fs)
+    denoised_lig = fp_utils.filter_signal(raw_lig, lig_lpf, fs)
+    denoised_iso = fp_utils.filter_signal(raw_iso, iso_lpf, fs)
     
     baseline_lig = fp_utils.filter_signal(raw_lig, 0.001, fs, filter_type='lowpass')
     baseline_iso = fp_utils.filter_signal(raw_iso, 0.001, fs, filter_type='lowpass')
@@ -74,13 +75,15 @@ def get_all_processed_signals(raw_lig, raw_iso, t, smooth_fit, vary_t, noise_lpf
         # baseline_corr_iso = fp_utils.filter_signal(denoised_iso, 0.001, fs, filter_type='highpass', order=1)
 
         # scale the isosbestic signal to best fit the ligand-dependent signal
-        smooth_lig = fp_utils.filter_signal(baseline_corr_lig, smooth_lpf, fs, filter_type='lowpass')
-        smooth_iso = fp_utils.filter_signal(baseline_corr_iso, smooth_lpf, fs, filter_type='lowpass')
-        _, fit_params = fp_utils.fit_signal(smooth_iso, smooth_lig, t, vary_t=False)
+        if smooth_fit:
+            smooth_lig = fp_utils.filter_signal(baseline_corr_lig, smooth_lpf, fs, filter_type='lowpass')
+            smooth_iso = fp_utils.filter_signal(baseline_corr_iso, smooth_lpf, fs, filter_type='lowpass')
+            _, fit_params = fp_utils.fit_signal(smooth_iso, smooth_lig, t, vary_t=False)
+    
+            fitted_baseline_corr_iso = fit_params['formula'](baseline_corr_iso, *fit_params['params'])
+        else:
+            fitted_baseline_corr_iso, _ = fp_utils.fit_signal(baseline_corr_iso, baseline_corr_lig, t, vary_t=False)
 
-        fitted_baseline_corr_iso = fit_params['formula'](baseline_corr_iso, *fit_params['params'])
-        
-        #fitted_baseline_corr_iso, _ = fp_utils.fit_signal(baseline_corr_iso, baseline_corr_lig, t, vary_t=False)
         # shift the fitted baseline corrected iso by the ligand baseline to get the reference
         dff_iso_baseline = ((baseline_corr_lig - fitted_baseline_corr_iso)/baseline_lig)*100
 
@@ -89,19 +92,23 @@ def get_all_processed_signals(raw_lig, raw_iso, t, smooth_fit, vary_t, noise_lpf
 
     return {'raw_lig': raw_lig,
             'raw_iso': raw_iso,
+            'filtered_lig': denoised_lig,
             'baseline_lig': baseline_lig,
             'baseline_iso': baseline_iso,
             'baseline_corr_lig': baseline_corr_lig,
             'baseline_corr_iso': baseline_corr_iso,
             'fitted_iso': fitted_iso,
             'fitted_baseline_corr_iso': fitted_baseline_corr_iso,
+            'z_dff_iso': utils.z_score(dff_iso),
             'dff_iso': dff_iso,
             'dff_iso_baseline': dff_iso_baseline}
 
 
 #%% Get fp data signals
 
-sess_ids = {202: [101965], 191: [102208, 102406]} #{179: [92692], 180: [102327]} #{202: [101965, 101912], 191: [102208, 100301, 101667]}
+sess_ids = db_access.get_fp_data_sess_ids(subj_ids=[198,199,191,202,180])
+# sess_ids = {199: [116668]}
+# sess_ids = {202: [101965], 191: [102208, 102406]} #{179: [92692], 180: [102327]} #{202: [101965, 101912], 191: [102208, 100301, 101667]}
 # sess_ids = {188: [102246]} #, 100406, 100551, 100673]}
 # subj_id = 202 # 191
 # sess_id = 101965 # 102208
@@ -121,10 +128,12 @@ fp_data = fp_data['fp_data']
 isos = np.array(['420','405'])
 ligs = np.array(['490','465'])
 
-smooth_fit = False
-vary_t = False
-noise_lpf = 10
+lig_lpf = 10
+iso_lpf = 4
 smooth_lpf = 0.1
+
+smooth_fits = [False, True]
+vary_ts = [False, True]
 
 for subj_id in sess_ids.keys():
     for sess_id in sess_ids[subj_id]:
@@ -133,10 +142,7 @@ for subj_id in sess_ids.keys():
         t = fp_data[subj_id][sess_id]['time']
         fs = 1/(t[1] - t[0])
 
-        if not 'processed_signals' in fp_data[subj_id][sess_id]:
-            fp_data[subj_id][sess_id]['processed_signals'] = {}
-            
-        fp_data[subj_id][sess_id]['processed_signals'].update({smooth_fit: {vary_t: {}}})
+        fp_data[subj_id][sess_id]['processed_signals'] = {o1: {o2: {} for o2 in [False, True]} for o1 in [False, True]}
 
         n_regions = len(raw_signals.keys())
 
@@ -158,20 +164,32 @@ for subj_id in sess_ids.keys():
             raw_lig = raw_signals[region][lig]
             raw_iso = raw_signals[region][iso]
             
-            fp_data[subj_id][sess_id]['processed_signals'][smooth_fit][vary_t][region] = get_all_processed_signals(raw_lig, raw_iso, t, smooth_fit, vary_t, noise_lpf=noise_lpf, smooth_lpf=smooth_lpf)
+                    
+            for smooth_fit in smooth_fits:
+                for vary_t in vary_ts:
+                    fp_data[subj_id][sess_id]['processed_signals'][smooth_fit][vary_t][region] = get_all_processed_signals(raw_lig, raw_iso, t, smooth_fit, vary_t, 
+                                                                                                                           lig_lpf=lig_lpf, iso_lpf=iso_lpf, smooth_lpf=smooth_lpf)
 
-# %% Plot processed signal
+# %% Plot processed signals
 
-gen_title = 'Baseline Comparison, Subject {}, Session {}, Smooth Fit: {}, Vary t: {}, Noise LPF: {}, Smooth LPF: {}'
-sub_t = [0, np.inf] # [1100, 1120] #
+gen_title = 'Baseline Comparison, Subject {}, Session {}, Smooth Fit: {}, Vary t: {}, Lig LPF: {}, Iso LPF: {}, Smooth LPF: {}'
+sub_t = [0,np.inf] # [1100, 1120] #
 dec = 10
+
+smooth_fit=False
+vary_t=False
+plot_baseline_corr=True
+filter_outliers=True
 
 for subj_id in sess_ids.keys():
     for sess_id in sess_ids[subj_id]:
         t = fp_data[subj_id][sess_id]['time']
 
-        fpah.view_processed_signals(fp_data[subj_id][sess_id]['processed_signals'][smooth_fit][vary_t], t, t_min=sub_t[0], t_max=sub_t[1], dec=dec,
-                                    title=gen_title.format(subj_id, sess_id, smooth_fit, vary_t, noise_lpf, smooth_lpf))
+        fig = fpah.view_processed_signals(fp_data[subj_id][sess_id]['processed_signals'][smooth_fit][vary_t], t, t_min=sub_t[0], t_max=sub_t[1], dec=dec,
+                                    title=gen_title.format(subj_id, sess_id, smooth_fit, vary_t, lig_lpf, iso_lpf, smooth_lpf), plot_baseline_corr=plot_baseline_corr, filter_outliers=filter_outliers)
+        
+        plt.show()
+        #plt.close(fig)
 
 
 # %% Compare dF/F for no options vs all options
@@ -185,13 +203,24 @@ for subj_id in sess_ids.keys():
         regions = list(fp_data[subj_id][sess_id]['raw_signals'].keys())
         processed_signals = fp_data[subj_id][sess_id]['processed_signals']
         
-        fig, axs = plt.subplots(len(regions), 1, figsize=(8, 3*len(regions)), layout='constrained')
+        fig, axs = plt.subplots(len(regions), 1, figsize=(12, 3*len(regions)), layout='constrained')
+        
+        if len(regions) == 1:
+            axs = [axs]
         
         for i, region in enumerate(regions):
 
             ax = axs[i]
-            ax.plot(t, processed_signals[False][True][region]['dff_iso'][::dec], label='Trad. dF/F', alpha=0.6)
-            ax.plot(t, processed_signals[True][True][region]['dff_iso'][::dec], label='Updated dF/F', alpha=0.6)
+            fig.suptitle('Subj {}, Sess {}'.format(subj_id, sess_id))
+            ax.plot(t, processed_signals[False][False][region]['dff_iso'][::dec], label='Traditional', alpha=0.5)
+            ax.plot(t, processed_signals[False][True][region]['dff_iso'][::dec], label='Vary t', alpha=0.5)
+            ax.plot(t, processed_signals[False][False][region]['dff_iso_baseline'][::dec], label='Baseline Corr Trad', alpha=0.5)
+            ax.plot(t, processed_signals[True][False][region]['dff_iso_baseline'][::dec], label='Baseline Corr Smooth Fit', alpha=0.5)
+
+            # ax.plot(t, processed_signals[True][False][region]['dff_iso'][::dec], label='Smooth Fit', alpha=0.5)
+            # ax.plot(t, processed_signals[True][True][region]['dff_iso'][::dec], label='Vary t & Smooth Fit', alpha=0.5)
+            ax.set_title(region)
+            ax.set_ylabel('dF/F')
             ax.legend(loc='upper right')
 
 # %% Process signals

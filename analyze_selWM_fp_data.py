@@ -22,8 +22,11 @@ import copy
 # %% Load behavior data
 
 # used for saving plots
-behavior_name = 'SelWM - Two Tones'
-sess_ids = db_access.get_fp_data_sess_ids(protocol='ToneCatDelayResp', stage_num=8)
+behavior_name = 'Single Tone WM'
+sess_ids = db_access.get_fp_data_sess_ids(protocol='ToneCatDelayResp', stage_num=7)
+
+# behavior_name = 'SelWM - Two Tones'
+# sess_ids = db_access.get_fp_data_sess_ids(protocol='ToneCatDelayResp', stage_num=8)
 
 # behavior_name = 'SelWM - Grow Nosepoke'
 # sess_ids = db_access.get_fp_sess_ids(protocol='ToneCatDelayResp2', stage_num=7)
@@ -35,8 +38,8 @@ sess_ids = db_access.get_fp_data_sess_ids(protocol='ToneCatDelayResp', stage_num
 # sess_ids = db_access.get_fp_sess_ids(protocol='ToneCatDelayResp2', stage_num=10)
 
 # optionally limit sessions based on subject ids
-subj_ids = [179]
-sess_ids = {k: v for k, v in sess_ids.items() if k in subj_ids}
+# subj_ids = [179]
+# sess_ids = {k: v for k, v in sess_ids.items() if k in subj_ids}
 
 loc_db = db.LocalDB_ToneCatDelayResp()
 sess_data = loc_db.get_behavior_data(utils.flatten(sess_ids)) # reload=True
@@ -84,12 +87,15 @@ sess_data['resp_delay_bin'] = sess_data['resp_delay'].apply(
 # make sure they are always sorted appropriately using categories
 sess_data['resp_delay_bin'] = pd.Categorical(sess_data['resp_delay_bin'], categories=dur_bin_labels)
 
+if 'task_variant' not in sess_data.columns:
+    sess_data['task_variant'] = 'none'
+
 
 # %% Get and process photometry data
 
 # get fiber photometry data
 reload = False
-fp_data, implant_info = fpah.load_fp_data(loc_db, sess_ids, reload=reload)
+fp_data, implant_info = fpah.load_fp_data(loc_db, sess_ids, reload=reload, tilt_t=False)
 
 # %% Observe the full signals
 
@@ -133,7 +139,7 @@ fpah.view_signal(sess_fp['processed_signals'], sess_fp['time'], 'dff_iso', title
 
 # %% Construct aligned signal matrices grouped by various factors
 
-signal_types = ['z_dff_iso'] # 'baseline_corr_iso',  'dff_iso', 'z_dff_iso', 'dff_baseline', 'z_dff_baseline', 'df_baseline_iso', 'z_df_baseline_iso'
+signal_types = ['dff_iso'] # 'baseline_corr_iso',  'dff_iso', 'z_dff_iso', 'dff_baseline', 'z_dff_baseline', 'df_baseline_iso', 'z_df_baseline_iso'
 
 all_regions = np.unique([r for s in sess_ids.keys() for r in implant_info[s].keys()])
 data_dict = {sess_id: {signal: {region: {} for region in all_regions} for signal in signal_types} for sess_id in utils.flatten(sess_ids)}
@@ -149,14 +155,18 @@ cue_poke_out_resp = copy.deepcopy(data_dict)
 poke_out_cue_resp = copy.deepcopy(data_dict)
 
 stim_types = np.array(sorted(sess_data['tone_info_str'].unique().tolist(), key=lambda x: (len(x), x)))
-tone_types = np.unique(sess_data['response_tone'])
+#tone_types = np.unique(sess_data['response_tone'])
+tone_types = np.unique(sess_data['relevant_tone_info'])
 stim_durs = np.unique(sess_data['stim_dur_bin'])
 resp_delays = np.unique(sess_data['resp_delay_bin'])
 variants = np.unique(sess_data['task_variant'])
 
 # get tone side mapping
-tone_port = sess_data[['subjid','correct_port', 'response_tone']].drop_duplicates()
-tone_port = {i: tone_port[tone_port['subjid'] == i].set_index('response_tone')['correct_port'].to_dict() for i in sess_ids.keys()}
+# tone_port = sess_data[['subjid','correct_port', 'response_tone']].drop_duplicates()
+# tone_port = {i: tone_port[tone_port['subjid'] == i].set_index('response_tone')['correct_port'].to_dict() for i in sess_ids.keys()}
+
+tone_port = sess_data[['subjid','correct_port', 'relevant_tone_info']].drop_duplicates()
+tone_port = {i: tone_port[tone_port['subjid'] == i].set_index('relevant_tone_info')['correct_port'].to_dict() for i in sess_ids.keys()}
 
 # declare settings for normalized cue to response intervals
 norm_cue_resp_bins = 200
@@ -270,7 +280,7 @@ for subj_id in sess_ids.keys():
                 align_dict[sess_id][signal_type][region]['switch_prev_miss'] = mat[prev_miss_sel & prev_choice_diff & sel,:]
 
                 for side in sides:
-                    side_type = fpah.get_implant_side_type(side, region_side)
+                    side_type = fpah.get_implant_rel_side(side, region_side)
                     side_sel = (left_sel if side == 'left' else right_sel) & sel
                     prev_side_sel = (prev_left_sel if side == 'left' else prev_right_sel) & sel
 
@@ -320,7 +330,7 @@ for subj_id in sess_ids.keys():
                     align_dict[sess_id][signal_type][region]['switch_prev_miss'] = mat[prev_miss_sel & prev_choice_diff & sel,:]
 
                     for side in sides:
-                        side_type = fpah.get_implant_side_type(side, region_side)
+                        side_type = fpah.get_implant_rel_side(side, region_side)
                         side_sel = left_sel & sel if side == 'left' else right_sel & sel
                         prev_side_sel = prev_left_sel & sel if side == 'left' else prev_right_sel & sel
 
@@ -435,7 +445,7 @@ for subj_id in sess_ids.keys():
                     align_dict[sess_id][signal_type][region]['second_miss_incong_var_'+v+'_no_db_offset'] = second_mat[miss_sel & two_tone_sel & incongruent & v_sel & no_tone_offset,:]
 
                     for tone_type in tone_types:
-                        side_type = fpah.get_implant_side_type(tone_port[subj_id][tone_type], region_side)
+                        side_type = fpah.get_implant_rel_side(tone_port[subj_id][tone_type], region_side)
                         stim_sel_first = tone_infos.apply(lambda x: x[0] == tone_type if utils.is_list(x) else x == tone_type).to_numpy() & ~bail_sel
                         stim_sel_second = tone_infos.apply(lambda x: x[1] == tone_type if (utils.is_list(x) and len(x) > 1) else False).to_numpy() & ~bail_sel
 
@@ -529,7 +539,7 @@ for subj_id in sess_ids.keys():
                 align_dict[sess_id][signal_type][region]['two_tone'] = mat[two_tone_sel & sel,:]
 
                 for side in sides:
-                    side_type = fpah.get_implant_side_type(side, region_side)
+                    side_type = fpah.get_implant_rel_side(side, region_side)
                     side_sel = (left_sel if side == 'left' else right_sel) & sel
                     prev_side_sel = (prev_left_sel if side == 'left' else prev_right_sel) & sel
 
@@ -580,7 +590,7 @@ for subj_id in sess_ids.keys():
                     align_dict[sess_id][signal_type][region]['two_tone_dur_'+dur] = mat[two_tone_sel & dur_sel,:]
 
                     for side in sides:
-                        side_type = fpah.get_implant_side_type(side, region_side)
+                        side_type = fpah.get_implant_rel_side(side, region_side)
                         side_sel = left_sel if side == 'left' else right_sel
 
                         align_dict[sess_id][signal_type][region][side_type+'_dur_'+dur] = mat[dur_sel & side_sel,:]
@@ -592,7 +602,7 @@ for subj_id in sess_ids.keys():
                     align_dict[sess_id][signal_type][region]['two_tone_delay_'+delay] = mat[two_tone_sel & delay_sel,:]
 
                     for side in sides:
-                        side_type = fpah.get_implant_side_type(side, region_side)
+                        side_type = fpah.get_implant_rel_side(side, region_side)
                         side_sel = left_sel if side == 'left' else right_sel
 
                         align_dict[sess_id][signal_type][region][side_type+'_delay_'+delay] = mat[delay_sel & side_sel,:]
@@ -653,7 +663,7 @@ for subj_id in sess_ids.keys():
                     align_dict[sess_id][signal_type][region]['two_tone'] = mat[two_tone_sel & ~bail_sel & sel,:]
 
                     for side in sides:
-                        side_type = fpah.get_implant_side_type(side, region_side)
+                        side_type = fpah.get_implant_rel_side(side, region_side)
                         side_sel = left_sel & sel if side == 'left' else right_sel & sel
                         prev_side_sel = (prev_left_sel if side == 'left' else prev_right_sel) & ~bail_sel & sel
 
@@ -705,7 +715,7 @@ for subj_id in sess_ids.keys():
                         align_dict[sess_id][signal_type][region]['dur_'+dur+'_miss'] = mat[dur_sel & miss_sel,:]
 
                         for side in sides:
-                            side_type = fpah.get_implant_side_type(side, region_side)
+                            side_type = fpah.get_implant_rel_side(side, region_side)
                             side_sel = left_sel if side == 'left' else right_sel
 
                             align_dict[sess_id][signal_type][region][side_type+'_dur_'+dur] = mat[dur_sel & side_sel,:]
@@ -721,7 +731,7 @@ for subj_id in sess_ids.keys():
                         align_dict[sess_id][signal_type][region]['delay_'+delay+'_miss'] = mat[delay_sel & miss_sel,:]
 
                         for side in sides:
-                            side_type = fpah.get_implant_side_type(side, region_side)
+                            side_type = fpah.get_implant_rel_side(side, region_side)
                             side_sel = left_sel if side == 'left' else right_sel
 
                             align_dict[sess_id][signal_type][region][side_type+'_delay_'+delay] = mat[delay_sel & side_sel,:]
@@ -805,7 +815,7 @@ for subj_id in sess_ids.keys():
                 align_dict[sess_id][signal_type][region]['two_tone'] = mat[two_tone_sel & ~bail_sel,:]
 
                 for side in sides:
-                    side_type = fpah.get_implant_side_type(side, region_side)
+                    side_type = fpah.get_implant_rel_side(side, region_side)
                     side_sel = left_sel if side == 'left' else right_sel
                     prev_side_sel = (prev_left_sel if side == 'left' else prev_right_sel) & ~bail_sel
 
@@ -886,7 +896,7 @@ for subj_id in sess_ids.keys():
                     align_dict[sess_id][signal_type][region]['dur_'+dur+'_miss'] = mat[dur_sel & miss_sel,:]
 
                     for side in sides:
-                        side_type = fpah.get_implant_side_type(side, region_side)
+                        side_type = fpah.get_implant_rel_side(side, region_side)
                         side_sel = left_sel if side == 'left' else right_sel
 
                         align_dict[sess_id][signal_type][region][side_type+'_dur_'+dur] = mat[dur_sel & side_sel,:]
@@ -902,7 +912,7 @@ for subj_id in sess_ids.keys():
                     align_dict[sess_id][signal_type][region]['delay_'+delay+'_miss'] = mat[delay_sel & miss_sel,:]
 
                     for side in sides:
-                        side_type = fpah.get_implant_side_type(side, region_side)
+                        side_type = fpah.get_implant_rel_side(side, region_side)
                         side_sel = left_sel if side == 'left' else right_sel
 
                         align_dict[sess_id][signal_type][region][side_type+'_delay_'+delay] = mat[delay_sel & side_sel,:]
@@ -930,7 +940,7 @@ for subj_id in sess_ids.keys():
                     align_dict[sess_id][signal_type][region]['switch'] = mat[prev_choice_diff[sel],:]
 
                     for side in sides:
-                        side_type = fpah.get_implant_side_type(side, region_side)
+                        side_type = fpah.get_implant_rel_side(side, region_side)
                         side_sel = left_sel[sel] if side == 'left' else right_sel[sel]
 
                         align_dict[sess_id][signal_type][region][side_type] = mat[side_sel,:]
@@ -1016,24 +1026,24 @@ for subj_id in sess_ids.keys():
 # %% Set up average plot options
 
 # modify these options to change what will be used in the average signal plots
-signal_type = 'z_dff_iso'
-signal_label = 'Z-scored ΔF/F'
-regions = ['DMS', 'PL']
-subjects = sorted(sess_ids.keys())
-filter_outliers = True
+signal_type = 'dff_iso'
+signal_label = 'ΔF/F'
+regions = ['PL', 'DMS', 'DLS', 'TS']
+subjects = [199] #sorted(sess_ids.keys())
+filter_outliers = False
 outlier_thresh = 20
 use_se = True
 ph = 3.5;
 pw = 5;
 n_reg = len(regions)
-resp_xlims = {'DMS': [-1.5,2], 'PL': [-3,10]}
-gen_xlims = {'DMS': [-1.5,1.5], 'PL': [-3,3]}
-tone_xlims = {'DMS': [-1,1], 'PL': [-2,2]}
+resp_xlims = {'DMS': [-1.5,2], 'DLS': [-1.5,2], 'TS': [-1.5,2], 'PL': [-3,10]}
+gen_xlims = {'DMS': [-1,1.5], 'DLS': [-1,1.5], 'TS': [-1,1.5], 'PL': [-3,3]}
+tone_xlims = {'DMS': [-1,1.5], 'DLS': [-1,1.5], 'TS': [-1,1.5], 'PL': [-3,3]}
 
 save_plots = True
-show_plots = False
+show_plots = True
 reward_time = None # 0.5 #
-tone_end = 0.25 # 0.3 #
+tone_end = 0.4 # 0.3 #
 
 # make this wrapper to simplify the stack command by not having to include the options declared above
 def stack_mats(mat_dict, groups=None):
@@ -1066,13 +1076,13 @@ all_dashlines = {Align.cport_on: None, Align.cpoke_in: None, Align.early_cpoke_i
                 Align.cue: None, Align.cpoke_out: None, Align.early_cpoke_out: None, Align.resp: reward_time,
                 Align.cue_poke_resp: norm_cue_poke_out_pct, Align.poke_cue_resp: norm_cue_poke_out_pct}
 
-left_left = {'DMS': {'loc': 'upper left'}, 'PL': {'loc': 'upper left'}}
-left_right = {'DMS': {'loc': 'upper left'}, 'PL': {'loc': 'upper right'}}
-right_left = {'DMS': {'loc': 'upper right'}, 'PL': {'loc': 'upper left'}}
-right_right = {'DMS': {'loc': 'upper right'}, 'PL': {'loc': 'upper right'}}
-all_legend_params = {Align.cport_on: {'DMS': {'loc': 'upper left'}, 'PL': None}, Align.cpoke_in: right_right, Align.early_cpoke_in: right_right,
-                     Align.tone: left_left, Align.cue: left_left, Align.cpoke_out: left_left, Align.early_cpoke_out: left_left,
-                     Align.resp: right_right, Align.cue_poke_resp: right_left, Align.poke_cue_resp: right_left}
+# left_left = {'DMS': {'loc': 'upper left'}, 'PL': {'loc': 'upper left'}}
+# left_right = {'DMS': {'loc': 'upper left'}, 'PL': {'loc': 'upper right'}}
+# right_left = {'DMS': {'loc': 'upper right'}, 'PL': {'loc': 'upper left'}}
+# right_right = {'DMS': {'loc': 'upper right'}, 'PL': {'loc': 'upper right'}}
+# all_legend_params = {Align.cport_on: {'DMS': {'loc': 'upper left'}, 'PL': None}, Align.cpoke_in: right_right, Align.early_cpoke_in: right_right,
+#                      Align.tone: left_left, Align.cue: left_left, Align.cpoke_out: left_left, Align.early_cpoke_out: left_left,
+#                      Align.resp: right_right, Align.cue_poke_resp: right_left, Align.poke_cue_resp: right_left}
 
 def save_plot(fig, plot_name):
     if save_plots and not plot_name is None:
@@ -1095,11 +1105,11 @@ def plot_avg_signals(align, plot_groups, group_labels, plot_titles, gen_title, x
     if dashlines is None:
         dashlines = all_dashlines[align]
 
-    if legend_params is None:
-        legend_params = all_legend_params[align]
+    # if legend_params is None:
+    #     legend_params = all_legend_params[align]
 
     fig, plotted = fpah.plot_avg_signals(plot_groups, group_labels, mat, regions, t, gen_title.format(align_title), plot_titles, x_label, signal_label, xlims_dict,
-                                dashlines=dashlines, legend_params=legend_params, group_colors=group_colors, use_se=use_se, ph=ph, pw=pw)
+                                dashlines=dashlines, group_colors=group_colors, use_se=use_se, ph=ph, pw=pw) # legend_params=legend_params, 
 
     if plotted and not gen_plot_name is None:
         save_plot(fig, gen_plot_name.format(align))
