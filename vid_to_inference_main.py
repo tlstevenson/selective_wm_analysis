@@ -64,8 +64,11 @@ try:
     #setup = subprocess.run(setup_command, check=True, capture_output=True)
     #result = subprocess.run(command, check=True, capture_output=True)
     #result = subprocess.run(commands_string, shell=True, check=True, capture_output=True)
-    result = subprocess.run(["conda", "run", "-n", "sleapUpdated", "python", script_path, settings_path], check=True)
-    print("STDOUT:", result.stdout)
+    conda_env_path = "C:/Users/hankslab/miniforge3/envs/sleapUpdated"
+    command = ["conda", "run", "-p", conda_env_path, "python", "-u", script_path, settings_path, ">", "temp_out.txt", "2>&1"]
+    #print(command)
+    subprocess.run(command, capture_output=False, shell=True)
+    #print("STDOUT:", result.stdout)
 except subprocess.CalledProcessError as e:
     print(f"Subprocess failed with exit code {e.returncode}")
     if e.stderr:
