@@ -464,3 +464,26 @@ ax.set_title('Num NaN by Node (Post-Processing)')
 ax.set_xticks(x + width, processed_dict_list[0]["node_names"])
 ax.legend(loc='upper left', ncols=3)
 plt.show()    
+
+#%%Visualize 2 frames where velocity is high
+from sys_neuro_tools import sleap_utils
+print(f'Node: options: {processed_dict_list[0]["node_names"]}')
+node = input("Select node to view: ")
+plot_node_idx = processed_dict_list[0]["node_names"].index(node)
+if plot_node_idx == None:
+    raise IndexError("Node not found in list")
+for file_idx in range(len(hdf5_file_paths)):
+    print(velocities_mask[file_idx][:,plot_node_idx])
+    indices = np.where(velocities_mask[file_idx][:,plot_node_idx].astype(bool) == True)[0]
+    for idx in indices:
+        fig, ax = plt.subplots()
+        sleap_utils.PlotSkeleton(locations[file_idx][idx,:,:], processed_dict_list[file_idx], ax=ax, skeleton_color="green")
+        sleap_utils.PlotSkeleton(locations[file_idx][idx+1,:,:], processed_dict_list[file_idx], ax=ax, skeleton_color="red")
+        plt.show()
+        
+        choice = input("View next frame(y/n): ")
+        if choice == "n":
+            break 
+    choice = input("View next video(y/n): ")
+    if choice == "n":
+        break 
