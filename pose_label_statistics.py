@@ -170,10 +170,6 @@ for file_idx in range(len(hdf5_file_paths)):
             diff_x = xf - x0
             diff_y = yf - y0
             interval_dx[i] = math.sqrt(diff_x*diff_x + diff_y*diff_y)        
-        #gap_length_dx_matrix[file_idx, node_idx, 0] = np.mean(interval_lengths)
-        #gap_length_dx_matrix[file_idx, node_idx, 1] = np.std(interval_lengths)
-        #gap_length_dx_matrix[file_idx, node_idx, 2] = np.mean(interval_dx)
-        #gap_length_dx_matrix[file_idx, node_idx, 3] = np.std(interval_dx)
         gap_length_dx[file_idx][node_idx] = interval_dx
         gap_length_f[file_idx][node_idx] = interval_lengths
 
@@ -206,7 +202,7 @@ for file_i in range(len(hdf5_file_paths)):
 # Add some text for labels, title and custom x-axis tick labels, etc.
 ax.set_ylabel("Average Length Gaps (frames)")
 ax.set_title('Average Length Gaps by Node')
-#ax.set_xticks(x + width, processed_dict_list[0]["node_names"])
+ax.set_xticks(x + width, processed_dict_list[0]["node_names"])
 ax.legend(loc='upper left', ncols=3)
 plt.show()   
         
@@ -232,7 +228,7 @@ for file_i in range(len(hdf5_file_paths)):
 # Add some text for labels, title and custom x-axis tick labels, etc.
 ax.set_ylabel("Average Change During Gaps (pixels)")
 ax.set_title('Average Change During Gaps by Node')
-#ax.set_xticks(x + width, processed_dict_list[0]["node_names"])
+ax.set_xticks(x + width, processed_dict_list[0]["node_names"])
 ax.legend(loc='upper left', ncols=3)
 plt.show()   
 
@@ -321,6 +317,7 @@ for file_i in range(len(hdf5_file_paths)):
                 pc.set_alpha(1)
 # Add some text for labels, title and custom x-axis tick labels, etc.
 ax.set_ylabel("Velocities (pixels/frame)")
+ax.set_xticks(x + width, processed_dict_list[0]["node_names"])
 ax.set_title('Velocity Distributions Per Node')
 ax.legend(loc='upper left', ncols=3)
 plt.show() 
@@ -426,6 +423,8 @@ x = np.arange(len(hdf5_file_paths))
 ax.bar(x, height=num_nose_nodes_removed, width=1, label=file_labels, color=colors)
 ax.legend(loc='upper left')
 ax.set_ylabel("Num Nose Outliers (frames)")
+ax.set_title("Outlier Detection Nose Angle")
+ax.set_xticks([])
 #%% Plot new total number of outliers per node
 
 #Apply velocity mask
