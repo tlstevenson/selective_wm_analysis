@@ -26,7 +26,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
 
-import cv2
+#import cv2
 
 #Initial file reading
 hdf5_file_path  = fsui.GetFile("Select an Analysis File")
@@ -34,13 +34,57 @@ processed_dict  = sleap_utils.process_hdf5_data(hdf5_file_path)
 print(f'Processed dict locations has shape {np.shape(processed_dict["locations"])}')
 locations=None
 min_frame=0
-max_frame=200000
+max_frame=None
+
 #Remove the dimension for multiple animals
 try:
     locations = np.squeeze(processed_dict["locations"][min_frame:max_frame])
 except:
     locations = np.squeeze(processed_dict["locations"])
     
+#Exclude leap nose values
+#Calculate average angle btw head and neck and nose and set quartile threshold
+
+head_nose_angle = np.zeros((locations.shape[0]))
+head_idx = processed_dict["node_names"].index("implant")
+nose_idx = processed_dict["node_names"].index("nose")
+neck_idx = processed_dict["node_names"].index("neck")
+for frame in range(locations.shape[0]):
+    if not np.isnan(locations[frame,nose_idx,0]) and not np.isnan(locations[frame,nose_idx,1]):
+        head_nose = locations[frame,nose_idx,:] - locations[frame,head_idx,:]
+        head_neck = locations[frame,neck_idx,:] - locations[frame,head_idx,:]
+        dot = np.dot(head_nose, head_neck)
+        #print(f"dot: {dot}")
+        norm_hno = np.linalg.norm(head_nose)
+        #print(f"hno: {norm_hno}")
+        norm_hne = np.linalg.norm(head_neck)
+        #print(f"hne: {norm_hne}")
+        ans = math.acos(dot / (norm_hno * norm_hne))
+        #print(f"ans: {ans}")
+        head_nose_angle[frame] = ans
+    else:
+        head_nose_angle[frame]=np.nan
+        
+plt.hist(head_nose_angle)
+print(np.nanmean(head_nose_angle))
+print(np.nanstd(head_nose_angle))
+
+q75, q50, q25 = np.nanpercentile(head_nose_angle, [75,50,25])
+iqr = q75 - q25
+low_bound = q25 - 3 * iqr
+high_bound = q75 + 3 * iqr
+print(f"Median statistics: {(q25, q50, q75)}")
+print(f"Bounds: {(low_bound, high_bound)}")
+
+nose_outlier_count = 0
+for frame in range(locations.shape[0]):
+    if not np.isnan(locations[frame,nose_idx,0]) and not np.isnan(locations[frame,nose_idx,1]):
+        if head_nose_angle[frame] < low_bound or head_nose_angle[frame] > high_bound:
+            locations[frame,nose_idx,0] = np.nan
+            locations[frame,nose_idx,1] = np.nan 
+            nose_outlier_count = nose_outlier_count + 1
+#Exclude remaining velocity outliers
+
 #Remove all NaN values with pandas
 for node_idx in range(locations.shape[1]):
     locations[:,node_idx,0] = pd.Series(locations[:,node_idx,0]).interpolate()

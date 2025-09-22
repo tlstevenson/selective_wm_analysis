@@ -45,26 +45,13 @@ sleap_utils.update_sleap_settings(path=None, new_model=new_model,
 print("SLEAP SETTINGS UPDATED: Turn everything except json_exists back to false")
 
 #Get python location from file
-#home_dir = utils.get_user_home() #NEEDS TO BE C:\ NOT C:\\ ? FIX NECESSARY
 sleap_settings = sleap_utils.load_sleap_settings()
 env_python = sleap_settings["sleap_python"]
 script_path = sleap_settings["script_loc"]
 settings_path = sleap_utils.get_settings_path() #MAKE SURE TO SET THIS (JSON MANAGEMENT FUNCTION)
 
-#sleap_utils_env.RunInference(vid_path, centroid_path, center_path, write_dir)
-#Run inference with environment's python version
-#command = [env_python, script_path, vid_path, single_path, centroid_path, center_path, write_dir]
-#command = [env_python, script_path, settings_path]
-#print(command)
-#commands_string = f"'conda activate sleap'; 'python {script_path} {settings_path}'"
-#print(commands_string)
 try:
-    #setup_command = "set QT_API=pyside2" #Windows
-    #export QT_API=pyside2 #Mac/Linux
-    #setup = subprocess.run(setup_command, check=True, capture_output=True)
-    #result = subprocess.run(command, check=True, capture_output=True)
-    #result = subprocess.run(commands_string, shell=True, check=True, capture_output=True)
-    conda_env_path = "C:/Users/hankslab/miniforge3/envs/sleapUpdated"
+    conda_env_path = "C:/Users/hankslab/miniforge3/envs/sleapUpdated" #MAKE SURE TO SET THIS
     command = ["conda", "run", "-p", conda_env_path, "python", "-u", script_path, settings_path, ">", "temp_out.txt", "2>&1"]
     #print(command)
     subprocess.run(command, capture_output=False, shell=True)
