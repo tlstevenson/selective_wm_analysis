@@ -16,13 +16,11 @@ from matplotlib.gridspec import GridSpec
 import numpy as np
 import pandas as pd
 
-plot_bail = False
-
 # %% LOAD DATA
 
 stage = 7
 stage_name = 'growDelay'
-n_back = 5
+n_back = 6
 active_subjects_only = False
 reload = False
 
@@ -33,10 +31,12 @@ else:
 
 #subj_ids = subject_info['subjid']
 #subj_ids = subj_ids[subj_ids != 187]
-subj_ids = [187,190,192,193,198,199,400,402]
+#subj_ids = [187,190,192,193,198,199,400,402]
+subj_ids = [402]
 
 # get session ids
 sess_ids = db_access.get_subj_sess_ids(subj_ids, stage_num=stage, protocol='ToneCatDelayResp')
+# sess_ids = db_access.get_fp_data_sess_ids(protocol='ToneCatDelayResp', stage_num=stage)
 sess_ids = bah.limit_sess_ids(sess_ids, n_back)
 
 # get trial information
@@ -69,6 +69,14 @@ delay_bin_labels = ['{:.0f}-{:.0f}s'.format(delay_bins[i], delay_bins[i+1]) for 
 
 all_sess['delay_bin'] = all_sess['delay_time'].apply(lambda x: delay_bin_labels[np.where(x >= delay_bins)[0][-1]])
 
+bin_size = 1
+dur_bin_max = np.ceil(np.max(all_sess['stim_dur'])/bin_size)
+dur_bin_min = np.floor(np.min(all_sess['stim_dur'])/bin_size)
+dur_bins = np.arange(dur_bin_min, dur_bin_max+1)*bin_size
+dur_bin_labels = ['{:.0f}-{:.0f}s'.format(dur_bins[i], dur_bins[i+1]) for i in range(len(dur_bins)-1)]
+
+all_sess['dur_bin'] = all_sess['stim_dur'].apply(lambda x: dur_bin_labels[np.where(x >= dur_bins)[0][-1]])
+
 
 # %% INVESTIGATE TRIAL TYPE COUNTS
 
@@ -76,7 +84,7 @@ all_sess['delay_bin'] = all_sess['delay_time'].apply(lambda x: delay_bin_labels[
 all_sess_no_bails = all_sess[all_sess['bail'] == False]
 
 # aggregate count tables into dictionary
-count_columns = ['correct_port', 'stim_dur', 'delay_bin', 'tone_info_str']
+count_columns = ['correct_port', 'dur_bin', 'delay_bin', 'tone_info_str']
 count_dict = bah.get_count_dict(all_sess_no_bails, 'subjid', count_columns, normalize=False)
 count_dict_pct = bah.get_count_dict(all_sess_no_bails, 'subjid', count_columns, normalize=True)
 
@@ -85,21 +93,21 @@ count_dict_pct = bah.get_count_dict(all_sess_no_bails, 'subjid', count_columns, 
 fig, axs = plt.subplots(len(count_dict.keys()), 1, layout='constrained',
                         figsize=(3+0.25*len(subj_ids), 3*len(count_dict.keys())))
 bah.plot_counts(count_dict['correct_port'], axs[0], 'Correct Port', '# Trials', 'h')
-bah.plot_counts(count_dict['stim_dur'], axs[1], 'Stimulus Duration', '# Trials', 'h')
-bah.plot_counts(count_dict['delay_time'], axs[2], 'Response Delay', '# Trials', 'h')
+bah.plot_counts(count_dict['dur_bin'], axs[1], 'Stimulus Duration', '# Trials', 'h')
+bah.plot_counts(count_dict['delay_bin'], axs[2], 'Response Delay', '# Trials', 'h')
 bah.plot_counts(count_dict['tone_info_str'], axs[3], 'Stimulus Type', '# Trials', 'h')
 
 fig, axs = plt.subplots(len(count_dict.keys()), 1, layout='constrained',
                         figsize=(3+0.25*len(subj_ids), 3*len(count_dict.keys())))
 bah.plot_counts(count_dict_pct['correct_port'], axs[0], 'Correct Port', '% Trials', 'v')
-bah.plot_counts(count_dict_pct['stim_dur'], axs[1], 'Stimulus Duration', '% Trials', 'v')
-bah.plot_counts(count_dict_pct['delay_time'], axs[2], 'Response Delay', '% Trials', 'v')
+bah.plot_counts(count_dict_pct['dur_bin'], axs[1], 'Stimulus Duration', '% Trials', 'v')
+bah.plot_counts(count_dict_pct['delay_bin'], axs[2], 'Response Delay', '% Trials', 'v')
 bah.plot_counts(count_dict_pct['tone_info_str'], axs[3], 'Stimulus Type', '% Trials', 'v')
 
 # %% LOOK AT HIT & BAIL RATES
 
-plot_bail = False
-ind_subj = False
+plot_bail = True
+ind_subj = True
 meta_subj = True
 
 # CALCULATE HIT/BAIL METRICS

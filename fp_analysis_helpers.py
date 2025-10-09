@@ -16,6 +16,7 @@ from enum import StrEnum
 import matplotlib.pyplot as plt
 import scipy.signal as sig
 from scipy.optimize import curve_fit
+import statsmodels.api as sm
 import os.path as path
 import os
 from glob import glob
@@ -31,47 +32,84 @@ import warnings
 
 # Some sessions have poor signal quality due to patch cord connection issues, so this function is used to exclude fp signal and behavioral data from analyses
 # for such sessions, specify time ranges to include in seconds
-__sess_exclusions = {96556: {'PL': [0,3871]},
-                     101853: {'PL': [0,832]},
-                     101906: {'PL': [0,1072], 'DMS': [0,2188]},
-                     102186: {'PL': [[0,349], [350,1901]]},
-                     102235: {'PL': [[0,57], [57.5,3659], [3659.5]]}, #, 'DMS': [[0,3659], [3659.5]]},
-                     101729: {'DMS': [[0,1890], [1890.5,3398]]},
-                     101926: {'PL': [0,542.5]},
-                     101872: {'PL': [[0,113.5], [114.5,1026.5]]},
-                     102053: {'PL': [0,2571], 'DMS': [0,2571]},
-                     102201: {'PL': [0,3442]},
-                     102340: {'PL': [[0,60.5], [61,1286], [1286.5]]},
-                     102394: {'PL': [0,3674], 'DMS': [0,3126.5]},
-                     101717: {'PL': [0,1993]},
-                     102620: {'PL': [[0,411], [850,1337.5]], 'DMS': [0,849.5]},
-                     102530: {'PL': [0,925], 'DMS': [0,1692]},
-                     102580: {'PL': [0,2144], 'DMS': [0,1110.5]},
-                     102614: {'PL': [[0,2072.5], [2073.5]]},
-                     102524: {'PL': [0,3718.5]},
-                     102605: {'PL': [[0,880.5], [881.5]]},
-                     101896: {'PL': [[0,442.5], [443.5,1220], [1220.5]]},
-                     102318: {'DMS': [[0,1590.5], [1591]]},
-                     102367: {'PL': [0,382], 'DMS': [0,382]}
-                    }
+# these time ranges will be analyzed independently (i.e. separate regressions and baseline calculations)
+__sess_independent_ranges = {
+    96556: {'PL': [0,3871]},
+    101853: {'PL': [0,832]},
+    101906: {'PL': [0,1072], 'DMS': [0,2188]},
+    102186: {'PL': [[0,349], [350,1901]]},
+    102235: {'PL': [[0,57], [57.5,3659], [3659.5]]}, #, 'DMS': [[0,3659], [3659.5]]},
+    101729: {'DMS': [[0,1890], [1890.5,3398]]},
+    101926: {'PL': [0,542.5]},
+    101872: {'PL': [[0,113.5], [114.5,1026.5]]},
+    102053: {'PL': [0,2571], 'DMS': [0,2571]},
+    102201: {'PL': [0,3442]},
+    102340: {'PL': [[0,60.5], [61,1286], [1286.5]]},
+    102394: {'PL': [0,3674], 'DMS': [0,3126.5]},
+    101717: {'PL': [0,1993]},
+    102620: {'PL': [[0,411], [850,1337.5]], 'DMS': [0,849.5]},
+    102530: {'PL': [0,925], 'DMS': [0,1692]},
+    102580: {'PL': [0,2144], 'DMS': [0,1110.5]},
+    102614: {'PL': [[0,2072.5], [2073.5]]},
+    102524: {'PL': [0,3718.5]},
+    102605: {'PL': [[0,880.5], [881.5]]},
+    101896: {'PL': [[0,442.5], [443.5,1220], [1220.5]]},
+    102318: {'DMS': [[0,1590.5], [1591]]},
+    102367: {'PL': [0,382], 'DMS': [0,382]},
+    116589: {'TS': [np.inf]},
+    116616: {'PL': [[0,2155.7], [2155.9]]},
+    116668: {'TS': [[0,575], [690]]},
+    117442: {'PL': [[0,1745], [1769]]},
+    119000: {'DMS': [0,1648.8], 'PL': [np.inf]},
+    119009: {'DLS': [[0,2787], [2787.5,3084.9], [3103,3267], [3279.8]]},
+    119187: {'DLS-R': [[0,3645.5], [3646.8]]},
+    119194: {'DMS': [[0,3036.6], [3036.8]]},
+    119202: {'PL': [[0,35.6], [35.8,194.2], [194.5,463.6], [463.8,1501.3], [1512.2,2050.7], [2062.5,3511], [3511.2,3754.4], [3755.1,4114.3], [4114.6]]},
+    119230: {'DLS-L': [[0,1348.8], [1349.1]]},
+    119233: {'DMS': [0,3390]},
+    119247: {'NAc': [[0,2485], [2485.1]]},
+    119255: {'DLS': [[0,3550.3], [3550.5]], 'PL': [[0,3550.3], [3550.5]]},
+    119294: {'DLS': [[0,1521.3], [1521.4]]},
+                            }
 
-__sess_ignore = [100323, 101581]
+# Some sessions have dropout artifacts on some or all channels. These will be set to nan
+__sess_dropouts = {
+    116551: {'PL': [2357.9,2358.1]},
+    116607: {'all': [3690.8,3691.1]},
+    116616: {'PL': [3445.8,3445.9]},
+    116668: {'all': [3613,3613.2]},
+    117242: {'DMS': [[1730.8,1731], [3469.5,3469.7]], 'all': [[494.2,511.8], [564.6,565.2], [568.3,568.5], [569.5,572.2], [761.5,762.2], [765.5,766.4], [771.3,772.2], [792.5,794]]},
+    117442: {'DMS': [44.9,45.2], 'all': [2386.5,2386.6]},
+    117450: {'TS': [2087.2,2087.3]},
+    117658: {'PL': [1838,1838.2]},
+    118992: {'all': [778,779.3]},
+                   }
+
+__sess_ignore = [100323, 101581, 116498, 116507]
+
+# some regions don't have signal across all sessions, so ignore them entirely
+__region_ignore = {198: ['TS']}
 
 # choose 405 over 420 when there are sessions with both for 3.6
 preferred_isos = {182: ['405', '420'], 202: ['405', '420'], 179: ['420', '405'],
                   180: ['420', '405'], 188: ['420', '405'], 191: ['420', '405'], 207: ['420', '405']}
 
+default_preferred_isos = ['420', '415', '405']
+
+default_baseline_lpf = {'PL': 0.0005}
+
 # %% Loading methods
 
-def load_fp_data(loc_db, sess_ids, isos=None, ligs=None, reload=False, fit_baseline=True, lig_lpf=10, iso_lpf=1):
+def load_fp_data(loc_db, subj_sess_ids, isos=None, ligs=None, reload=False, baseline_correction=False, band_iso_fit=True, irls_fit=False,
+                 lig_lpf=10, iso_lpf=10, baseline_lpf=0.0005, tilt_t=True, filter_dropout_outliers=False, iso_bands=[[0,0.01], [0.01,0.1], [0.1,1], [1,10]]):
     ''' Loads and processes fiber photometry data, optionally choosing which wavelengths are ligand and isosbsestic.'''
 
     start = time.perf_counter()
 
     # get fiber photometry data
-    fp_data = loc_db.get_sess_fp_data(utils.flatten(sess_ids), reload=reload)
+    fp_data = loc_db.get_sess_fp_data(utils.flatten(subj_sess_ids), reload=reload)
 
-    print('Retreived FP data for {} session(s) in {:.1f} s'.format(len(utils.flatten(sess_ids)), time.perf_counter()-start))
+    print('Retreived FP data for {} session(s) in {:.1f} s'.format(len(utils.flatten(subj_sess_ids)), time.perf_counter()-start))
 
     # separate into different dictionaries
     implant_info = fp_data['implant_info']
@@ -85,16 +123,16 @@ def load_fp_data(loc_db, sess_ids, isos=None, ligs=None, reload=False, fit_basel
     ligs = np.array(ligs)
 
     # process the signals
-    for subj_id in sess_ids.keys():
+    for subj_id in subj_sess_ids.keys():
         
         if isos is None:
-            subj_isos = preferred_isos[subj_id]
+            subj_isos = preferred_isos.get(subj_id, default_preferred_isos)
         elif not utils.is_list(isos):
             subj_isos = [isos]
             
         subj_isos = np.array(subj_isos)
         
-        for sess_id in sess_ids[subj_id]:
+        for sess_id in subj_sess_ids[subj_id]:
 
             fp_data[subj_id][sess_id]['processed_signals'] = {}
 
@@ -127,10 +165,14 @@ def load_fp_data(loc_db, sess_ids, isos=None, ligs=None, reload=False, fit_basel
 
                 fp_data[subj_id][sess_id]['processed_signals'][region] = get_all_processed_signals(raw_lig, raw_iso,
                                                                                                    t=fp_data[subj_id][sess_id]['time'],
-                                                                                                   sess_id=sess_id, region=region,
+                                                                                                   subj_id=subj_id, sess_id=sess_id, region=region,
                                                                                                    trial_start_ts=fp_data[subj_id][sess_id]['trial_start_ts'],
-                                                                                                   fit_baseline=fit_baseline,
-                                                                                                   lig_lpf=lig_lpf, iso_lpf=iso_lpf)
+                                                                                                   baseline_correction=baseline_correction,
+                                                                                                   filter_dropout_outliers=filter_dropout_outliers,
+                                                                                                   lig_lpf=lig_lpf, iso_lpf=iso_lpf, 
+                                                                                                   baseline_lpf=baseline_lpf, tilt_t=tilt_t,
+                                                                                                   band_iso_fit=band_iso_fit, iso_bands=iso_bands,
+                                                                                                   irls_fit=irls_fit)
 
                 print('  Processed FP data in {:.1f} s'.format(time.perf_counter()-start))
 
@@ -138,8 +180,9 @@ def load_fp_data(loc_db, sess_ids, isos=None, ligs=None, reload=False, fit_basel
     return fp_data, implant_info
 
 
-def get_all_processed_signals(raw_lig, raw_iso, t, sess_id=None, region=None, trial_start_ts=None, fit_baseline=False,
-                              lig_lpf=10, iso_lpf=1, filter_dropout_outliers=True):
+def get_all_processed_signals(raw_lig, raw_iso, t, subj_id=None, sess_id=None, region=None, trial_start_ts=None, baseline_correction=False,
+                              lig_lpf=10, iso_lpf=10, baseline_lpf=0.0005, filter_dropout_outliers=False, tilt_t=True, band_iso_fit=True,
+                              iso_bands=[[0,0.01], [0.01,0.1], [0.1,1], [1,10]], irls_fit=False):
     ''' Gets all possible processed signals and intermediaries for the given raw signals.
         Will check to see if any signals should be excluded. Also will also optionally exclude signals before and after the behavior.'''
 
@@ -153,11 +196,17 @@ def get_all_processed_signals(raw_lig, raw_iso, t, sess_id=None, region=None, tr
     baseline_corr_iso = empty_signal.copy()
     fitted_iso = empty_signal.copy()
     fitted_baseline_corr_iso = empty_signal.copy()
+    fitted_fband_iso = empty_signal.copy()
+    fitted_irls_iso = empty_signal.copy()
     dff_iso = empty_signal.copy()
     dff_iso_baseline = empty_signal.copy()
+    dff_iso_fband = empty_signal.copy()
+    dff_iso_irls = empty_signal.copy()
 
     # if we are to ignore this session, just leave all processed signals as nan
-    if sess_id is None or not sess_id in __sess_ignore:
+    ignore_session = (sess_id is not None and sess_id in __sess_ignore) or ((subj_id is not None and region is not None) and region in __region_ignore.get(subj_id, []))
+    
+    if not ignore_session:
 
         sr = 1/np.mean(np.diff(t))
 
@@ -170,18 +219,57 @@ def get_all_processed_signals(raw_lig, raw_iso, t, sess_id=None, region=None, tr
             end_ts_idx = len(raw_lig)
 
         # In order to exclude parts of the signal, need to pass in the time, session id, and region
-        if not sess_id is None and not region is None and sess_id in __sess_exclusions.keys() and region in __sess_exclusions[sess_id].keys():
+        if not sess_id is None and not region is None:
+            
+            # handle independent time ranges
+            if sess_id in __sess_independent_ranges and region in __sess_independent_ranges[sess_id]:
 
-            t_ranges = __sess_exclusions[sess_id][region]
+                t_ranges = __sess_independent_ranges[sess_id][region]
+    
+                if not utils.is_list(t_ranges[0]):
+                    t_ranges = [t_ranges]
+            else:
+                t_ranges = [[t[0], t[-1]]]
+                
+            # handle dropout time ranges
+            if sess_id in __sess_dropouts:
+                dropout_ranges = []
+                if region in __sess_dropouts[sess_id]:
+                    ranges = __sess_dropouts[sess_id][region]
+                    
+                    if not utils.is_list(ranges[0]):
+                        ranges = [ranges]
+                        
+                    dropout_ranges.extend(ranges)
+                    
+                if 'all' in __sess_dropouts[sess_id]:
+                    ranges = __sess_dropouts[sess_id]['all']
+                    
+                    if not utils.is_list(ranges[0]):
+                        ranges = [ranges]
+                        
+                    dropout_ranges.extend(ranges)
+                
+                if len(dropout_ranges) > 0:
 
-            if not utils.is_list(t_ranges[0]):
-                t_ranges = [t_ranges]
+                    t_drop = np.full_like(raw_lig, False, dtype=bool)
+                    for dropout_range in dropout_ranges:
+                        t_sel = (t > dropout_range[0]) & (t < dropout_range[1])
+                        t_drop[t_sel] = True
+                    
+                    raw_lig[t_drop] = np.nan
+                    raw_iso[t_drop] = np.nan
 
         else:
             t_ranges = [[t[0], t[-1]]]
 
         # process each time range independently
         for t_range in t_ranges:
+            
+            # if the range starts at infinity, that means ignore the whole signal
+            if t_range[0] == np.inf:
+                continue
+            
             start_idx = np.argmin(np.abs(t - t_range[0]))
             if len(t_range) == 1:
                 # go to the end of the signal
@@ -201,9 +289,9 @@ def get_all_processed_signals(raw_lig, raw_iso, t, sess_id=None, region=None, tr
             if filter_dropout_outliers:
                 # since dropouts have a high frequency component, use a highpass filter to find any outliers
                 hpf_lig = utils.z_score(fp_utils.filter_signal(sub_raw_lig, 50, sr, filter_type='highpass'))
-                hpf_iso = utils.z_score(fp_utils.filter_signal(sub_raw_iso, 50, sr, filter_type='highpass'))
-                lig_sel = np.abs(hpf_lig) >= 15
-                iso_sel = np.abs(hpf_iso) >= 15
+                hpf_iso = utils.z_score(fp_utils.filter_signal(sub_raw_iso, 100, sr, filter_type='highpass'))
+                lig_sel = np.abs(hpf_lig) >= 50
+                iso_sel = np.abs(hpf_iso) >= 50
                 drop_sel = lig_sel | iso_sel
 
                 filtered = False
@@ -228,15 +316,20 @@ def get_all_processed_signals(raw_lig, raw_iso, t, sess_id=None, region=None, tr
                     filtered = True
 
                 if filtered:
-                    print('Session {} had dropout outliers in {}'.format(sess_id, region))
-                    # fig, axs = plt.subplots(2,1, sharex=True)
-                    # axs[0].plot(t[start_idx:end_idx], sub_raw_lig)
-                    # axs[0].plot(t[start_idx:end_idx], outlier_filtered_lig)
-                    # axs[1].plot(t[start_idx:end_idx], sub_raw_iso)
-                    # axs[1].plot(t[start_idx:end_idx], outlier_filtered_iso)
+                    print('Session {} had dropout/high frequency outliers in {}'.format(sess_id, region))
+                    # fig, axs = plt.subplots(2,2, sharex=True)
+                    # axs[0,0].plot(t[start_idx:end_idx], sub_raw_lig)
+                    # axs[0,0].plot(t[start_idx:end_idx], outlier_filtered_lig)
+                    # axs[1,0].plot(t[start_idx:end_idx], sub_raw_iso)
+                    # axs[1,0].plot(t[start_idx:end_idx], outlier_filtered_iso)
+                    
+                    # axs[0,1].plot(t[start_idx:end_idx], hpf_lig)
+                    # axs[0,1].axhline(-50, linestyle='--', color='k')
+                    # axs[0,1].axhline(50, linestyle='--', color='k')
+                    # axs[1,1].plot(t[start_idx:end_idx], hpf_iso)
+                    # axs[1,1].axhline(-50, linestyle='--', color='k')
+                    # axs[1,1].axhline(50, linestyle='--', color='k')
                     # fig.suptitle('Session {} - {}'.format(sess_id, region))
-
-                    # e=1
 
                 sub_raw_lig = outlier_filtered_lig
                 sub_raw_iso = outlier_filtered_iso
@@ -246,7 +339,7 @@ def get_all_processed_signals(raw_lig, raw_iso, t, sess_id=None, region=None, tr
             sub_filt_iso = fp_utils.filter_signal(sub_raw_iso, iso_lpf, sr)
 
             # isosbestic correction
-            sub_dff_iso, sub_fitted_iso, _ = fp_utils.calc_iso_dff(sub_filt_lig, sub_filt_iso, t[start_idx:end_idx])
+            sub_dff_iso, sub_fitted_iso, _ = fp_utils.calc_iso_dff(sub_filt_lig, sub_filt_iso, t[start_idx:end_idx], vary_t=tilt_t)
 
             sub_empty_signal = np.full_like(sub_raw_lig, np.nan)
             sub_baseline_lig = sub_empty_signal.copy()
@@ -255,26 +348,53 @@ def get_all_processed_signals(raw_lig, raw_iso, t, sess_id=None, region=None, tr
             sub_baseline_corr_iso = sub_empty_signal.copy()
             sub_fitted_baseline_iso = sub_empty_signal.copy()
             sub_dff_iso_baseline = sub_empty_signal.copy()
+            sub_fitted_fband_iso = sub_empty_signal.copy()
+            sub_dff_iso_fband = sub_empty_signal.copy()
+            sub_fitted_irls_iso = sub_empty_signal.copy()
+            sub_dff_iso_irls = sub_empty_signal.copy()
 
-            if fit_baseline:
+            if baseline_correction:
 
-                # Try hybrid approach with baseline correction to approximate photobleaching before calculating dF/F
-                try:
-                    sub_baseline_lig, _ = fp_utils.fit_baseline(sub_filt_lig)
-                    sub_baseline_iso, _ = fp_utils.fit_baseline(sub_filt_iso)
+                # # Try hybrid approach with baseline correction to approximate photobleaching before calculating dF/F
+                # try:
+                #     sub_baseline_lig, _ = fp_utils.fit_baseline(sub_filt_lig)
+                #     sub_baseline_iso, _ = fp_utils.fit_baseline(sub_filt_iso)
 
-                    # first subtract the baseline fit to each signal to correct for photobleaching
-                    sub_baseline_corr_lig = sub_filt_lig - sub_baseline_lig
-                    sub_baseline_corr_iso = sub_filt_iso - sub_baseline_iso
+                #     # first subtract the baseline fit to each signal to correct for photobleaching
+                #     sub_baseline_corr_lig = sub_filt_lig - sub_baseline_lig
+                #     sub_baseline_corr_iso = sub_filt_iso - sub_baseline_iso
 
-                    # scale the isosbestic signal to best fit the ligand-dependent signal
-                    sub_fitted_baseline_iso, _ = fp_utils.fit_signal(sub_baseline_corr_iso, sub_baseline_corr_lig, t[start_idx:end_idx])
+                #     # scale the isosbestic signal to best fit the ligand-dependent signal
+                #     sub_fitted_baseline_iso, _ = fp_utils.fit_signal(sub_baseline_corr_iso, sub_baseline_corr_lig, t[start_idx:end_idx])
 
-                    # then use the baseline corrected signals to calculate dF, which is a residual fluorescence
-                    sub_dff_iso_baseline = ((sub_baseline_corr_lig - sub_fitted_baseline_iso)/sub_baseline_lig)*100
+                #     # then use the baseline corrected signals to calculate dF, which is a residual fluorescence
+                #     sub_dff_iso_baseline = ((sub_baseline_corr_lig - sub_fitted_baseline_iso)/sub_baseline_lig)*100
 
-                except RuntimeError as error:
-                    print(str(error))
+                # except RuntimeError as error:
+                #     print(str(error))
+                
+                sub_baseline_lig = fp_utils.filter_signal(sub_raw_lig, baseline_lpf, sr)
+                sub_baseline_iso = fp_utils.filter_signal(sub_raw_iso, baseline_lpf, sr)
+                
+                sub_baseline_corr_lig = sub_filt_lig - sub_baseline_lig
+                sub_baseline_corr_iso = sub_filt_iso - sub_baseline_iso
+
+                # scale the isosbestic signal to best fit the ligand-dependent signal
+                sub_fitted_baseline_iso, _ = fp_utils.fit_signal(sub_baseline_corr_iso, sub_baseline_corr_lig, t[start_idx:end_idx], vary_t=False)
+
+                sub_dff_iso_baseline = ((sub_baseline_corr_lig - sub_fitted_baseline_iso)/sub_baseline_lig)*100
+                
+            if band_iso_fit:
+                sub_fitted_fband_iso, _ = fp_utils.fit_signal(sub_filt_iso, sub_filt_lig, t[start_idx:end_idx], 
+                                                              vary_t=tilt_t, fit_bands=True, f_bands=iso_bands)
+                sub_dff_iso_fband = ((sub_filt_lig - sub_fitted_fband_iso)/sub_fitted_fband_iso) * 100
+                
+            if irls_fit:
+                not_nans = ~np.isnan(sub_filt_lig)
+                sub_fitted_irls_iso = np.full_like(sub_filt_lig, np.nan)
+                sub_fitted_irls_iso[not_nans] = sm.RLM(sub_filt_lig[not_nans], sm.add_constant(sub_filt_iso[not_nans]), M=sm.robust.norms.TukeyBiweight(c=3)).fit().fittedvalues
+                sub_dff_iso_irls = ((sub_filt_lig - sub_fitted_irls_iso)/sub_fitted_irls_iso) * 100
+                
 
             filtered_lig[start_idx:end_idx] = sub_filt_lig
             filtered_iso[start_idx:end_idx] = sub_filt_iso
@@ -284,8 +404,13 @@ def get_all_processed_signals(raw_lig, raw_iso, t, sess_id=None, region=None, tr
             baseline_corr_iso[start_idx:end_idx] = sub_baseline_corr_iso
             fitted_iso[start_idx:end_idx] = sub_fitted_iso
             fitted_baseline_corr_iso[start_idx:end_idx] = sub_fitted_baseline_iso
+            fitted_fband_iso[start_idx:end_idx] = sub_fitted_fband_iso
             dff_iso[start_idx:end_idx] = sub_dff_iso
             dff_iso_baseline[start_idx:end_idx] = sub_dff_iso_baseline
+            dff_iso_fband[start_idx:end_idx] = sub_dff_iso_fband
+            fitted_irls_iso[start_idx:end_idx] = sub_fitted_irls_iso
+            dff_iso_irls[start_idx:end_idx] = sub_dff_iso_irls
+
 
     return {'raw_lig': raw_lig,
             'raw_iso': raw_iso,
@@ -297,10 +422,15 @@ def get_all_processed_signals(raw_lig, raw_iso, t, sess_id=None, region=None, tr
             'baseline_corr_iso': baseline_corr_iso,
             'fitted_iso': fitted_iso,
             'fitted_baseline_corr_iso': fitted_baseline_corr_iso,
+            'fitted_fband_iso': fitted_fband_iso,
+            'fitted_irls_iso': fitted_irls_iso,
             'dff_iso': dff_iso,
             'z_dff_iso': utils.z_score(dff_iso),
             'dff_iso_baseline': dff_iso_baseline,
-            'z_dff_iso_baseline': utils.z_score(dff_iso_baseline)}
+            'z_dff_iso_baseline': utils.z_score(dff_iso_baseline),
+            'dff_iso_fband': dff_iso_fband,
+            'z_dff_iso_fband': utils.z_score(dff_iso_fband),
+            'dff_iso_irls': dff_iso_irls}
 
 # %% Analysis Methods
 exp_decay_form = lambda t, a, tau, b: a*np.exp(-t/tau) + b
@@ -533,7 +663,7 @@ def calc_iqr_multiple(table, group_by_cols, parameters):
 
 # %% Plotting Methods
 
-def view_processed_signals(processed_signals, t, dec=10, title='Full Signals', vert_marks=[], plot_baseline_corr=False,
+def view_processed_signals(processed_signals, t, dec=10, title='Full Signals', vert_marks=[], plot_baseline_corr=True, plot_fband=True, plot_irls=False,
                            filter_outliers=False, pos_outlier_zthresh=15, neg_outlier_zthresh=-5, t_min=0, t_max=np.inf):
 
     if utils.is_dict(list(processed_signals.values())[0]):
@@ -553,47 +683,60 @@ def view_processed_signals(processed_signals, t, dec=10, title='Full Signals', v
     t[t_max_idx:] = np.nan
 
     # plot the raw signals and their baseline fits, baseline corrected signals, raw ligand and fitted iso, dff and baseline corrected df
-    fig, axs = plt.subplots(2*n_panel_stacks, 2, layout='constrained', figsize=[20,6*n_panel_stacks], sharex=True)
-    plt.suptitle(title)
-
-    if len(vert_marks) > 0:
-        vert_marks = vert_marks[(vert_marks > t_min) & (vert_marks < t_max)]
-
-    for i, (sub_key, sub_signals) in enumerate(processed_signals.items()):
-
-        # remove outliers in z-score space
-        if filter_outliers:
-            filt_sel = (sub_signals['z_dff_iso'][::dec] > neg_outlier_zthresh) & (sub_signals['z_dff_iso'][::dec] < pos_outlier_zthresh)
-        else:
-            filt_sel = np.full(t.shape, True)
-
-        filt_t = t[filt_sel]
-
-        gen_sub_title = sub_key + ' {}' if sub_key != 'temp' else '{}'
-
-        # plot raw signals and baseline
-        ax = axs[i,0]
-        l3 = ax.plot(t, sub_signals['raw_iso'][::dec], label='Raw Iso', color='C1', alpha=0.5)
-        if plot_baseline_corr:
+    if plot_baseline_corr:
+        fig, axs = plt.subplots(n_panel_stacks, 4, layout='constrained', figsize=[36,4*n_panel_stacks], sharex=True)
+        if n_panel_stacks == 1:
+            axs = axs[None,:]
+            
+        plt.suptitle(title)
+    
+        if len(vert_marks) > 0:
+            vert_marks = vert_marks[(vert_marks > t_min) & (vert_marks < t_max)]
+    
+        for i, (sub_key, sub_signals) in enumerate(processed_signals.items()):
+    
+            # remove outliers in z-score space
+            if filter_outliers:
+                filt_sel = (sub_signals['z_dff_iso'][::dec] > neg_outlier_zthresh) & (sub_signals['z_dff_iso'][::dec] < pos_outlier_zthresh)
+            else:
+                filt_sel = np.full(t.shape, True)
+    
+            filt_t = t[filt_sel]
+    
+            gen_sub_title = sub_key + ' {}' if sub_key != 'temp' else '{}'
+    
+            # plot raw signals and baseline
+            ax = axs[i,0]
+            l3 = ax.plot(t, sub_signals['raw_iso'][::dec], label='Raw Iso', color='C1', alpha=0.5)
             l4 = ax.plot(t, sub_signals['baseline_iso'][::dec], '--', label='Iso Baseline', color='C1')
-        l1 = ax.plot(t, sub_signals['raw_lig'][::dec], label='Raw Lig', color='C0', alpha=0.5)
-        if plot_baseline_corr:
+            l1 = ax.plot(t, sub_signals['raw_lig'][::dec], label='Raw Lig', color='C0', alpha=0.5)
             l2 = ax.plot(t, sub_signals['baseline_lig'][::dec], '--', label='Lig Baseline', color='C0')
-        plot_utils.plot_dashlines(vert_marks, ax=ax)
-        ax.set_title(gen_sub_title.format('Raw Signals'))
-        ax.set_xlabel('Time (s)')
-        ax.set_ylabel('Fluorescent Signal (V)')
-        ax.xaxis.set_tick_params(which='both', labelbottom=True)
-        if plot_baseline_corr:
+            plot_utils.plot_dashlines(vert_marks, ax=ax)
+            ax.set_title(gen_sub_title.format('Raw Signals'))
+            ax.set_xlabel('Time (s)')
+            ax.set_ylabel('Fluorescent Signal (V)')
+            ax.xaxis.set_tick_params(which='both', labelbottom=True)
             ls = [l1[0], l2[0], l3[0], l4[0]]
-        else:
-            ls = [l1[0], l3[0]]
-        labs = [l.get_label() for l in ls]
-        ax.legend(ls, labs, loc='center right')
-
-        # plot baseline corrected signals
-        if plot_baseline_corr:
+            labs = [l.get_label() for l in ls]
+            ax.legend(ls, labs, loc='center right')
+    
+            # plot raw ligand and fitted iso
             ax = axs[i,1]
+            ax.plot(filt_t, sub_signals['filtered_lig'][::dec][filt_sel], label='Filtered Lig', alpha=0.5)
+            ax.plot(filt_t, sub_signals['fitted_iso'][::dec][filt_sel], label='Fitted Iso', alpha=0.5)
+            if plot_fband:
+                ax.plot(filt_t, sub_signals['fitted_fband_iso'][::dec][filt_sel], label='Fitted F-band Iso', alpha=0.5)
+            if plot_irls:
+                ax.plot(filt_t, sub_signals['fitted_irls_iso'][::dec][filt_sel], label='Fitted IRLS Iso', alpha=0.5)
+            plot_utils.plot_dashlines(vert_marks, ax=ax)
+            ax.set_title(gen_sub_title.format('Iso ΔF/F Signals'))
+            ax.set_xlabel('Time (s)')
+            ax.set_ylabel('Fluorescent Signal (V)')
+            ax.xaxis.set_tick_params(which='both', labelbottom=True)
+            ax.legend(loc='upper right')
+            
+            # plot baseline corrected signals
+            ax = axs[i,2]
             ax.plot(filt_t, sub_signals['baseline_corr_lig'][::dec][filt_sel], label='Baseline Corrected Lig', alpha=0.5)
             ax.plot(filt_t, sub_signals['baseline_corr_iso'][::dec][filt_sel], label='Baseline Corrected Iso', alpha=0.5)
             ax.plot(filt_t, sub_signals['fitted_baseline_corr_iso'][::dec][filt_sel], label='Fitted Baseline Corrected Iso', alpha=0.5)
@@ -603,34 +746,80 @@ def view_processed_signals(processed_signals, t, dec=10, title='Full Signals', v
             ax.set_ylabel('Fluorescent Signal (dV)')
             ax.xaxis.set_tick_params(which='both', labelbottom=True)
             ax.legend(loc='upper right')
+    
+            # plot iso dFF and baseline corrected dFF
+            ax = axs[i,3]
+            ax.plot(filt_t, sub_signals['dff_iso'][::dec][filt_sel], label='Iso ΔF/F', alpha=0.5)
+            ax.plot(filt_t, sub_signals['dff_iso_baseline'][::dec][filt_sel], label='Baseline Corrected ΔF/F', alpha=0.5)
+            plot_utils.plot_dashlines(vert_marks, ax=ax)
+            ax.set_title(gen_sub_title.format('Iso Corrected Ligand Signals'))
+            ax.set_xlabel('Time (s)')
+            ax.set_ylabel('% ΔF/F')
+            ax.xaxis.set_tick_params(which='both', labelbottom=True)
+            if plot_fband:
+                ax.plot(filt_t, sub_signals['dff_iso_fband'][::dec][filt_sel], label='F-band ΔF/F', alpha=0.5)
+            if plot_irls:
+                ax.plot(filt_t, sub_signals['dff_iso_irls'][::dec][filt_sel], label='IRLS ΔF/F', alpha=0.5)
+            ax.legend(loc='upper right')
+            
+    else:
+        fig, axs = plt.subplots(n_panel_stacks, 3, layout='constrained', figsize=[27,4*n_panel_stacks], sharex=True)
+        if n_panel_stacks == 1:
+            axs = axs[None,:]
+        plt.suptitle(title)
 
-        # plot raw ligand and fitted iso
-        ax = axs[n_panel_stacks+i,0]
-        ax.plot(filt_t, sub_signals['raw_lig'][::dec][filt_sel], label='Raw Lig', alpha=0.5)
-        ax.plot(filt_t, sub_signals['fitted_iso'][::dec][filt_sel], label='Fitted Iso', alpha=0.5)
-        plot_utils.plot_dashlines(vert_marks, ax=ax)
-        ax.set_title(gen_sub_title.format('Iso ΔF/F Signals'))
-        ax.set_xlabel('Time (s)')
-        ax.set_ylabel('Fluorescent Signal (V)')
-        ax.xaxis.set_tick_params(which='both', labelbottom=True)
-        ax.legend(loc='upper right')
+        if len(vert_marks) > 0:
+            vert_marks = vert_marks[(vert_marks > t_min) & (vert_marks < t_max)]
 
-        # plot iso dFF and baseline corrected dFF
-        ax = axs[n_panel_stacks+i,1]
-        if plot_baseline_corr:
-            l2 = ax.plot(filt_t, sub_signals['dff_iso_baseline'][::dec][filt_sel], label='Baseline Corrected ΔF/F', color='C1', alpha=0.5)
-        l1 = ax.plot(filt_t, sub_signals['dff_iso'][::dec][filt_sel], label='Iso ΔF/F', color='C0', alpha=0.5)
-        plot_utils.plot_dashlines(vert_marks, ax=ax)
-        ax.set_title(gen_sub_title.format('Iso Corrected Ligand Signals'))
-        ax.set_xlabel('Time (s)')
-        ax.set_ylabel('% ΔF/F')
-        ax.xaxis.set_tick_params(which='both', labelbottom=True)
-        if plot_baseline_corr:
+        for i, (sub_key, sub_signals) in enumerate(processed_signals.items()):
+
+            # remove outliers in z-score space
+            if filter_outliers:
+                filt_sel = (sub_signals['z_dff_iso'][::dec] > neg_outlier_zthresh) & (sub_signals['z_dff_iso'][::dec] < pos_outlier_zthresh)
+            else:
+                filt_sel = np.full(t.shape, True)
+
+            filt_t = t[filt_sel]
+
+            gen_sub_title = sub_key + ' {}' if sub_key != 'temp' else '{}'
+
+            # plot raw signals and baseline
+            ax = axs[i,0]
+            l2 = ax.plot(t, sub_signals['raw_iso'][::dec], label='Raw Iso', color='C1', alpha=0.5)
+            l1 = ax.plot(t, sub_signals['raw_lig'][::dec], label='Raw Lig', color='C0', alpha=0.5)
+            plot_utils.plot_dashlines(vert_marks, ax=ax)
+            ax.set_title(gen_sub_title.format('Raw Signals'))
+            ax.set_xlabel('Time (s)')
+            ax.set_ylabel('Fluorescent Signal (V)')
+            ax.xaxis.set_tick_params(which='both', labelbottom=True)
             ls = [l1[0], l2[0]]
-        else:
-            ls = [l1[0]]
-        labs = [l.get_label() for l in ls]
-        ax.legend(ls, labs, loc='upper right')
+            labs = [l.get_label() for l in ls]
+            ax.legend(ls, labs, loc='center right')
+
+            # plot raw ligand and fitted iso
+            ax = axs[i,1]
+            ax.plot(filt_t, sub_signals['filtered_lig'][::dec][filt_sel], label='Filtered Lig', alpha=0.5)
+            ax.plot(filt_t, sub_signals['fitted_iso'][::dec][filt_sel], label='Fitted Iso', alpha=0.5)
+            if plot_fband:
+                ax.plot(filt_t, sub_signals['fitted_fband_iso'][::dec][filt_sel], label='Fitted F-band Iso', alpha=0.5)
+            plot_utils.plot_dashlines(vert_marks, ax=ax)
+            ax.set_title(gen_sub_title.format('Iso ΔF/F Signals'))
+            ax.set_xlabel('Time (s)')
+            ax.set_ylabel('Fluorescent Signal (V)')
+            ax.xaxis.set_tick_params(which='both', labelbottom=True)
+            ax.legend(loc='upper right')
+
+            # plot iso dFF
+            ax = axs[i,2]
+            ax.plot(filt_t, sub_signals['dff_iso'][::dec][filt_sel], label='Iso ΔF/F', alpha=0.5)
+            if plot_fband:
+                l3 = ax.plot(filt_t, sub_signals['dff_iso_fband'][::dec][filt_sel], label='F-band ΔF/F', alpha=0.5)
+            plot_utils.plot_dashlines(vert_marks, ax=ax)
+            ax.set_title(gen_sub_title.format('ΔF/F Signal'))
+            ax.set_xlabel('Time (s)')
+            ax.set_ylabel('% ΔF/F')
+            ax.xaxis.set_tick_params(which='both', labelbottom=True)
+            ax.legend(loc='upper right')
 
     return fig
 
@@ -745,7 +934,8 @@ def plot_aligned_signals(signal_dict, t, title, sub_titles_dict, x_label, y_labe
 
 
 def plot_avg_signals(plot_groups, group_labels, data_mat_dict, regions, t, title, plot_titles, x_label, y_label,
-                     xlims_dict=None, dashlines=None, legend_params=None, use_se=True, group_colors=None, ph=3.5, pw=5):
+                     xlims_dict=None, dashlines=None, x_ticks=None, plot_x0=True, legend_params=None, use_se=True, 
+                     group_colors=None, ph=3.5, pw=5, implant_info=None):
 
     def calc_error(mat):
         if use_se:
@@ -767,38 +957,65 @@ def plot_avg_signals(plot_groups, group_labels, data_mat_dict, regions, t, title
     fig.suptitle(title)
 
     for i, region in enumerate(regions):
+        
+        if not region in data_mat_dict:
+            continue
+        
+        if type(t) is dict:
+            # some regions have a side identifier for bilateral implants of the same side
+            reg_key = [k for k in t.keys() if k in region][0]
+            reg_t = t[reg_key]
+        else:
+            reg_t = t
 
         # limit x axis like this so that the y is scaled to what is plotted
         if xlims_dict is None:
-            t_sel = np.full(t.shape, True)
+            t_sel = np.full(reg_t.shape, True)
         else:
-            t_sel = (t > xlims_dict[region][0]) & (t < xlims_dict[region][1])
+            # some regions have a side identifier for bilateral implants of the same side
+            reg_key = [k for k in xlims_dict.keys() if k in region][0]
+            t_sel = (reg_t > xlims_dict[reg_key][0]) & (reg_t < xlims_dict[reg_key][1])
 
         for j, (plot_group, plot_title) in enumerate(zip(plot_groups, plot_titles)):
             ax = axs[i,j]
-            ax.set_title(region + ' ' + plot_title)
+            if implant_info is None:
+                ax.set_title(region + ' ' + plot_title)
+            else:
+                ax.set_title('{} ({}) {}'.format(region, implant_info[region]['side'], plot_title))
+                
             if not dashlines is None:
                 plot_utils.plot_dashlines(dashlines, ax=ax)
 
-            for k, group in enumerate(plot_group):
-                if group in data_mat_dict[region]:
-                    act = data_mat_dict[region][group]
-                    if len(act) > 0:
-                        plotted = True
-                        if not group_colors is None:
-                            plot_utils.plot_psth(t[t_sel], np.nanmean(act, axis=0)[t_sel], calc_error(act)[t_sel], ax, label=group_labels[group], color=group_colors[k])
-                        else:
-                            plot_utils.plot_psth(t[t_sel], np.nanmean(act, axis=0)[t_sel], calc_error(act)[t_sel], ax, label=group_labels[group])
+            with warnings.catch_warnings():
+                # runtime warnings are thrown when a slice in the whole act matrix in nan, which can happen
+                warnings.simplefilter('ignore', RuntimeWarning)
+                
+                for k, group in enumerate(plot_group):
+                    if group in data_mat_dict[region]:
+                        act = data_mat_dict[region][group]
+                        if len(act) > 0:
+                            plotted = True
+                            
+                            if not group_colors is None:
+                                plot_utils.plot_psth(reg_t[t_sel], np.nanmean(act, axis=0)[t_sel], calc_error(act)[t_sel], ax, label=group_labels[group], color=group_colors[k], plot_x0=plot_x0)
+                            else:
+                                plot_utils.plot_psth(reg_t[t_sel], np.nanmean(act, axis=0)[t_sel], calc_error(act)[t_sel], ax, label=group_labels[group], plot_x0=plot_x0)
 
             if j == 0:
                 ax.set_ylabel(y_label)
             else:
                 ax.yaxis.set_tick_params(which='both', labelleft=True)
             ax.set_xlabel(x_label)
+            
+            if not x_ticks is None:
+                ax.set_xticks(x_ticks['ticks'])
+                ax.set_xticklabels(x_ticks['labels'])
 
             if not legend_params is None:
-                if not legend_params[region] is None:
+                if region in legend_params and not legend_params[region] is None:
                     ax.legend(**legend_params[region])
+                else:
+                    ax.legend(**legend_params)
             else:
                 ax.legend(loc='best')
 
@@ -837,24 +1054,36 @@ def get_signal_type_labels(signal_type):
             ax_label = '% dF/F'
         case 'z_dff_iso':
             title = 'Z-scored Isosbestic Normalized Signal'
-            ax_label = 'Z-scored dF/F'
+            ax_label = 'Z-dF/F'
         case 'dff_iso_baseline':
             title = 'Baseline-Subtracted Isosbestic Normalized Signal'
-            ax_label = '% dF/F'
+            ax_label = '% dF/F (Baseline)'
         case 'z_dff_iso_baseline':
             title = 'Z-scored Baseline-Subtracted Isosbestic Normalized Signal'
-            ax_label = 'Z-scored dF/F'
+            ax_label = 'Z-dF/F (Baseline)'
+        case 'dff_iso_fband':
+            title = 'Freq-Band Isosbestic Normalized Signal'
+            ax_label = '% dF/F (Freq-Band)'
+        case 'z_dff_iso_fband':
+            title = 'Z-scored Freq-Band Isosbestic Normalized Signal'
+            ax_label = 'Z-dF/F (Freq-Band)'
 
 
     return title, ax_label
 
 
 def get_implant_rel_side(abs_side, implant_side):
-    return 'ipsi' if implant_side == abs_side else 'contra'
+    if abs_side is None or abs_side == 'none':
+        return None
+    else:
+        return 'ipsi' if implant_side == abs_side else 'contra'
 
 def get_implant_abs_side(rel_side, implant_side):
-    sides = np.array(['left', 'right'])
-    return implant_side if rel_side == 'ipsi' else sides[sides != implant_side][0]
+    if rel_side is None or rel_side == 'none':
+        return None
+    else:
+        sides = np.array(['left', 'right'])
+        return implant_side if rel_side == 'ipsi' else sides[sides != implant_side][0]
 
 
 def plot_power_spectra(signals, dt, f_max=20, title='', log_x=True, signal_names=None):
@@ -906,19 +1135,19 @@ def remove_outliers(mat, outlier_thresh):
     return mat
 
 
-def stack_fp_mats(mat_dict, regions, sess_ids, subjects, signal_type, filter_outliers=False, outlier_thresh=20, groups=None):
+def stack_fp_mats(mat_dict, regions, subj_sess_ids, subjects, signal_type, filter_outliers=False, outlier_thresh=20, groups=None):
 
     if not utils.is_list(subjects):
         subjects = [subjects]
 
     stacked_mats = {region: {} for region in regions}
     if groups is None:
-        groups = mat_dict[sess_ids[subjects[0]][0]][signal_type][regions[0]].keys()
+        groups = mat_dict[subj_sess_ids[subjects[0]][0]][signal_type][regions[0]].keys()
 
     for region in regions:
         for group in groups:
             for subj_id in subjects:
-                mat = np.vstack([mat_dict[sess_id][signal_type][region][group] for sess_id in sess_ids[subj_id] if group in mat_dict[sess_id][signal_type][region].keys()])
+                mat = np.vstack([mat_dict[sess_id][signal_type][region][group] for sess_id in subj_sess_ids[subj_id] if group in mat_dict[sess_id][signal_type][region].keys()])
                 if filter_outliers:
                     mat = remove_outliers(mat, outlier_thresh)
 
@@ -957,6 +1186,8 @@ class Alignment(StrEnum):
     poke_cue_resp = 'norm_poke_cue_resp'
     resp_reward = 'norm_resp_reward'
     cue_resp = 'norm_cue_resp'
+    cue_reward = 'norm_cue_reward'
+    cport_on_cpoke_in = 'norm_cport_on_cpoke'
 
 def get_align_title(align):
     match align:
@@ -986,6 +1217,10 @@ def get_align_title(align):
             return 'Normalized Response to Reward'
         case Alignment.cue_resp:
             return 'Normalized Cue to Response'
+        case Alignment.cue_reward:
+            return 'Normalized Cue, Poke Out, Response & Reward'
+        case Alignment.cport_on_cpoke_in:
+            return 'Normalized Center Port On to Poke In'
         case _:
             return align
 
@@ -1019,6 +1254,10 @@ def get_align_xlabel(align):
             return gen_norm_x_label.format('response to reward')
         case Alignment.cue_resp:
             return gen_norm_x_label.format('cue to response')
+        case Alignment.cue_reward:
+            return gen_norm_x_label.format('cue to reward')
+        case Alignment.cport_on_cpoke_in:
+            return gen_norm_x_label.format('center port on to poke')
 
 
 # %% Plot Image Saving/Loading Methods
@@ -1197,18 +1436,23 @@ def __add_ppt_slides_recursive(prs, group_by, behaviors, subjects, alignments, f
         for i, level_group in enumerate(level_groups):
             # get all images the for the given groups
             # Note: at the lowest level there will be one element for each of the grouping arguments
+            if group == 'alignment':
+                if len(level_group) != 0 and not alignments.endswith('_'):
+                    level_group += '_'
+            else:
+                if len(alignments) != 0 and not alignments.endswith('_'):
+                    alignments += '_'
+                
             match group:
                 case 'behavior':
-                    image_files = glob(get_figure_save_path(level_group, subjects, alignments+'*'+filenames+'.*'))
+                    image_files = glob(get_figure_save_path(level_group, subjects, alignments+filenames+'.*'))
                 case 'subject':
-                    image_files = glob(get_figure_save_path(behaviors, level_group, alignments+'*'+filenames+'.*'))
+                    image_files = glob(get_figure_save_path(behaviors, level_group, alignments+filenames+'.*'))
                 case 'alignment':
-                    image_files = glob(get_figure_save_path(behaviors, subjects, level_group+'*'+filenames+'.*'))
+                    image_files = glob(get_figure_save_path(behaviors, subjects, level_group+filenames+'.*'))
                 case 'filename':
-                    image_files = glob(get_figure_save_path(behaviors, subjects, alignments+'*'+level_group+'.*'))
+                    image_files = glob(get_figure_save_path(behaviors, subjects, alignments+level_group+'.*'))
 
-            # TODO: Only match exact filenames, not any pattern match
-            # The tradeoff is having the * in the search to match files without an alignment. So perhaps just switch on whether there is an alignment or not
             image_files = sorted(image_files)
             level_titles_copy = level_titles.copy()
             level_titles_copy.append(level_group_labels[i])
@@ -1273,8 +1517,11 @@ def __check_images_exist(behaviors, subjects, alignments, filenames, count_thres
     for b in behaviors:
         for s in subjects:
             for a in alignments:
-                for f in filenames:
-                    files = glob(path.join(get_base_figure_save_path(), b, s, a+'*'+f+'.*'))
+                if len(a) != 0 and not a.endswith('_'):
+                    a += '_'
+                    
+                for f in filenames:     
+                    files = glob(path.join(get_base_figure_save_path(), b, s, a+f+'.*'))
                     if len(files) > 0:
                         file_count += 1
                     if file_count > count_thresh:
