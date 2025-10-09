@@ -35,7 +35,7 @@ bandit_beh_name = 'Two-armed Bandit'
 bandit_sess_ids = db_access.get_fp_data_sess_ids(protocol='ClassicRLTasks', stage_num=2)
 
 # optionally limit sessions based on subject ids
-subj_ids = [198, 199]
+subj_ids = [198, 199, 274, 400, 402]
 wm_sess_ids = {k: [s for s in v if not s in fpah.__sess_ignore] for k, v in wm_sess_ids.items() if k in subj_ids}
 bandit_sess_ids = {k: [s for s in v if not s in fpah.__sess_ignore] for k, v in bandit_sess_ids.items() if k in subj_ids}
 
@@ -111,8 +111,8 @@ recalculate = False
 recalculate_norm_tasks = [] # 'wm', 'bandit'
 tilt_t = False
 baseline_correction = True
-save_process_plots = False
-show_process_plots = False
+save_process_plots = True
+show_process_plots = True
 filter_dropout_outliers = False
 
 # ignored_signals = {'PL': [],
@@ -123,6 +123,7 @@ filter_dropout_outliers = False
 # ignored_subjects = [] #[182] [179]
 
 reprocess_sess_ids = []
+reprocess_subj_ids = []
 
 signal_types = ['z_dff_iso_baseline'] # 'dff_iso_baseline', 
 
@@ -130,14 +131,12 @@ bandit_alignments = [Align.cport_on, Align.cpoke_in, Align.cue, Align.cpoke_out,
 wm_alignments = bandit_alignments.copy()
 wm_alignments.append(Align.tone)
 
-regions = ['PL', 'NAc', 'DMS', 'DLS', 'TS']
-default_xlims = {'PL': [-3,5], 'NAc': [-1,2], 'DMS': [-1,2], 'DLS': [-1,2], 'TS': [-1,2]}
+default_xlims = {'PL': [-3,5], 'NAc': [-2,3], 'DMS': [-1,2], 'DLS': [-1,2], 'TS': [-1,2]}
 xlims = {align: default_xlims.copy() for align in wm_alignments}
 xlims[Align.reward]['PL'] = [-3,15]
 
 # minimum number of bins to have time invariant intervals between task events 
 min_norm_bins = 20
-norm_dt = 0.005
 pre_cue_dt = 0.5
 pre_cport_on_dt = 0.5
 post_reward_dt = 1.5
@@ -157,7 +156,7 @@ if path.exists(save_path) and not recalculate:
         aligned_signals = saved_data['aligned_signals']
         aligned_metadata = saved_data['metadata']
         
-        recalculate = aligned_metadata['xlims'] != xlims
+        recalculate_regions = aligned_metadata['xlims'] != xlims
 
 elif not path.exists(save_path):
     recalculate = True
@@ -165,6 +164,11 @@ elif not path.exists(save_path):
 if recalculate:
     aligned_signals = {task: {subjid: {} for subjid in subj_ids}
                        for task in tasks}
+
+# get dt
+tmp_subj = list(wm_sess_ids.keys())[0]
+tmp_sess = wm_sess_ids[tmp_subj][0]
+dt = wm_loc_db.get_sess_fp_data([tmp_sess])['fp_data'][tmp_subj][tmp_sess]['dec_info']['decimated_dt']
 
 # Build signal matrices aligned to alignment points
 for task in tasks:
@@ -191,25 +195,54 @@ for task in tasks:
     med_rew_dt = np.median(resp_reward_dt[resp_reward_dt > 0])
     med_cpoke_dt = np.median(cport_on_cpoke_dt[(cport_on_cpoke_dt > 0) & (cport_on_cpoke_dt < max_cport_on_cpoke_in)])
 
-    n_pre_cue_bins = max(np.ceil(pre_cue_dt/norm_dt), min_norm_bins)
-    n_cue_poke_out_bins = max(np.ceil(med_poke_out_dt/norm_dt), min_norm_bins)
-    n_poke_out_resp_bins = max(np.ceil(med_resp_dt/norm_dt), min_norm_bins)
-    n_resp_rew_bins = max(np.ceil(med_rew_dt/norm_dt), min_norm_bins)
-    n_post_rew_bins = max(np.ceil(post_reward_dt/norm_dt), min_norm_bins)
+    n_pre_cue_bins = max(np.ceil(pre_cue_dt/dt), min_norm_bins)
+    n_cue_poke_out_bins = max(np.ceil(med_poke_out_dt/dt), min_norm_bins)
+    n_poke_out_resp_bins = max(np.ceil(med_resp_dt/dt), min_norm_bins)
+    n_resp_rew_bins = max(np.ceil(med_rew_dt/dt), min_norm_bins)
+    n_post_rew_bins = max(np.ceil(post_reward_dt/dt), min_norm_bins)
     
-    n_pre_cport_on_bins = max(np.ceil(pre_cport_on_dt/norm_dt), min_norm_bins)
-    n_cport_poke_in_bins = max(np.ceil(med_cpoke_dt/norm_dt), min_norm_bins)
-    n_post_poke_in_bins = max(np.ceil(post_cpoke_in_dt/norm_dt), min_norm_bins)
+    n_pre_cport_on_bins = max(np.ceil(pre_cport_on_dt/dt), min_norm_bins)
+    n_cport_poke_in_bins = max(np.ceil(med_cpoke_dt/dt), min_norm_bins)
+    n_post_poke_in_bins = max(np.ceil(post_cpoke_in_dt/dt), min_norm_bins)
+    
+    # persist median bin numbers for plotting
+    if not Align.cport_on_cpoke_in in aligned_signals[task] or task in recalculate_norm_tasks:
+        aligned_signals[task][Align.cport_on_cpoke_in] = {'cport_on': n_pre_cport_on_bins, 
+                                                          'cpoke_in': n_pre_cport_on_bins+n_cport_poke_in_bins}
+        
+    if not Align.cue_reward in aligned_signals[task] or task in recalculate_norm_tasks:
+        aligned_signals[task][Align.cue_reward] = {'cue': n_pre_cue_bins, 
+                                                   'poke_out': n_pre_cue_bins+n_cue_poke_out_bins,
+                                                   'response': n_pre_cue_bins+n_cue_poke_out_bins+n_poke_out_resp_bins,
+                                                   'reward': n_pre_cue_bins+n_cue_poke_out_bins+n_poke_out_resp_bins+n_resp_rew_bins}
+        
+    if not 't' in aligned_signals[task] or task in recalculate_norm_tasks:
+        aligned_signals[task]['t'] = {align: {} for align in alignments}
+        for align in alignments:
+            for region in default_xlims.keys():
+                if align == Align.cport_on_cpoke_in:
+                    aligned_signals[task]['t'][align][region] = np.arange(0, n_pre_cport_on_bins+n_cport_poke_in_bins+n_post_poke_in_bins, 1)
+                elif align == Align.cue_reward:
+                    aligned_signals[task]['t'][align][region] = np.arange(0, n_pre_cue_bins+n_cue_poke_out_bins+
+                                                                          n_poke_out_resp_bins+n_resp_rew_bins+n_post_rew_bins, 1)
+                else:
+                    aligned_signals[task]['t'][align][region] = np.arange(xlims[align][region][0], xlims[align][region][1]+dt, dt)
+    
                                     
     for subj_id in subj_ids:
         if not subj_id in sess_ids:
             continue
         
+        if not subj_id in aligned_signals[task]:
+            aligned_signals[task][subj_id] = {}
+        
         for sess_id in sess_ids[subj_id]:
             if sess_id in fpah.__sess_ignore:
                 continue
 
-            if sess_id in aligned_signals[task][subj_id] and not sess_id in reprocess_sess_ids and not task in recalculate_norm_tasks:
+            if (sess_id in aligned_signals[task][subj_id] and not sess_id in reprocess_sess_ids and 
+                not task in recalculate_norm_tasks and not subj_id in reprocess_subj_ids):
+                
                 continue
             else:
                 aligned_signals[task][subj_id][sess_id] = {}
@@ -265,32 +298,32 @@ for task in tasks:
                     if norm_align:
                         
                         for region in fp_data['processed_signals'].keys():
-                            if region in regions:
-                                
-                                if region in aligned_signals[task][subj_id][sess_id][signal_type][align]:
-                                    continue
-                                
-                                signal = fp_utils.to_cupy(fp_data['processed_signals'][region][signal_type])
-                                
-                                match align:
-                                    case Align.cport_on_cpoke_in:
+                            
+                            if region in aligned_signals[task][subj_id][sess_id][signal_type][align]:
+                                continue
+                            
+                            signal = fp_data['processed_signals'][region][signal_type]
+                            
+                            match align:
+                                case Align.cport_on_cpoke_in:
 
-                                        pre_cport_on = fp_utils.build_time_norm_signal_matrix(signal, ts, cport_on_ts-pre_cport_on_dt, cport_on_ts, n_pre_cport_on_bins)
-                                        cport_on_cpoke_in = fp_utils.build_time_norm_signal_matrix(signal, ts, cport_on_ts, cpoke_in_ts, n_cport_poke_in_bins)
-                                        post_cpoke_in = fp_utils.build_time_norm_signal_matrix(signal, ts, cpoke_in_ts, cpoke_in_ts+post_cpoke_in_dt, n_post_poke_in_bins)
-                                        
-                                        mat = np.hstack([pre_cport_on, cport_on_cpoke_in, post_cpoke_in])
+                                    poke_in_sel = ((cpoke_in_ts - cport_on_ts) < max_cport_on_cpoke_in).to_numpy()
+                                    pre_cport_on = fp_utils.build_time_norm_signal_matrix(signal, ts, cport_on_ts-pre_cport_on_dt, cport_on_ts, n_pre_cport_on_bins, align_sel=poke_in_sel)
+                                    cport_on_cpoke_in = fp_utils.build_time_norm_signal_matrix(signal, ts, cport_on_ts, cpoke_in_ts, n_cport_poke_in_bins, align_sel=poke_in_sel)
+                                    post_cpoke_in = fp_utils.build_time_norm_signal_matrix(signal, ts, cpoke_in_ts, cpoke_in_ts+post_cpoke_in_dt, n_post_poke_in_bins, align_sel=poke_in_sel)
+                                    
+                                    mat = np.hstack([pre_cport_on, cport_on_cpoke_in, post_cpoke_in])
 
-                                    case Align.cue_reward:
-                                        pre_cue = fp_utils.build_time_norm_signal_matrix(signal, ts, cue_ts-pre_cue_dt, cue_ts, n_pre_cue_bins)
-                                        cue_poke_out = fp_utils.build_time_norm_signal_matrix(signal, ts, cue_ts, cpoke_out_ts, n_cue_poke_out_bins)
-                                        poke_out_resp = fp_utils.build_time_norm_signal_matrix(signal, ts, cpoke_out_ts, resp_ts, n_poke_out_resp_bins)
-                                        resp_rew = fp_utils.build_time_norm_signal_matrix(signal, ts, resp_ts, reward_ts, n_resp_rew_bins)
-                                        post_rew = fp_utils.build_time_norm_signal_matrix(signal, ts, reward_ts, reward_ts+post_reward_dt, n_post_rew_bins)
-        
-                                        mat = np.hstack([pre_cue, cue_poke_out, poke_out_resp, resp_rew, post_rew])
+                                case Align.cue_reward:
+                                    pre_cue = fp_utils.build_time_norm_signal_matrix(signal, ts, cue_ts-pre_cue_dt, cue_ts, n_pre_cue_bins)
+                                    cue_poke_out = fp_utils.build_time_norm_signal_matrix(signal, ts, cue_ts, cpoke_out_ts, n_cue_poke_out_bins)
+                                    poke_out_resp = fp_utils.build_time_norm_signal_matrix(signal, ts, cpoke_out_ts, resp_ts, n_poke_out_resp_bins)
+                                    resp_rew = fp_utils.build_time_norm_signal_matrix(signal, ts, resp_ts, reward_ts, n_resp_rew_bins)
+                                    post_rew = fp_utils.build_time_norm_signal_matrix(signal, ts, reward_ts, reward_ts+post_reward_dt, n_post_rew_bins)
+    
+                                    mat = np.hstack([pre_cue, cue_poke_out, poke_out_resp, resp_rew, post_rew])
 
-                                aligned_signals[task][subj_id][sess_id][signal_type][align][region] = mat
+                            aligned_signals[task][subj_id][sess_id][signal_type][align][region] = mat
                         
                     else:
                         match align:
@@ -338,49 +371,26 @@ for task in tasks:
                                 # mask_lims = np.hstack((np.zeros_like(align_ts)[:, None], next_reward_ts[:, None]))
                         
                         for region in fp_data['processed_signals'].keys():
-                            if region in regions:
-                                
-                                if region in aligned_signals[task][subj_id][sess_id][signal_type][align]:
-                                    continue
-                                
-                                signal = fp_data['processed_signals'][region][signal_type]
-        
-                                lims = xlims[align][region]
-                                
-                                mat, t = fp_utils.build_signal_matrix(signal, ts, align_ts, -lims[0], lims[1], mask_lims=mask_lims)
-                                aligned_signals[task][subj_id][sess_id][signal_type][align][region] = mat
-                                
+
+                            if region in aligned_signals[task][subj_id][sess_id][signal_type][align]:
+                                continue
+                            
+                            signal = fp_data['processed_signals'][region][signal_type]
+    
+                            reg_key = [k for k in xlims[align].keys() if k in region][0]
+                            lims = xlims[align][reg_key]
+                            
+                            mat, t = fp_utils.build_signal_matrix(signal, ts, align_ts, -lims[0], lims[1], mask_lims=mask_lims)
+                            aligned_signals[task][subj_id][sess_id][signal_type][align][region] = mat
+                               
             print('Stacked FP data for subject {} session {} in {:.1f} s'.format(subj_id, sess_id, time.perf_counter()-start))
     
-    if not 't' in aligned_signals[task] or task in recalculate_norm_tasks:
-        aligned_signals[task]['t'] = {align: {region: [] for region in regions} for align in alignments}
-        for align in alignments:
-            for region in regions:
-                if align == Align.cport_on_cpoke_in:
-                    aligned_signals[task]['t'][align][region] = np.arange(0, n_pre_cport_on_bins+n_cport_poke_in_bins+n_post_poke_in_bins, 1)
-                elif align == Align.cue_reward:
-                    aligned_signals[task]['t'][align][region] = np.arange(0, n_pre_cue_bins+n_cue_poke_out_bins+
-                                                                          n_poke_out_resp_bins+n_resp_rew_bins+n_post_rew_bins, 1)
-                else:
-                    aligned_signals[task]['t'][align][region] = np.arange(xlims[align][region][0], xlims[align][region][1]+dt, dt)
-    
-    # persist median bin numbers for plotting
-    if not Align.cport_on_cpoke_in in aligned_signals[task] or task in recalculate_norm_tasks:
-        aligned_signals[task][Align.cport_on_cpoke_in] = {'cport_on': n_pre_cport_on_bins, 
-                                                          'cpoke_in': n_pre_cport_on_bins+n_cport_poke_in_bins}
-        
-    if not Align.cue_reward in aligned_signals[task] or task in recalculate_norm_tasks:
-        aligned_signals[task][Align.cue_reward] = {'cue': n_pre_cue_bins, 
-                                                   'poke_out': n_pre_cue_bins+n_cue_poke_out_bins,
-                                                   'response': n_pre_cue_bins+n_cue_poke_out_bins+n_poke_out_resp_bins,
-                                                   'reward': n_pre_cue_bins+n_cue_poke_out_bins+n_poke_out_resp_bins+n_resp_rew_bins}
 
-with open(save_path, 'wb') as f:
-    pickle.dump({'aligned_signals': aligned_signals,
-                 'metadata': {'signal_types': signal_types,
-                             'alignments': alignments,
-                             'regions': regions,
-                             'xlims': xlims}}, f)
+            with open(save_path, 'wb') as f:
+                pickle.dump({'aligned_signals': aligned_signals,
+                             'metadata': {'signal_types': signal_types,
+                                         'alignments': alignments,
+                                         'xlims': xlims}}, f)
 
 # %% Construct selection vectors for various trial groupings
 
@@ -726,18 +736,16 @@ for task in tasks:
 # %% Set up average plot options
 
 # modify these options to change what will be used in the average signal plots
-plot_signals = ['z_dff_iso_baseline'] # 'z_dff_iso', 
-plot_regions = ['PL', 'DMS', 'DLS', 'TS']
+plot_signals = ['z_dff_iso_baseline'] # 'z_dff_iso',
 plot_tasks = ['wm', 'bandit'] #
 plot_meta_subj = False
     
 use_se = True
 ph = 3.5;
 pw = 5;
-n_reg = len(plot_regions)
 
-rew_xlims = {'DMS': [-1,2], 'DLS': [-1,2], 'TS': [-1,2], 'PL': [-3,10]}
-gen_xlims = {'DMS': [-1,1.5], 'DLS': [-1,1.5], 'TS': [-1,1.5], 'PL': [-3,3]}
+gen_xlims = {'DMS': [-1,1.5], 'DLS': [-1,1.5], 'TS': [-1,1.5], 'NAc': [-1.5,2], 'PL': [-3,3]}
+rew_xlims = {'DMS': [-1,2], 'DLS': [-1,2], 'TS': [-1,2], 'NAc': [-2,4], 'PL': [-3,10]}
 
 all_xlims = {Align.cport_on: gen_xlims, Align.early_cpoke_in: gen_xlims, Align.cpoke_in: gen_xlims, Align.tone: gen_xlims,
             Align.cue: gen_xlims, Align.cpoke_out: gen_xlims, Align.resp: gen_xlims, Align.reward: rew_xlims,
@@ -758,40 +766,59 @@ def stack_mats(task, align, trial_groups, signal_types=plot_signals):
     if not utils.is_list(signal_types):
         signal_types = signal_types
         
-    stacked_mat_dict = {sig: {region: {group: {} for group in trial_groups} for region in plot_regions} for sig in signal_types} 
+    stacked_mat_dict = {sig: {subj: {} for subj in subj_ids} for sig in signal_types} 
 
     for signal_type in signal_types:
-            for region in plot_regions:
+        for subj_id in subj_ids:
+            subj_regions = list(implant_info[subj_id].keys())
+            sess_ids = list(align_trial_selections[task][subj_id].keys())
+            
+            for region in subj_regions:
+                stacked_mat_dict[signal_type][subj_id][region] = {}
+                
                 for group in trial_groups:
-                    for subj_id in subj_ids:
-                        
-                        stacked_mats = []
-                        
-                        sess_ids = list(align_trial_selections[task][subj_id])
-                        for sess_id in sess_ids:
-                            
-                            if align == Align.early_cpoke_in:
-                                signal_align = Align.cpoke_in
-                            else:
-                                signal_align = align
-                            
-                            # some sessions have different regions
-                            if not region in aligned_signals[task][subj_id][sess_id][signal_type][signal_align]:
-                                continue
-                        
-                            # get trial selections
-                            trial_sel = align_trial_selections[task][subj_id][sess_id][region][group] & align_trial_selections[task][subj_id][sess_id][region][align]
-                            
-                            # get aligned data matrix
-                            aligned_mat = aligned_signals[task][subj_id][sess_id][signal_type][signal_align][region]
 
-                            stacked_mats.append(aligned_mat[trial_sel, :])
-                            
-                        if len(stacked_mats) > 0:
-                            stacked_mat_dict[signal_type][region][group][subj_id] = np.vstack(stacked_mats)
+                    stacked_mats = []
 
-                    if plot_meta_subj:
-                        stacked_mat_dict[signal_type][region][group]['all'] = np.vstack([stacked_mat_dict[signal_type][region][group][subj_id] for subj_id in subj_ids])
+                    for sess_id in sess_ids:
+                        
+                        if align == Align.early_cpoke_in:
+                            signal_align = Align.cpoke_in
+                        else:
+                            signal_align = align
+                        
+                        # some sessions have different regions
+                        if not region in aligned_signals[task][subj_id][sess_id][signal_type][signal_align]:
+                            continue
+                    
+                        # get trial selections
+                        trial_sel = align_trial_selections[task][subj_id][sess_id][region][group] & align_trial_selections[task][subj_id][sess_id][region][align]
+                        
+                        # get aligned data matrix
+                        aligned_mat = aligned_signals[task][subj_id][sess_id][signal_type][signal_align][region]
+
+                        stacked_mats.append(aligned_mat[trial_sel, :])
+                        
+                    if len(stacked_mats) > 0:
+                        stacked_mat_dict[signal_type][subj_id][region][group] = np.vstack(stacked_mats)
+                    else:
+                        stacked_mat_dict[signal_type][subj_id][region][group] = []
+
+        if plot_meta_subj:
+            # build region mapping since some animals have bilateral implants in the same region
+            all_regions = list(gen_xlims.keys())
+            reg_mapping = {s: {r: [k for k in all_regions if k in r][0] for r in implant_info[s].keys()} for s in subj_ids}
+            
+            stacked_mat_dict[signal_type]['all'] = {r: {g: [] for g in trial_groups} for r in all_regions}
+            
+            for s in subj_ids:
+                subj_regions = list(implant_info[s].keys())
+                
+                for r in subj_regions:
+                    for group in trial_groups:
+            
+                        stacked_mat_dict[signal_type]['all'][reg_mapping[s][r]][group] = np.vstack([stacked_mat_dict[signal_type]['all'][reg_mapping[s][r]][group],
+                                                                                                    stacked_mat_dict[signal_type][subj_id][r][group]])
 
     return stacked_mat_dict
 
@@ -802,18 +829,10 @@ def save_plot(fig, task, subjects, plot_name):
 
     if not show_plots:
         plt.close(fig)
-        
-def reformat_stacked_signals(stacked_signals, subj):
-    reformat_signals = {}
-    for region, groups in stacked_signals.items():
-        for group, subjects in groups.items():
-            if subj in subjects:
-                reformat_signals.setdefault(region, {})[group] = subjects[subj]
-                
-    return reformat_signals
+
 
 # declare method to plot avg signals for the given plot_groups for one or more tasks, signal types, and alignments
-def plot_avg_signals(plot_groups, group_labels, plot_titles, gen_title, aligns, subjects=subj_ids, tasks=plot_tasks, signal_types=plot_signals, regions=plot_regions,
+def plot_avg_signals(plot_groups, group_labels, plot_titles, gen_title, aligns, subjects=subj_ids, tasks=plot_tasks, signal_types=plot_signals,
                      xlims_dict=None, dashlines=None, legend_params=None, group_colors=None, gen_plot_name=None, include_norm_reward=True):
 
     if not utils.is_list(aligns):
@@ -837,10 +856,14 @@ def plot_avg_signals(plot_groups, group_labels, plot_titles, gen_title, aligns, 
         
     for task in tasks:
         for align in aligns:
+            
+            if task != 'wm' and align == Align.tone:
+                continue
+            
             align_title = fpah.get_align_title(align)
             x_label = fpah.get_align_xlabel(align)
             
-            align_xlims = all_xlims[align]
+            align_xlims = xlims_dict[align]
             
             if align == Align.early_cpoke_in:
                 t = aligned_signals[task]['t'][Align.cpoke_in]
@@ -861,23 +884,22 @@ def plot_avg_signals(plot_groups, group_labels, plot_titles, gen_title, aligns, 
                 x_ticks = {'ticks': dashlines, 'labels': norm_labels[align]}
                 
                 if align == Align.cue_reward and not include_norm_reward:
-                    align_xlims = {r: [0, dashlines[-1]] for r in plot_regions}
+                    align_xlims = {r: [0, dashlines[-1]] for r in default_xlims.keys()}
             
             for signal_type in signal_types:
                 _, y_label = fpah.get_signal_type_labels(signal_type)
                 
                 for subj in subjects:
-                    
-                    # reformat the stacked signals for each subject
-                    plot_stacked_signals = reformat_stacked_signals(stacked_signals[signal_type], subj)
+
+                    plot_stacked_signals = stacked_signals[signal_type][subj]
 
                     title = '{} Aligned to {} - Subj {}, {}'.format(gen_title, align_title, subj, beh_names[task])
                     if subj == 'all':
                         implant_side_info = None
                     else:
                         implant_side_info = implant_info[subj]
-                        
-                    fig, plotted = fpah.plot_avg_signals(plot_groups, group_labels, plot_stacked_signals, regions, t, 
+
+                    fig, plotted = fpah.plot_avg_signals(plot_groups, group_labels, plot_stacked_signals, plot_stacked_signals.keys(), t, 
                                                          title, plot_titles, x_label, y_label, 
                                                          xlims_dict=align_xlims, implant_info=implant_side_info,
                                                          dashlines=dashlines, legend_params=legend_params, group_colors=group_colors, 
@@ -921,6 +943,25 @@ group_labels = {'contra': 'Contra', 'ipsi': 'Ipsi',
 plot_titles = ['Choice Side', 'Outcome', 'Choice Side/Outcome']
 gen_title = 'Choice Side by Outcome'
 gen_plot_name = 'side_outcome'
+
+aligns = [Align.reward, Align.cue_reward] # Align.cue, Align.cpoke_out, Align.resp, 
+
+plot_avg_signals(plot_groups, group_labels, plot_titles, gen_title, aligns, gen_plot_name=gen_plot_name)
+
+
+plot_groups = [['stay_reward', 'switch_reward', 'stay_unreward', 'switch_unreward'],
+               ['contra_stay_reward', 'contra_switch_reward', 'contra_stay_unreward', 'contra_switch_unreward'],
+               ['ipsi_stay_reward', 'ipsi_switch_reward', 'ipsi_stay_unreward', 'ipsi_switch_unreward']]
+group_labels = {'stay_reward': 'Rewarded Stay', 'switch_reward': 'Rewarded Switch',
+                'stay_unreward': 'Unrewarded Stay', 'switch_unreward': 'Unrewarded Switch',
+                'contra_stay_reward': 'Rewarded Stay', 'contra_switch_reward': 'Rewarded Switch',
+                'contra_stay_unreward': 'Unrewarded Stay', 'contra_switch_unreward': 'Unrewarded Switch',
+                'ipsi_stay_reward': 'Rewarded Stay', 'ipsi_switch_reward': 'Rewarded Switch',
+                'ipsi_stay_unreward': 'Unrewarded Stay', 'ipsi_switch_unreward': 'Unrewarded Switch'}
+
+plot_titles = ['All Choices', 'Contra Choices', 'Ipsi Choices']
+gen_title = 'Stay/Switch Choice by Outcome'
+gen_plot_name = 'stay_switch_side_outcome'
 
 aligns = [Align.reward, Align.cue_reward] # Align.cue, Align.cpoke_out, Align.resp, 
 
@@ -1035,7 +1076,7 @@ plot_titles = ['All Prev Choices', 'Previous Contra Choices', 'Previous Ipsi Cho
 gen_title = 'Reward History by Previous Choice Side'
 gen_plot_name = 'rew_hist_prev_side'
 
-aligns = [Align.cport_on_cpoke_in]
+aligns = [Align.cport_on_cpoke_in, Align.tone]
 
 plot_avg_signals(plot_groups, group_labels, plot_titles, gen_title, aligns, gen_plot_name=gen_plot_name, 
                  group_colors=rew_hist_all_colors)
@@ -1048,7 +1089,7 @@ plot_titles = ['All Choices', 'Contra Choices', 'Ipsi Choices']
 gen_title = 'Reward History by Choice Side'
 gen_plot_name = 'rew_hist_side'
 
-aligns = [Align.cue_reward]
+aligns = [Align.cue_reward, Align.tone]
 
 plot_avg_signals(plot_groups, group_labels, plot_titles, gen_title, aligns, gen_plot_name=gen_plot_name, 
                  group_colors=rew_hist_all_colors, include_norm_reward=False)
@@ -1101,7 +1142,7 @@ plot_titles = ['All Choices', 'Contra Choices', 'Ipsi Choices']
 gen_title = 'Response Delays by Choice Side'
 gen_plot_name = 'resp_delay_side'
 
-aligns = [Align.cue_reward]
+aligns = [Align.cue_reward, Align.cue]
 
 plot_avg_signals(plot_groups, group_labels, plot_titles, gen_title, aligns, gen_plot_name=gen_plot_name, 
                  group_colors=delay_colors, tasks=task, include_norm_reward=False)
@@ -1119,7 +1160,7 @@ plot_titles = ['All Choices', 'Contra Choices', 'Ipsi Choices']
 gen_title = 'Response Delays By Choice Side & Outcome'
 gen_plot_name = 'resp_delay_side_outcome'
 
-aligns = [Align.cue_reward]
+aligns = [Align.cue_reward, Align.cue]
 
 plot_avg_signals(plot_groups, group_labels, plot_titles, gen_title, aligns, gen_plot_name=gen_plot_name, 
                  group_colors=np.vstack((delay_rew_colors, delay_unrew_colors)), tasks=task, legend_params={'ncol': 2})
@@ -1133,6 +1174,19 @@ plot_avg_signals(plot_groups, group_labels, plot_titles, gen_title, aligns, gen_
 # %% WM Tones
 
 task = 'wm'
+
+group_labels = {'response': 'Resp', 'bail': 'Bail', 'rewarded': 'Rew', 'unrewarded': 'Unrew'}
+
+plot_groups = [['response', 'bail'], ['rewarded', 'unrewarded']]
+
+plot_titles = ['Response Type', 'Outcome']
+gen_title = 'Response and Outcome for All Tones'
+gen_plot_name = 'all_tones_resp_outcome'
+
+aligns = [Align.tone]
+
+plot_avg_signals(plot_groups, group_labels, plot_titles, gen_title, aligns, gen_plot_name=gen_plot_name, tasks=task)
+
 
 gen_group_labels = {'{}_tone_response': '{} Resp', '{}_tone_bail': '{} Bail', '{}_tone_reward': '{} Rew', '{}_tone_unreward': '{} Unrew'}
 
@@ -1298,7 +1352,605 @@ aligns = [Align.reward, Align.cue_reward]
 plot_avg_signals(plot_groups, group_labels, plot_titles, gen_title, aligns, gen_plot_name=gen_plot_name, tasks=task)
 
 
-# %% Regional Comparisons - Cross-correlation
+# %% Regional Comparisons - Compute cross-correlations
+
+tilt_t = False
+baseline_correction = True
+filter_dropout_outliers = False
+engage_next_poke_thresh = 15 # time cutoff between center port on and next poke in to separate between task engaged state and not
+engage_states = ['engaged', 'disengaged', 'all']
+
+recalculate = False
+reprocess_sess_ids = []
+
+signal_type = 'dff_iso_baseline' # 'z_dff_iso_baseline' 
+
+max_lag = 10
+# get dt information to calculate the number of timesteps in the xcorr results
+tmp_subj = list(wm_sess_ids.keys())[0]
+tmp_sess = wm_sess_ids[tmp_subj][0]
+dt = wm_loc_db.get_sess_fp_data([tmp_sess])['fp_data'][tmp_subj][tmp_sess]['dec_info']['decimated_dt']
+n_lags = int(utils.convert_to_multiple(max_lag, dt)/dt)*2 + 1
+
+tasks = ['wm', 'bandit']
+
+filename = 'wm_bandit_xcorr_data'
+save_path = path.join(utils.get_user_home(), 'db_data', filename+'.pkl')
+
+if path.exists(save_path) and not recalculate:
+    with open(save_path, 'rb') as f:
+        saved_data = pickle.load(f)
+        x_corrs = saved_data['x_corrs']
+        x_corr_metadata = saved_data['metadata']
+        x_corr_engaged_t_sel = x_corr_metadata['x_corr_engaged_t_sel']
+        x_corr_regions = x_corr_metadata['regions']
+        corr_lags = x_corr_metadata['corr_lags']
+        
+        recalculate = (x_corr_metadata['max_lag'] != max_lag) or (x_corr_metadata['engage_thresh'] != engage_next_poke_thresh)
+
+elif not path.exists(save_path):
+    recalculate = True
+
+if recalculate:
+    x_corrs = {subjid: {task: {} for task in tasks} for subjid in subj_ids}
+    x_corr_engaged_t_sel = {subjid: {task: {} for task in tasks} for subjid in subj_ids}
+    x_corr_regions = {}
+
+for subj_id in subj_ids:
+    
+    subj_regions = list(implant_info[subj_id].keys())
+    
+    if subj_id in fpah.__region_ignore:
+        subj_regions = [r for r in subj_regions if r not in fpah.__region_ignore[subj_id]]
+        
+    x_corr_regions[subj_id] = subj_regions
+    n_regions = len(subj_regions)
+    
+    if not subj_id in x_corrs:
+        x_corrs[subj_id] = {task: {} for task in tasks}
+        x_corr_engaged_t_sel[subj_id] = {task: {} for task in tasks}
+    
+    for task in tasks:
+        if task == 'wm':
+            sess_ids = wm_sess_ids 
+            loc_db = wm_loc_db 
+            sess_data = wm_sess_data
+        else:
+            sess_ids = bandit_sess_ids
+            loc_db = bandit_loc_db
+            sess_data = bandit_sess_data
+                                    
+        if not subj_id in sess_ids:
+            continue
+        
+        sess_ids = [s for s in sess_ids[subj_id] if s not in fpah.__sess_ignore]
+
+        for sess_id in sess_ids:
+
+            if sess_id in x_corrs[subj_id][task] and not sess_id in reprocess_sess_ids:
+                continue
+            else:
+                x_corrs[subj_id][task][sess_id] = {e: np.full((n_regions, n_regions, n_lags), np.nan, dtype=float) for e in engage_states}
+
+            fp_data, _ = fpah.load_fp_data(loc_db, {subj_id: [sess_id]}, baseline_correction=baseline_correction, tilt_t=tilt_t, filter_dropout_outliers=filter_dropout_outliers)
+            fp_data = fp_data[subj_id][sess_id]
+            t = fp_data['time']
+            
+            # find engaged and disengaged states
+            trial_data = sess_data[sess_data['sessid'] == sess_id]
+            
+            trial_start_ts = fp_data['trial_start_ts']
+
+            cport_on_ts = trial_start_ts[:-1] + trial_data['cport_on_time'].to_numpy()
+            cpoke_in_ts = trial_start_ts[:-1] + trial_data['cpoke_in_time'].to_numpy()
+            
+            port_on_poke_in = cpoke_in_ts - cport_on_ts
+            
+            disengaged_trial_sel = (port_on_poke_in > engage_next_poke_thresh) | np.isnan(port_on_poke_in)
+            
+            engaged_t_sel = np.full_like(t, True, dtype=bool)
+
+            for i, disengaged in enumerate(disengaged_trial_sel):
+                if disengaged:
+                    
+                    if i == 0:
+                        t_start_idx = 0
+                    else:
+                        t_start_idx = np.argmin(np.abs(t - cport_on_ts[i]))
+                    
+                    disengaged_end = cpoke_in_ts[i]
+                    if np.isnan(disengaged_end):
+                        if i < len(cport_on_ts)-1:
+                            disengaged_end = cport_on_ts[i+1]
+                        else:
+                            disengaged_end = t[-1]
+                        
+                    t_end_idx = np.argmin(np.abs(t - disengaged_end))
+                    engaged_t_sel[t_start_idx:t_end_idx+1] = False
+                    
+            # fill in after last trial started to end of recording
+            if (t[-1] - trial_start_ts[-1]) > engage_next_poke_thresh:
+                t_start_idx = np.argmin(np.abs(t - trial_start_ts[-1]))
+                engaged_t_sel[t_start_idx:] = False
+                
+            x_corr_engaged_t_sel[subj_id][task][sess_id] = engaged_t_sel
+            
+            print('Calculating cross-correlation for subject {} session {}:'.format(subj_id, sess_id))
+            
+            for reg_i in range(n_regions):
+                signal_i = fp_data['processed_signals'][subj_regions[reg_i]][signal_type]
+                
+                for reg_j in np.arange(reg_i, n_regions):
+                    signal_j = fp_data['processed_signals'][subj_regions[reg_j]][signal_type]
+                    
+                    start = time.perf_counter()                    
+                    
+                    for e in engage_states:
+                        
+                        if e == 'engaged':
+                            t_sel = engaged_t_sel
+                        elif e == 'disengaged':
+                            t_sel = ~engaged_t_sel
+                        else:
+                            t_sel = None
+                        
+                        xcorr, corr_lags = fp_utils.correlate(signal_i, signal_j, dt, max_lag=max_lag, t_sel=t_sel)
+
+                        x_corrs[subj_id][task][sess_id][e][reg_i, reg_j, :] = xcorr
+                        if reg_i != reg_j:
+                            x_corrs[subj_id][task][sess_id][e][reg_j, reg_i, :] = np.flip(xcorr)
+                            
+                    print('  Between {} and {} in {:.1f} s'.format(
+                        subj_regions[reg_i], subj_regions[reg_j], time.perf_counter()-start))
+
+            with open(save_path, 'wb') as f:
+                pickle.dump({'x_corrs': x_corrs,
+                             'metadata': {'regions': x_corr_regions,
+                                          'max_lag': max_lag,
+                                          'corr_lags': corr_lags,
+                                          'x_corr_engaged_t_sel': x_corr_engaged_t_sel,
+                                          'engage_thresh': engage_next_poke_thresh}},
+                            f)
 
 
+# compute correlations over time
+t_width = 0.5
+recalculate = False
 
+filename = 'wm_bandit_tcorr_data'
+save_path = path.join(utils.get_user_home(), 'db_data', filename+'.pkl')
+
+if path.exists(save_path) and not recalculate:
+    with open(save_path, 'rb') as f:
+        saved_data = pickle.load(f)
+        t_corrs = saved_data['t_corrs']
+        t_corr_metadata = saved_data['metadata']
+        t_corr_regions = t_corr_metadata['regions']
+        
+        recalculate = t_corr_metadata['t_width'] != t_width
+
+elif not path.exists(save_path):
+    recalculate = True
+
+if recalculate:
+    t_corrs = {subjid: {task: {} for task in tasks} for subjid in subj_ids}
+    t_corr_regions = {subjid: [] for subjid in subj_ids}
+
+for subj_id in subj_ids:
+    
+    subj_regions = list(implant_info[subj_id].keys())
+    
+    if subj_id in fpah.__region_ignore:
+        subj_regions = [r for r in subj_regions if r not in fpah.__region_ignore[subj_id]]
+        
+    if not subj_id in t_corrs:
+        t_corrs[subj_id] = {task: {} for task in tasks}
+        
+    t_corr_regions[subj_id] = subj_regions
+    n_regions = len(subj_regions)
+    
+    for task in tasks:
+        if task == 'wm':
+            sess_ids = wm_sess_ids 
+            loc_db = wm_loc_db 
+            sess_data = wm_sess_data
+        else:
+            sess_ids = bandit_sess_ids
+            loc_db = bandit_loc_db
+            sess_data = bandit_sess_data
+                                    
+        if not subj_id in sess_ids:
+            continue
+        
+        sess_ids = [s for s in sess_ids[subj_id] if s not in fpah.__sess_ignore]
+
+        for sess_id in sess_ids:
+
+            if sess_id in t_corrs[subj_id][task] and not sess_id in reprocess_sess_ids:
+                continue
+            else:
+                t_corrs[subj_id][task][sess_id] = {}
+
+            fp_data, _ = fpah.load_fp_data(loc_db, {subj_id: [sess_id]}, baseline_correction=baseline_correction, tilt_t=tilt_t, filter_dropout_outliers=filter_dropout_outliers)
+            fp_data = fp_data[subj_id][sess_id]
+            t = fp_data['time']
+            
+            t_corrs[subj_id][task][sess_id]['t'] = t
+            
+            print('Calculating correlation over time for subject {} session {}'.format(subj_id, sess_id))
+            
+            for reg_i in range(n_regions):
+                signal_i = fp_data['processed_signals'][subj_regions[reg_i]][signal_type]
+                
+                for reg_j in np.arange(reg_i+1, n_regions):
+                    signal_j = fp_data['processed_signals'][subj_regions[reg_j]][signal_type]
+                    
+                    start = time.perf_counter()                    
+                    
+                    t_corr = fp_utils.correlate_over_time(signal_i, signal_j, dt, t_width=t_width)
+
+                    t_corrs[subj_id][task][sess_id]['{} & {}'.format(subj_regions[reg_i], subj_regions[reg_j])] = t_corr
+                    
+            with open(save_path, 'wb') as f:
+                pickle.dump({'t_corrs': t_corrs,
+                             'metadata': {'regions': t_corr_regions,
+                                         't_width': t_width}},
+                            f)
+
+# %% Plot cross-correlations
+
+plot_lag = 2
+t_sel = np.abs(corr_lags) < plot_lag
+
+plot_comb_task = True
+plot_sep_states = True
+
+plot_tasks = tasks.copy()
+
+if plot_comb_task:
+    plot_tasks.append('all')
+    
+if plot_sep_states:
+    plot_states = engage_states.copy()
+else:
+    plot_states = ['all']
+    
+beh_names = {'wm': 'WM Task', 'bandit': 'Bandit Task', 'all': 'All Tasks'}
+engage_labels = {'engaged': 'engaged', 'disengaged': 'disengaged', 'all': 'engaged & disengaged'}
+
+for subj_id in subj_ids:
+    
+    subj_regions = x_corr_regions[subj_id]
+    n_regions = len(subj_regions)
+    implant_side_info = implant_info[subj_id]
+    
+    for task in plot_tasks:
+        
+        if (task != 'all' and len(x_corrs[subj_id][task]) == 0) or (task == 'all' and all([len(x_corrs[subj_id][t]) == 0 for t in tasks])):
+            continue
+        
+        fig, axs = plt.subplots(n_regions, n_regions, sharex=True, sharey=True, figsize=(4*n_regions, 4*n_regions), layout='constrained')
+        fig.suptitle('Regional Cross-correlation for Subject {} in {}. (- first leading, + first lagging)'.format(subj_id, beh_names[task]))
+        
+        for reg_i in range(n_regions):            
+            for reg_j in range(n_regions):
+
+                ax = axs[reg_i, reg_j]
+                
+                plot_utils.plot_dashlines(0, dir='h', ax=ax)
+                
+                for e in plot_states:
+                    if task == 'all':
+                        sess_corrs = np.hstack([np.stack([x_corrs[subj_id][t][s][e][reg_i, reg_j, :] for s in x_corrs[subj_id][t].keys()], axis=1) for t in tasks if len(x_corrs[subj_id][t]) > 0])
+                    else:
+                        sess_corrs = np.stack([x_corrs[subj_id][task][s][e][reg_i, reg_j, :] for s in x_corrs[subj_id][task].keys()], axis=1)
+                    
+                    plot_utils.plot_psth(corr_lags[t_sel], np.nanmean(sess_corrs, axis=1)[t_sel], utils.stderr(sess_corrs, axis=1)[t_sel], ax, plot_x0=True, label=engage_labels[e])
+                    
+                ax.set_title('{} ({}) vs {} ({})'.format(subj_regions[reg_i], implant_side_info[subj_regions[reg_i]]['side'], 
+                                                         subj_regions[reg_j], implant_side_info[subj_regions[reg_j]]['side']))
+                ax.legend()
+                
+                if reg_i == n_regions-1:
+                    ax.set_xlabel('Time lag (s)')
+                if reg_j == 0:
+                    ax.set_ylabel('Pearson r')
+
+# %% Investigate engaged vs disengaged
+
+signal_type = 'z_dff_iso_baseline'
+
+for subj_id in subj_ids:
+    
+    subj_regions = x_corr_regions[subj_id]
+    n_regions = len(subj_regions)
+
+    for task in tasks:
+        if task == 'wm':
+            loc_db = wm_loc_db 
+            sess_data = wm_sess_data
+        else:
+            loc_db = bandit_loc_db
+            sess_data = bandit_sess_data
+            
+        sess_ids = list(x_corrs[subj_id][task].keys())
+
+        for sess_id in sess_ids:
+
+            fp_data, _ = fpah.load_fp_data(loc_db, {subj_id: [sess_id]}, baseline_correction=baseline_correction, tilt_t=tilt_t, filter_dropout_outliers=filter_dropout_outliers)
+            fp_data = fp_data[subj_id][sess_id]
+            t = fp_data['time']
+                
+            engaged_t_sel = x_corr_engaged_t_sel[subj_id][task][sess_id] 
+            
+            fig, axs = plt.subplots(len(subj_regions), 1, sharex=True, layout='constrained', figsize=(12,3*len(subj_regions)))
+            
+            fig.suptitle('Subject {}, Session {}'.format(subj_id, sess_id))
+            
+            for i, region in enumerate(subj_regions):
+                ax = axs[i]
+                signal = fp_data['processed_signals'][region][signal_type]
+                
+                ax.plot(t, signal)
+                ax.fill_between(t, 0, 1, where=engaged_t_sel,
+                                color='grey', alpha=0.4, transform=ax.get_xaxis_transform())
+                ax.set_title(region)
+
+
+# %% Plot helper
+
+def plot_signal_details(signal_mat, t, title, col_names, lines_dict={}, dec=10):
+
+    t = t[::dec].copy()
+
+    fig, axs = plt.subplots(len(col_names), 1, layout='constrained', figsize=[18,6*len(col_names)], sharex=True)
+    if len(col_names) == 1:
+        axs = [axs]
+        
+    fig.suptitle(title)
+
+    for i, col_name in enumerate(col_names):
+
+        ax = axs[i]
+        ax.plot(t, signal_mat[::dec,i], label='_')
+
+        for j, (name, lines) in enumerate(lines_dict.items()):
+            ax.vlines(lines, 0, 1, label=name, color='C{}'.format(j), linestyles='dashed', 
+                      transform=ax.get_xaxis_transform())
+
+        ax.set_title(col_name)
+        ax.set_xlabel('Time (s)')
+        ax.xaxis.set_tick_params(which='both', labelbottom=True)
+        ax.legend()
+
+# %% Plot correlations over time with behavioral events
+
+plot_tasks = tasks.copy()
+
+beh_names = {'wm': 'WM Task', 'bandit': 'Bandit Task'}
+
+for subj_id in subj_ids:
+    
+    subj_regions = t_corr_regions[subj_id]
+    n_regions = len(subj_regions)
+    implant_side_info = implant_info[subj_id]
+    
+    for task in tasks:
+        
+        if task == 'wm':
+            sess_ids = wm_sess_ids 
+            loc_db = wm_loc_db 
+            sess_data = wm_sess_data
+        else:
+            sess_ids = bandit_sess_ids
+            loc_db = bandit_loc_db
+            sess_data = bandit_sess_data
+                                    
+        if not subj_id in sess_ids:
+            continue
+        
+        sess_ids = [s for s in sess_ids[subj_id] if s not in fpah.__sess_ignore]
+
+        for sess_id in sess_ids:
+
+            trial_data = sess_data[sess_data['sessid'] == sess_id]
+            
+            trial_start_ts = loc_db.get_sess_fp_data([sess_id])['fp_data'][subj_id][sess_id]['trial_start_ts'][:-1]
+
+            cport_on_ts = trial_start_ts + trial_data['cport_on_time']
+            cpoke_in_ts = trial_start_ts + trial_data['cpoke_in_time']
+            cue_ts = trial_start_ts + trial_data['response_cue_time']
+            cpoke_out_ts = trial_start_ts + trial_data['cpoke_out_time']
+            response_ts = trial_start_ts + trial_data['response_time']
+            outcome_ts = trial_start_ts + trial_data['reward_time']
+            reward_ts = outcome_ts[trial_data['reward'] > 0]
+            unreward_ts = outcome_ts[trial_data['reward'] == 0]
+
+            lines_dict = {'Cport On': cport_on_ts, 'Cpoke In': cpoke_in_ts, #'Tone': tone_ts,
+                          'Resp Cue': cue_ts, 'Cpoke Out': cpoke_out_ts, 'Response': response_ts,
+                          'Reward': reward_ts, 'Unreward': unreward_ts}
+            
+            if task == 'wm':
+                tone_ts = trial_start_ts + trial_data['abs_tone_start_times']
+                lines_dict.update({'Tone Start': tone_ts})
+            
+            corr_keys = list(t_corrs[subj_id][task][sess_id].keys())
+            corr_keys = [k for k in corr_keys if k != 't']
+
+            t = t_corrs[subj_id][task][sess_id]['t']
+            corr_mat = np.stack([t_corrs[subj_id][task][sess_id][k] for k in corr_keys], axis=1)
+            
+            plot_signal_details(corr_mat, t, 'Regional correlations over time for Subject {} in {}'.format(subj_id, beh_names[task]), 
+                                corr_keys, lines_dict=lines_dict)
+                
+                    
+        
+# %% Regional Comparisons - ICA
+
+from sklearn.decomposition import FastICA, PCA
+
+tilt_t = False
+baseline_correction = True
+filter_dropout_outliers = False
+
+recalculate = True
+reprocess_sess_ids = []
+
+signal_type = 'z_dff_iso_baseline' # 'z_dff_iso_baseline' 
+
+#tasks = ['wm', 'bandit']
+
+# filename = 'wm_bandit_xcorr_data'
+# save_path = path.join(utils.get_user_home(), 'db_data', filename+'.pkl')
+
+# if path.exists(save_path) and not recalculate:
+#     with open(save_path, 'rb') as f:
+#         saved_data = pickle.load(f)
+#         x_corrs = saved_data['x_corrs']
+#         x_corr_metadata = saved_data['metadata']
+#         x_corr_regions = x_corr_metadata['regions']
+#         corr_lags = x_corr_metadata['corr_lags']
+        
+#         recalculate = x_corr_metadata['max_lag'] != max_lag
+
+# elif not path.exists(save_path):
+#     recalculate = True
+
+# if recalculate:
+#     x_corrs = {subjid: {task: {} for task in tasks} for subjid in subj_ids}
+#     x_corr_regions = {subjid: [] for subjid in subj_ids}
+
+subj_ids = [199]
+sess_ids = [117251, 117317, 117450]
+loc_db = bandit_loc_db
+
+pca_components = {}
+ica_mix_mats = {}
+
+for subj_id in subj_ids:
+    
+    subj_regions = list(implant_info[subj_id].keys())
+    
+    if subj_id in fpah.__region_ignore:
+        subj_regions = [r for r in subj_regions if r not in fpah.__region_ignore[subj_id]]
+        
+    n_regions = len(subj_regions)
+    
+    pca_components[subj_id] = {}
+    ica_mix_mats[subj_id] = {}
+
+    for sess_id in sess_ids:
+
+        fp_data, _ = fpah.load_fp_data(loc_db, {subj_id: [sess_id]}, baseline_correction=baseline_correction, tilt_t=tilt_t, filter_dropout_outliers=filter_dropout_outliers)
+        fp_data = fp_data[subj_id][sess_id]
+
+        # build signal matrix
+        signal_mat = np.stack([fp_data['processed_signals'][r][signal_type] for r in subj_regions], axis=1)
+        
+        iso_mat = np.stack([fp_data['processed_signals'][r]['raw_iso'] for r in subj_regions], axis=1)
+        
+        # remove nans
+        nans = np.any(np.isnan(signal_mat), axis=1)
+        signal_mat = signal_mat[~nans,:]
+
+        # do ICA
+        ica = FastICA()
+        signal_ica = ica.fit_transform(signal_mat)
+        ica_mix_mat = ica.mixing_
+        
+        # rearrange columns of mixing matrix so that the diagonal has all the largest values
+        col_sel = []
+        col_rect = []
+        all_cols = np.arange(n_regions)
+        for i in range(n_regions):
+            max_idx = np.argmax(np.abs(ica_mix_mat[i,all_cols]))
+            max_idx = all_cols[max_idx]
+            all_cols = all_cols[all_cols != max_idx]
+            col_sel.append(max_idx)
+            max_col_val_idx = np.argmax(np.abs(ica_mix_mat[:,max_idx]))
+            if ica_mix_mat[max_col_val_idx,max_idx] < 0:
+                col_rect.append(-1)
+            else:
+                col_rect.append(1)
+                
+        ica_mix_mat = ica_mix_mat[:,col_sel]
+        signal_ica = signal_ica[:, col_sel]
+        rect_mult = np.array(col_rect)[None,:]
+        ica_mix_mat *= rect_mult
+        signal_ica *= rect_mult
+        
+        # fig, axs = plt.subplots(n_regions, 1, sharex=True, layout='constrained')
+        # for i in range(n_regions):
+        #     ax = axs[i]
+        #     ax.set_title(subj_regions[i])
+        #     ax.plot(fp_data['time'][~nans], signal_mat[:,i], label='Signal', alpha=0.5)
+        #     ax.plot(fp_data['time'][~nans], signal_ica[:,i], label='ICA', alpha=0.5)
+        #     ax.legend()
+        
+        # do PCA
+        pca = PCA()
+        signal_pca = pca.fit_transform(signal_mat)
+        explained_var = pca.explained_variance_ratio_
+        components = pca.components_
+        
+        pca_components[subj_id][sess_id] = components
+        ica_mix_mats[subj_id][sess_id] = ica_mix_mat
+        
+        # ica = FastICA()
+        # signal_pca_ica = ica.fit_transform(signal_pca)
+        # pca_ica_mix_mat = ica.mixing_
+        
+        # # rectify columns of mixing matrix so that the diagonal has all the largest values
+        # col_sel = []
+        # col_rect = []
+        # all_cols = np.arange(n_regions)
+        # for i in range(n_regions):
+        #     max_idx = np.argmax(np.abs(pca_ica_mix_mat[i,all_cols]))
+        #     max_idx = all_cols[max_idx]
+        #     all_cols = all_cols[all_cols != max_idx]
+        #     col_sel.append(max_idx)
+        #     max_col_val_idx = np.argmax(np.abs(pca_ica_mix_mat[:,max_idx]))
+        #     if pca_ica_mix_mat[max_col_val_idx,max_idx] < 0:
+        #         col_rect.append(-1)
+        #     else:
+        #         col_rect.append(1)
+                
+        # pca_ica_mix_mat = pca_ica_mix_mat[:,col_sel]
+        # signal_pca_ica = signal_pca_ica[:, col_sel]
+        # rect_mult = np.array(col_rect)[None,:]
+        # pca_ica_mix_mat *= rect_mult
+        # signal_pca_ica *= rect_mult
+        
+        
+        # A_full = components.T @ pca_ica_mix_mat
+
+        trial_data = loc_db.get_behavior_data(sess_id)
+
+        ts = fp_data['time']
+        trial_start_ts = fp_data['trial_start_ts'][:-1]
+        cport_on_ts = trial_start_ts + trial_data['cport_on_time']
+        cpoke_in_ts = trial_start_ts + trial_data['cpoke_in_time']
+        #tone_ts = trial_start_ts + trial_data['abs_tone_start_times']
+        cue_ts = trial_start_ts + trial_data['response_cue_time']
+        cpoke_out_ts = trial_start_ts + trial_data['cpoke_out_time']
+        response_ts = trial_start_ts + trial_data['response_time']
+        outcome_ts = trial_start_ts + trial_data['reward_time']
+        reward_ts = outcome_ts[trial_data['reward'] > 0]
+        unreward_ts = outcome_ts[trial_data['reward'] == 0]
+
+        lines_dict = {'Cport On': cport_on_ts, 'Cpoke In': cpoke_in_ts, #'Tone': tone_ts,
+                      'Resp Cue': cue_ts, 'Cpoke Out': cpoke_out_ts, 'Response': response_ts,
+                      'Reward': reward_ts, 'Unreward': unreward_ts}
+
+        title = 'Subject {}, Session {}'.format(subj_id, sess_id)
+        # plot_signal_details(signal_mat, ts[~nans], title, subj_regions, lines_dict)
+
+        # plot_signal_details(signal_pca, ts[~nans], title, 
+        #                     ['PC {}'.format(i) for i in range(n_regions)], lines_dict)
+        
+        # plot_signal_details(iso_mat, ts, title, subj_regions, lines_dict)
+        
+        # plot_signal_details(signal_pca_ica, ts[~nans], 
+        #                     ['PC IC {}'.format(i) for i in range(n_regions)], lines_dict)
+        
+        

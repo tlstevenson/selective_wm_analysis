@@ -43,8 +43,8 @@ def get_all_processed_signals(raw_lig, raw_iso, t, smooth_fit, vary_t, lig_lpf=1
     denoised_lig = fp_utils.filter_signal(raw_lig, lig_lpf, fs)
     denoised_iso = fp_utils.filter_signal(raw_iso, iso_lpf, fs)
     
-    baseline_lig = fp_utils.filter_signal(raw_lig, 0.001, fs, filter_type='lowpass')
-    baseline_iso = fp_utils.filter_signal(raw_iso, 0.001, fs, filter_type='lowpass')
+    baseline_lig = fp_utils.filter_signal(raw_lig, 0.0005, fs, filter_type='lowpass')
+    baseline_iso = fp_utils.filter_signal(raw_iso, 0.0005, fs, filter_type='lowpass')
     
     # calculate traditional iso dF/F
     if smooth_fit:
