@@ -23,20 +23,22 @@ import warnings
 import json
 
 import pickle
+
+import pandas as pd
 import os
 
 #%% load the param data calculated from actual recordings 
 with open('param_range_comb.json', 'rb') as f:
     param_range_comb = json.load(f)
 
-a_range = [0.1,10]
+a_range = [0.1, 10]
 a_sd = 2
-b_range = [1,1e5]
+b_range = [1, 1e5]
 b_sd = 100
 c_range = [-3e-6, 4e-6]
 c_sd = 5e-7
-d_range = [1,10]
-d_sd = 3
+d_range = [1, 10]
+d_sd = 5
 
 param_vals = lambda rng, sd: {'max_value': max(rng), 'min_value': min(rng),
                               'mean_plus_SD4': max(rng), 'mean_minus_SD4': min(rng), 'SD': sd}
@@ -109,6 +111,8 @@ def param_selector (form_name, use_custom_params=True):   # add a way to be able
     
     params = custom_param_range if use_custom_params else param_range_comb
     
+    # print("use_custom_params actually is:", use_custom_params) # debug for ensuring right parameter selection
+    
     selected_params = {}
     for param in params[form_name].keys(): 
         df = params[form_name][param]
@@ -121,7 +125,7 @@ def param_selector (form_name, use_custom_params=True):   # add a way to be able
             selected_params[param] = np.exp(np.random.uniform(np.log(limit_min), np.log(limit_max))) # pick from logged ver, then change it back using exp 
         
         elif form_name == 'exp_linear' and param == 'param_3':  
-            selected_params[param] = np.random.uniform(0, limit_max)
+            selected_params[param] = np.random.uniform(1, limit_max)
         
         else: 
             selected_params[param] = np.random.uniform(limit_min, limit_max)
@@ -154,7 +158,8 @@ def param_jitter (selected_params, SD_frac, form_name, use_custom_params=True):
         # always make intercept be smaller for iso
         elif form_name == 'exp_linear' and param in ['param_0', 'param_3']:
             new_val = prev_val - df['SD']*np.abs(jitter)
-        elif form_name == 'exp_linear' and param == 'param_3':
+        # elif form_name == 'exp_linear' and param == 'param_3':
+            
         else:
             new_val = prev_val + df['SD']*jitter
        
@@ -163,7 +168,7 @@ def param_jitter (selected_params, SD_frac, form_name, use_custom_params=True):
         limit_max = min(df['mean_plus_SD4'], df['max_value'])
         
         if form_name == 'exp_linear' and param in ['param_3']:  
-            clipped = np.clip(new_val, 0, limit_max)
+            clipped = np.clip(new_val, 1, limit_max)
         else:
             clipped = np.clip(new_val, limit_min, limit_max)
 
@@ -211,8 +216,8 @@ def generate_baseline (form_type, SD_frac, time):
     # for time, the input is in second. converting to an index when apply 
     
     while True:
-        lig_params = param_selector (form_type)
-        iso_params = param_jitter (lig_params, SD_frac, form_type)
+        lig_params = param_selector (form_type, use_custom_params=True)
+        iso_params = param_jitter (lig_params, SD_frac, form_type, use_custom_params=True)
     
         # params.values() seems to change the order of params. Thus, sorting based on the key - # may move this to combining function 
         lig_param_list = [lig_params[key] for key in sorted(lig_params.keys(), key=lambda x: int(x.split('_')[1]))]
@@ -339,108 +344,120 @@ def simulate_n_signals(n, time,
 clamp_total_points = 0
 clamp_total_calls = 0
 
-def process_signals(raw_lig, raw_iso, baseline_iso, time, fs, smooth_fit=True, vary_t=True, filt_denom=True, smooth_lpf=0.1): 
+def process_signals(raw_lig, raw_iso, baseline_iso, time, fs,
+                    lpf=0.1):
+    """
+    Run OLS, IRLS, and LPF-only fits for comparison.
+    Returns dictionary with keys: 'OLS', 'IRLS', 'LPF_only'
+    """
     global clamp_total_points, clamp_total_calls
 
-    epsilon = 1e-6  # minimum denominator to avoid division by zero or near zero
+    epsilon = 1e-6  # avoid zero denominators
+    results = {}
 
-    if smooth_fit: 
-        smooth_lig = fp_utils.filter_signal(raw_lig, smooth_lpf, fs)   
-        smooth_iso = fp_utils.filter_signal(raw_iso, smooth_lpf, fs) 
+    # ========================
+    # --- IRLS ---
+    # ========================
+    irls_fit, irls_info = fp_utils.fit_signal_IRLS(
+        raw_iso, raw_lig, time, vary_t=False
+    )
+    irls_baseline = irls_info['formula'](baseline_iso, *irls_info['params'])
+    denom = np.clip(irls_fit, epsilon, None)
+    num_clamped = np.sum(denom == epsilon)
+    clamp_total_points += num_clamped
+    clamp_total_calls += 1
 
-        if vary_t:
-            fitted_smooth_iso, smooth_fit_info = fp_utils.fit_signal(smooth_iso, smooth_lig, time, vary_t=True)
-            s_to_fit = np.vstack((raw_iso[None], time[None])) 
-            baseline_to_fit = np.vstack((baseline_iso[None], time[None])) 
+    results['IRLS'] = {
+        'raw_lig': raw_lig,
+        'fitted_iso': irls_fit,
+        'fitted_iso_baseline': irls_baseline,
+        'dff': (raw_lig - irls_fit) / denom,
+        'fit_params': irls_info['params'],
+        'filt_t': np.arange(len(time)),   
+    }
 
-        else: 
-            fitted_smooth_iso, smooth_fit_info = fp_utils.fit_signal(smooth_iso, smooth_lig, time, vary_t=False)
-            s_to_fit = raw_iso
-            baseline_to_fit = baseline_iso
+    # ========================
+    # --- OLS ---
+    # 4 combinations: (smooth_fit T/F, vary_t T/F)
+    # ========================
+    ols_results = {}
+    for smooth_fit in [True, False]:
+        for vary_t in [True, False]:
+            label = f"smooth{int(smooth_fit)}_varyt{int(vary_t)}"
 
-        # for smooth fit, get new fitted iso , using the smooth_fit_info 
-        fitted_iso = smooth_fit_info['formula'](s_to_fit, *smooth_fit_info['params'])
+            if smooth_fit:
+                smooth_lig = fp_utils.filter_signal(raw_lig, lpf, fs)
+                smooth_iso = fp_utils.filter_signal(raw_iso, lpf, fs)
+                x_iso, y_lig = smooth_iso, smooth_lig
+            else:
+                x_iso, y_lig = raw_iso, raw_lig
+                smooth_lig, smooth_iso = None, None
 
-        # also regress baseline to see how close baseline_iso goes to baseline_lig 
-        fitted_iso_baseline = smooth_fit_info['formula'](baseline_to_fit, *smooth_fit_info['params'])
-        
-        # Remove any portion of signals that go below 0
-        filt_t = np.full(len(raw_lig), True)
-        filt_thresh = np.argmax(fitted_iso < epsilon)
-        # handles condition where there ar no signals below epsilon
-        if fitted_iso[filt_thresh] < epsilon:
-            filt_t[filt_thresh:] = False
+            fitted, fit_info = fp_utils.fit_signal(x_iso, y_lig, time, vary_t=vary_t)
+            if vary_t:
+                baseline_to_fit = np.vstack((baseline_iso[None], time[None]))
+            else:
+                baseline_to_fit = baseline_iso
+            fitted_baseline = fit_info['formula'](baseline_to_fit, *fit_info['params'])
 
-        # clamp denominator to avoid division by zero or near-zero
-        denom = fitted_smooth_iso if filt_denom else fitted_iso
-        denom = np.clip(denom, epsilon, None)
+            denom = np.clip(fitted, epsilon, None)
+            num_clamped = np.sum(denom == epsilon)
+            clamp_total_points += num_clamped
+            clamp_total_calls += 1
 
-        # count how many points were clamped (denominator was below epsilon)
-        num_clamped = np.sum(denom == epsilon)
-        clamp_total_points += num_clamped
-        clamp_total_calls += 1
+            ols_results[label] = {
+                'raw_lig': raw_lig,
+                'fitted_iso': fitted,
+                'fitted_iso_baseline': fitted_baseline,
+                'dff': (raw_lig - fitted) / denom,
+                'fit_params': fit_info['params'],
+                'smooth_lig': smooth_lig,
+                'smooth_iso': smooth_iso,
+                'filt_t': np.arange(len(time)),
+            }
 
-        dff = ((raw_lig - fitted_iso) / denom)
-
-        # added raw_lig
-        return {
-            'raw_lig': raw_lig,
-            'smooth_lig':smooth_lig,
-            'smooth_iso':smooth_iso,
-            'fitted_smooth_iso':fitted_smooth_iso,
-            'fitted_iso': fitted_iso,
-            'fitted_iso_baseline':fitted_iso_baseline,
-            'dff': dff,
-            'fit_params': smooth_fit_info['params'],
-            'filt_t': filt_t}
-
-    else:
-        if vary_t:
-            fitted_iso, fit_info = fp_utils.fit_signal(raw_iso, raw_lig, time, vary_t=True)
-            baseline_to_fit = np.vstack((baseline_iso[None], time[None])) 
-
-        else: 
-            fitted_iso, fit_info = fp_utils.fit_signal(raw_iso, raw_lig, time, vary_t=False)  
-            baseline_to_fit = baseline_iso       
-
-        # also regress baseline to see how close baseline_iso goes to baseline_lig 
-        fitted_iso_baseline = fit_info['formula'](baseline_to_fit, *fit_info['params'])
-        
-        # Remove any portion of signals that go below 0
-        filt_t = np.full(len(raw_lig), True)
-        filt_thresh = np.argmax(fitted_iso < epsilon)
-        # handles condition where there ar no signals below epsilon
-        if fitted_iso[filt_thresh] < epsilon:
-            filt_t[filt_thresh:] = False
-
-        if filt_denom:
-            smooth_fitted_iso = fp_utils.filter_signal(fitted_iso, smooth_lpf, fs)  
-            denom = np.clip(smooth_fitted_iso, epsilon, None)
-        else:
-            denom = np.clip(fitted_iso, epsilon, None)
-
-        num_clamped = np.sum(denom == epsilon)
-        clamp_total_points += num_clamped
-        clamp_total_calls += 1
-
-        dff = ((raw_lig - fitted_iso) / denom)
-
-        #Added raw_lig
-        return {
-            'raw_lig': raw_lig,
-            'fitted_iso': fitted_iso,
-            'fitted_iso_baseline':fitted_iso_baseline,
-            'dff': dff,
-            'fit_params': fit_info['params'],
-            'filt_t': filt_t
-        }
+    results['OLS'] = ols_results
+   
+    # ========================
+    # --- LPF Baseline Subtraction ---
+    # ========================
+    cutoff_hz = 0.001  # 1 mHz cutoff
+    
+    # Low-pass filter raw signals for baseline fitting only
+    lpf_lig = fp_utils.filter_signal(raw_lig, cutoff_hz, fs)
+    lpf_iso = fp_utils.filter_signal(raw_iso, cutoff_hz, fs)
+    
+    # Fit low-passed iso to low-passed ligand to get baseline fit
+    fitted_iso, fit_info = fp_utils.fit_signal(lpf_iso, lpf_lig, time, vary_t=False)
+    
+    # Generate fitted iso from baseline
+    fitted_iso_baseline = fit_info['formula'](baseline_iso, *fit_info['params'])
+    
+    # Compute dF/F using raw ligand minus fitted baseline iso
+    denom = np.clip(fitted_iso_baseline, epsilon, None)
+    num_clamped = np.sum(denom == epsilon)
+    clamp_total_points += num_clamped
+    clamp_total_calls += 1
+    
+    results['LPF_only'] = {
+        'raw_lig': raw_lig,
+        'lpf_lig': lpf_lig,
+        'lpf_iso': lpf_iso,
+        'fitted_iso': fitted_iso,
+        'fitted_iso_baseline': fitted_iso_baseline,
+        'dff': (raw_lig - fitted_iso_baseline) / denom,
+        'fit_params': fit_info['params'],
+        'filt_t': np.arange(len(time)),
+    }
+    
+    return results
     
 ''' no clamping version
-def process_signals (raw_lig, raw_iso, baseline_iso, time, fs, smooth_fit=True, vary_t=True, filt_denom=True, smooth_lpf=0.1): 
+def process_signals (raw_lig, raw_iso, baseline_iso, time, fs, smooth_fit=True, vary_t=True, filt_denom=True, lpf=0.1): 
     
     if smooth_fit: 
-        smooth_lig = fp_utils.filter_signal(raw_lig, smooth_lpf, fs)   
-        smooth_iso = fp_utils.filter_signal(raw_iso, smooth_lpf, fs) 
+        smooth_lig = fp_utils.filter_signal(raw_lig, lpf, fs)   
+        smooth_iso = fp_utils.filter_signal(raw_iso, lpf, fs) 
     
         if vary_t:
             fitted_smooth_iso, smooth_fit_info = fp_utils.fit_signal(smooth_iso, smooth_lig, time, vary_t=True)
@@ -459,7 +476,7 @@ def process_signals (raw_lig, raw_iso, baseline_iso, time, fs, smooth_fit=True, 
         fitted_iso_baseline = smooth_fit_info['formula'](baseline_to_fit, *smooth_fit_info['params'])
         
         if filt_denom:
-            denom = fp_utils.filter_signal(fitted_iso, smooth_lpf, fs)  
+            denom = fp_utils.filter_signal(fitted_iso, lpf, fs)  
         else:
             denom = fitted_iso
         
@@ -488,7 +505,7 @@ def process_signals (raw_lig, raw_iso, baseline_iso, time, fs, smooth_fit=True, 
         fitted_iso_baseline = fit_info['formula'](baseline_to_fit, *fit_info['params'])       
         
         if filt_denom:
-            smooth_fitted_iso = fp_utils.filter_signal(fitted_iso, smooth_lpf, fs)  
+            smooth_fitted_iso = fp_utils.filter_signal(fitted_iso, lpf, fs)  
             denom = smooth_fitted_iso
         else:
             denom = fitted_iso
@@ -521,7 +538,7 @@ def remove_outliers (data, threshold=2):
     return data[np.abs(z_scores) < threshold] 
 
 
-#%% plot ev  - line plot 
+#%% plot ev - line plot 
 
 def plot_ev_results(ev_results, DV_name, exclude_outliers=False, alpha_default=None, SD_frac_default=None, SNR_default=None, SAR_default=None, method_labels=None):
     plt.figure(figsize=(6, 5))
@@ -577,108 +594,101 @@ def plot_ev_results(ev_results, DV_name, exclude_outliers=False, alpha_default=N
     plt.show()
 
 
-#%% plot the signals that are processed with each of the 4 different processing steps against each other
+#%% plot the signals that are processed with each of the 7 different processing steps against each other
 
 def plot_comparative_figures(
-    raw_lig, raw_iso, baseline_iso, time, true_sig, fs=200, smooth_lpf=0.1,
+    raw_lig, raw_iso, baseline_iso, time, true_sig, fs=200, lpf=0.1,
     suptitle_text=None, ev=None, dv=None, param_name=None, extra_title=None
 ):
+    """
+    Plot raw signals, fitted isos, and dF/F across all processing methods.
+    Skips subplots when required data is missing.
+    """
+
+    # processing_conditions: each item describes one preprocessing method
     processing_conditions = [
-        (True, True),
-        (True, False),
-        (False, True),
-        (False, False)
+        # OLS combos
+        {'method': 'OLS', 'smooth_fit': True,  'vary_t': True,  'label': 'smooth=True,vary_t=True',  'lpf': lpf},
+        {'method': 'OLS', 'smooth_fit': True,  'vary_t': False, 'label': 'smooth=True,vary_t=False', 'lpf': lpf},
+        {'method': 'OLS', 'smooth_fit': False, 'vary_t': True,  'label': 'smooth=False,vary_t=True', 'lpf': lpf},
+        {'method': 'OLS', 'smooth_fit': False, 'vary_t': False, 'label': 'smooth=False,vary_t=False','lpf': lpf},
+        # LPF-only
+        {'method': 'LPF_only', 'smooth_fit': False,  'vary_t': False, 'label': 'LPF only', 'lpf': lpf},
+        # IRLS
+        {'method': 'IRLS', 'smooth_fit': False, 'vary_t': False, 'label': 'IRLS', 'lpf': lpf},
     ]
 
-    results = []
-    for smooth_fit, vary_t in processing_conditions:
-        result = process_signals(
-            raw_lig, raw_iso, baseline_iso, time, fs,
-            smooth_fit=smooth_fit,
-            vary_t=vary_t,
-            filt_denom=True,
-            smooth_lpf=smooth_lpf
-        )
-        results.append({
-            'smooth_fit': smooth_fit,
-            'vary_t': vary_t,
-            'raw_lig': raw_lig,
-            'raw_iso': raw_iso,
-            'baseline_iso': baseline_iso,
-            **result
-        })
+    results = process_signals(raw_lig, raw_iso, baseline_iso, time, fs, lpf=lpf)
 
-    # Prepare EV/DV text for titles if provided
-    ev_dv_str = ''
+    n_methods = len(processing_conditions)
+    fig, axes = plt.subplots(n_methods, 2, figsize=(12, 3 * n_methods), sharex=True)
+
+    for idx, cond in enumerate(processing_conditions):
+        method = cond['method']
+        label = cond['label']
+
+        # --- Retrieve processed signals safely ---
+        try:
+            if method == 'OLS':
+                res = results['OLS'].get(f"smooth{int(cond['smooth_fit'])}_varyt{int(cond['vary_t'])}", None)
+            else:
+                res = results.get(method, None)
+        except Exception:
+            res = None
+
+        if res is None:
+            axes[idx, 0].set_visible(False)
+            axes[idx, 1].set_visible(False)
+            continue
+
+        # --- Left panel: raw_lig, fitted iso, and smoothed signals (if applicable) ---
+        ax_left = axes[idx, 0]
+        ax_left.plot(time, raw_lig, label='raw_lig', color='skyblue', alpha=0.7)
+
+        if 'fitted_iso' in res and res['fitted_iso'] is not None:
+            ax_left.plot(time, res['fitted_iso'], label='fitted_iso', color='orange', alpha=0.7)
+
+        if cond['smooth_fit']:
+            if 'smooth_lig' in res and res['smooth_lig'] is not None:
+                ax_left.plot(time, res['smooth_lig'], label='smooth_lig', color='green', linestyle='--')
+            if 'smooth_iso' in res and res['smooth_iso'] is not None:
+                ax_left.plot(time, res['smooth_iso'], label='smooth_iso', color='red', linestyle='--')
+
+        ax_left.set_ylabel(label, fontsize=6)
+        ax_left.legend(loc='upper right')
+
+        # --- Right panel: true signal vs dF/F ---
+        ax_right = axes[idx, 1]
+        ax_right.plot(time, true_sig, label='true_sig', color='steelblue', alpha=0.7)
+        if 'dff' in res and res['dff'] is not None:
+            ax_right.plot(time, res['dff'], label='dF/F', color='green', alpha=0.7)
+
+        ax_right.legend(loc='upper right')
+
+    if n_methods > 1:   
+        axes[-1, 0].set_xlabel('Time (s)')
+        axes[-1, 1].set_xlabel('Time (s)')
+    else:
+        axes[0].set_xlabel('Time (s)')
+        axes[1].set_xlabel('Time (s)')
+
+    # --- Suptitle with EV and parameter info ---
+    main_title = "Signal Comparison Across Processing Methods"
     if ev is not None and dv is not None:
-        label = param_name if param_name is not None else 'DV'
-        ev_dv_str = f' | Lowest EV = {ev:.2f} | {label} = {float(dv):.2f}'
+        if param_name is not None:
+            main_title += f" | Lowest EV = {ev:.2f} | {param_name} = {float(dv):.2f}"
+        else:
+            main_title += f" | Lowest EV = {ev:.2f} | DV = {float(dv):.2f}"
+    fig.suptitle(main_title, fontsize=16, y=0.98)
 
-    # === FIGURE 1: 4x2 GRID === #
-    fig1, axs = plt.subplots(4, 2, figsize=(14, 12), sharex=True)
-
-    if suptitle_text is not None:
-        main_title_fig1 = suptitle_text  # Optionally override main suptitle
-
-    main_title_fig1 = 'Signal Comparison Across Processing Methods' + ev_dv_str
-    fig1.suptitle(main_title_fig1, fontsize=16, y=0.98)
-
-    # add extra subtitle text below main title if provided
     if extra_title is not None:
-        fig1.text(0.5, 0.93, extra_title, ha='center', fontsize=12, color='gray')
-
-    for i, res in enumerate(results):
-        label = f'smooth={res['smooth_fit']}, vary_t={res['vary_t']}'
-
-        axs[i, 0].plot(time, res['raw_lig'], label='raw_lig', alpha=0.6)
-        axs[i, 0].plot(time, res['fitted_iso'], label='fitted_iso', alpha=0.6)
-        if res['smooth_fit']:
-            axs[i, 0].plot(time, res['smooth_lig'], label='smooth_lig', linestyle='--')
-            axs[i, 0].plot(time, res['smooth_iso'], label='smooth_iso', linestyle='--')
-        axs[i, 0].set_ylabel(label)
-        axs[i, 0].legend(loc='upper right')
-
-        axs[i, 1].plot(time, true_sig, label='true_sig', color='blue', alpha=0.7)
-        axs[i, 1].plot(time, res['dff'], label='dF/F', color='green', alpha=0.6)
-        axs[i, 1].legend(loc='upper right')
-
-    axs[3, 0].set_xlabel('Time (s)')
-    axs[3, 1].set_xlabel('Time (s)')
-
-    plt.tight_layout(rect=[0, 0, 1, 0.95])  # leave space for suptitle
-    plt.show()
-
-    # === FIGURE 2: Overlayed comparisons === #
-    fig2, axs2 = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
-
-    if suptitle_text is not None:
-        main_title_fig2 = suptitle_text  # Optionally override main suptitle
-
-    main_title_fig2 = 'Overlayed Signal Comparisons Across Methods' + ev_dv_str
-    fig2.suptitle(main_title_fig2, fontsize=16, y=0.98)
-
-    # add extra subtitle text below main title if provided
-    if extra_title is not None:
-        fig2.text(0.5, 0.93, extra_title, ha='center', fontsize=12, color='gray')
-
-    for res in results:
-        label = f'smooth={res['smooth_fit']}, vary_t={res['vary_t']}'
-        axs2[0].plot(time, res['fitted_iso'], label=label)
-    axs2[0].set_title('Fitted Iso across Methods')
-    axs2[0].set_ylabel('Fitted Iso (V)')
-    axs2[0].legend()
-
-    axs2[1].plot(time, true_sig, label='true_sig', color='black', linewidth=2)
-    for res in results:
-        label = f'dF/F (smooth={res['smooth_fit']}, vary_t={res['vary_t']})'
-        axs2[1].plot(time, res['dff'], label=label, linestyle='--')
-    axs2[1].set_title('dF/F across Methods vs. True Signal')
-    axs2[1].set_ylabel('dF/F')
-    axs2[1].set_xlabel('Time (s)')
-    axs2[1].legend()
+        fig.text(0.5, 0.93, extra_title, ha='center', fontsize=12, color='gray')
 
     plt.tight_layout(rect=[0, 0, 1, 0.95])
     plt.show()
+
+
+
 
 #%% for troubleshooting / visualization, plot some of the signals as needed 
 
@@ -714,39 +724,111 @@ def plot_signals(processed_signals, true_sig, t, ev, fs=200, title='Signal Overv
 
     return fig
 
-#%% saving signals in a nested dictionary ordered by varying DV type
+#%% saving signals in a table with each row corresponding to a signal
 
-def save_simulated_signals(filename, dv_name, simulated_signals):
+def signal_to_row(signal_dict, DV, param_name, method=None, ev=None, index=None, signal_keys=None):
     """
-    Save simulated signals organized by DV name into a nested dict in a pickle file.
-    If file exists, it loads existing data and appends the new simulated_signals
-    under the corresponding dv_name key (keeps multiple batches).
+    Flatten one simulated signal and related arrays into a single row dict.
     """
-    # load existing data if file exists
-    if os.path.exists(filename):
-        with open(filename, 'rb') as f:
-            all_data = pickle.load(f)
+    row = {
+        'DV': float(DV),
+        'param_name': param_name,
+        'index': index,
+        'method': method,
+        'ev': ev,
+    }
+
+    # Add baseline params
+    for k, v in signal_dict.get('lig_params', {}).items():
+        row[f'lig_{k}'] = v
+    for k, v in signal_dict.get('iso_params', {}).items():
+        row[f'iso_{k}'] = v
+
+    # Default keys to store
+    default_signal_keys = ['raw_lig', 'raw_iso', 'baseline_iso', 'scaled_true_sig', 'artifact', 'noise']
+    keys = signal_keys if signal_keys is not None else default_signal_keys
+
+    for key in keys:
+        val = signal_dict.get(key, None)
+        row[key] = np.asarray(val) if val is not None else None
+
+    return row
+
+
+def signals_to_dataframe(simulated_signals, ev_results, param_name, signal_keys=None):
+    """
+    Convert nested simulated_signals and ev_results into a long-form pandas DataFrame.
+    """
+    all_rows = []
+    for DV, signal_list in simulated_signals.items():
+        methods_for_dv = ev_results.get(DV, {})
+        for idx, signal in enumerate(signal_list):
+            for method, ev_list in methods_for_dv.items():
+                ev_val = ev_list[idx]
+                row = signal_to_row(signal, DV, param_name, method=method, ev=ev_val, index=idx, signal_keys=signal_keys)
+                all_rows.append(row)
+
+    if not all_rows:
+        return pd.DataFrame()
+    return pd.DataFrame(all_rows)
+
+
+def save_dataframe(df, filepath):
+    """
+    Ensure directory exists and save DataFrame to pickle.
+    """
+    folder = os.path.dirname(filepath)
+    if folder and not os.path.exists(folder):
+        os.makedirs(folder, exist_ok=True)
+    df.to_pickle(filepath)
+
+
+def load_or_create_dataframe(filepath):
+    """
+    Load a pickled DataFrame if present, else return an empty DataFrame.
+    """
+    if os.path.exists(filepath):
+        return pd.read_pickle(filepath)
     else:
-        all_data = {}
+        return pd.DataFrame()
 
-    # append new simulated signals under dv_name key
-    if dv_name not in all_data:
-        all_data[dv_name] = []
+#%% retrieving signals
 
-    all_data[dv_name].append(simulated_signals)
-
-    # save back the updated dictionary
-    with open(filename, 'wb') as f:
-        pickle.dump(all_data, f)
-
-def load_simulated_signals(filename):
+def retrieve_signals(path_or_df, DV=None, method=None, ev_thresh=None, index=None, signal_keys=None):
     """
-    Load the nested dict of simulated signals keyed by DV name from a pickle file.
-    Returns empty dict if file does not exist.
+    Load a saved DataFrame (or accept a DataFrame), filter rows by DV/method/ev_thresh/index,
+    and return (filtered_df, matched_signals).
     """
-    if os.path.exists(filename):
-        with open(filename, 'rb') as f:
-            return pickle.load(f)
+    if isinstance(path_or_df, pd.DataFrame):
+        df = path_or_df.copy()
     else:
-        return {}
+        if not os.path.exists(path_or_df):
+            raise FileNotFoundError(f"File not found: {path_or_df}")
+        df = pd.read_pickle(path_or_df)
 
+    # Apply filters
+    if DV is not None:
+        df = df[df['DV'] == float(DV)]
+    if method is not None:
+        df = df[df['method'] == method]
+    if ev_thresh is not None:
+        df = df[df['ev'] >= ev_thresh]
+    if index is not None:
+        df = df[df['index'] == index]
+
+    if df.empty:
+        return df, []
+
+    metadata_cols = {'DV', 'param_name', 'index', 'method', 'ev'}
+    param_prefixes = ('lig_', 'iso_')
+
+    auto_signal_cols = [c for c in df.columns if c not in metadata_cols and not c.startswith(param_prefixes)]
+
+    if signal_keys is not None:
+        signal_cols = [c for c in signal_keys if c in df.columns]
+    else:
+        signal_cols = auto_signal_cols
+
+    matched_signals = df[signal_cols].to_dict(orient='records')
+
+    return df, matched_signals

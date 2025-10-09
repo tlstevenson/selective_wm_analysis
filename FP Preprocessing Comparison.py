@@ -3,9 +3,12 @@
 Created on Mon Jul 15 10:53:01 2024
 
 @author: tanne
+
+Edited by Alex Truong
 """
 
 import init
+from hankslab_db import db_access
 import hankslab_db.basicRLtasks_db as db
 from pyutils import utils
 import numpy as np
@@ -18,11 +21,11 @@ from scipy.stats import linregress
 from scipy.optimize import curve_fit, minimize, OptimizeWarning
 from sklearn.linear_model import LinearRegression
 import warnings
-
+import gc
 
 # %% Declare methods
 
-def get_all_processed_signals(raw_lig, raw_iso, t, smooth_fit, vary_t, noise_lpf=10, smooth_lpf=0.1):
+def get_all_processed_signals(raw_lig, raw_iso, t, fs, smooth_fit, vary_t, noise_lpf=10, smooth_lpf=0.1):
     ''' Gets all possible processed signals and intermediaries for the given raw signals.
         Will check to see if any signals should be excluded. Also will also optionally exclude signals before and after the behavior.'''
 
@@ -98,10 +101,62 @@ def get_all_processed_signals(raw_lig, raw_iso, t, smooth_fit, vary_t, noise_lpf
             'dff_iso': dff_iso,
             'dff_iso_baseline': dff_iso_baseline}
 
+#%%
+
+def process_single_session(subj_id, sess_id, sess_fp_data, smooth_lpf=0.1, noise_lpf=10):
+    isos = np.array(['420','405'])
+    ligs = np.array(['490','465'])
+
+    t = sess_fp_data['time']
+    fs = 1 / (t[1] - t[0])
+    raw_signals = sess_fp_data['raw_signals']
+
+    if 'processed_signals' not in sess_fp_data:
+        sess_fp_data['processed_signals'] = {}
+
+    for smooth_fit in [False, True]:
+        if smooth_fit not in sess_fp_data['processed_signals']:
+            sess_fp_data['processed_signals'][smooth_fit] = {}
+        for vary_t in [False, True]:
+            if vary_t not in sess_fp_data['processed_signals'][smooth_fit]:
+                sess_fp_data['processed_signals'][smooth_fit][vary_t] = {}
+
+            for region in raw_signals.keys():
+                region_signals = raw_signals[region]
+
+                # find ligand
+                lig_sel = np.array([k in region_signals for k in ligs])
+                if lig_sel.any():
+                    lig = ligs[lig_sel][0]
+                else:
+                    raise Exception(f'No ligand channel found in {region}')
+
+                raw_lig = region_signals[lig]
+
+                # find all isos
+                valid_isos = [iso for iso in isos if iso in region_signals]
+                if len(valid_isos) == 0:
+                    raise Exception(f'No isosbestic channels found in {region}')
+
+                # initialize region entry
+                if region not in sess_fp_data['processed_signals'][smooth_fit][vary_t]:
+                    sess_fp_data['processed_signals'][smooth_fit][vary_t][region] = {}
+
+                for iso in valid_isos:
+                    raw_iso = region_signals[iso]
+                    sess_fp_data['processed_signals'][smooth_fit][vary_t][region][iso] = get_all_processed_signals(
+                        raw_lig, raw_iso, t, fs, smooth_fit, vary_t, noise_lpf=noise_lpf, smooth_lpf=smooth_lpf
+                    )
+
+    return sess_fp_data
 
 #%% Get fp data signals
 
-sess_ids = {202: [101965], 191: [102208, 102406]} #{179: [92692], 180: [102327]} #{202: [101965, 101912], 191: [102208, 100301, 101667]}
+subj_ids = [179, 180, 188, 191, 207]
+
+sess_ids = db_access.get_fp_data_sess_ids(subj_ids=subj_ids)
+
+# sess_ids = {202: [101965], 191: [102208, 102406]} #{179: [92692], 180: [102327]} #{202: [101965, 101912], 191: [102208, 100301, 101667]}
 # sess_ids = {188: [102246]} #, 100406, 100551, 100673]}
 # subj_id = 202 # 191
 # sess_id = 101965 # 102208
@@ -109,68 +164,113 @@ sess_ids = {202: [101965], 191: [102208, 102406]} #{179: [92692], 180: [102327]}
 # sess_ids = {subj_id: [sess_id]}
 
 loc_db = db.LocalDB_BasicRLTasks('')
-# get fiber photometry data
-fp_data = loc_db.get_sess_fp_data(utils.flatten(sess_ids))
-# separate into different dictionaries
+# get fiber photometry data and separate into different dictionaries
 
-fp_data = fp_data['fp_data']
+fp_data = {}
+
+for subj_id in sess_ids:
+    fp_data[subj_id] = {}
+
+    for sess_id in sess_ids[subj_id]:
+        print(f"Processing {subj_id} - {sess_id}")
+
+        # Load only one session from disk
+        sess_fp_data = loc_db.get_sess_fp_data([sess_id])['fp_data'][subj_id][sess_id]
+
+        # Process it
+        sess_fp_data = process_single_session(subj_id, sess_id, sess_fp_data)
+
+        # Store it
+        fp_data[subj_id][sess_id] = sess_fp_data
+
+        # Cleanup
+        del sess_fp_data
+        gc.collect()
 
 
-# %% Process signals
+
+# %% Process signals with memory cleanup
 
 isos = np.array(['420','405'])
 ligs = np.array(['490','465'])
 
-smooth_fit = False
-vary_t = False
 noise_lpf = 10
 smooth_lpf = 0.1
 
 for subj_id in sess_ids.keys():
     for sess_id in sess_ids[subj_id]:
 
+        print(f"Processing subject {subj_id}, session {sess_id}...")
+
         raw_signals = fp_data[subj_id][sess_id]['raw_signals']
         t = fp_data[subj_id][sess_id]['time']
-        fs = 1/(t[1] - t[0])
+        fs = 1 / (t[1] - t[0])
 
-        if not 'processed_signals' in fp_data[subj_id][sess_id]:
+        session_processed_signals = {}
+
+        for smooth_fit in [False, True]:
+            session_processed_signals[smooth_fit] = {}
+
+            for vary_t in [False, True]:
+                session_processed_signals[smooth_fit][vary_t] = {}
+
+                for region in raw_signals.keys():
+
+                    region_signals = raw_signals[region]
+
+                    # find lig
+                    lig_sel = np.array([k in region_signals for k in ligs])
+                    if lig_sel.any():
+                        lig = ligs[lig_sel][0]
+                    else:
+                        raise Exception(f'No ligand channel found in {region}')
+                    raw_lig = region_signals[lig]
+
+                    # find isos
+                    valid_isos = [iso for iso in isos if iso in region_signals]
+                    if len(valid_isos) == 0:
+                        raise Exception(f'No isosbestic channels found in {region}')
+
+                    session_processed_signals[smooth_fit][vary_t][region] = {}
+
+                    for iso in valid_isos:
+                        raw_iso = region_signals[iso]
+                        processed = get_all_processed_signals(
+                            raw_lig, raw_iso, t, fs,
+                            smooth_fit, vary_t,
+                            noise_lpf=noise_lpf,
+                            smooth_lpf=smooth_lpf
+                        )
+                        session_processed_signals[smooth_fit][vary_t][region][iso] = processed
+
+        # save only this session’s processed signals
+        if 'processed_signals' not in fp_data[subj_id][sess_id]:
             fp_data[subj_id][sess_id]['processed_signals'] = {}
-            
-        fp_data[subj_id][sess_id]['processed_signals'].update({smooth_fit: {vary_t: {}}})
+        fp_data[subj_id][sess_id]['processed_signals'] = session_processed_signals
 
-        n_regions = len(raw_signals.keys())
+        # clean up memory after each session
+        del raw_signals, session_processed_signals
+        gc.collect()
 
-        for region in raw_signals.keys():
-            
-            lig_sel = np.array([k in raw_signals[region].keys() for k in ligs])
-            iso_sel = np.array([k in raw_signals[region].keys() for k in isos])
-
-            if sum(lig_sel) >= 1:
-                lig = ligs[lig_sel][0]
-            else:
-                raise Exception('No ligand wavelength found')
-
-            if sum(iso_sel) >= 1:
-                iso = isos[iso_sel][0]
-            else:
-                raise Exception('No isosbestic wavelength found')
-            
-            raw_lig = raw_signals[region][lig]
-            raw_iso = raw_signals[region][iso]
-            
-            fp_data[subj_id][sess_id]['processed_signals'][smooth_fit][vary_t][region] = get_all_processed_signals(raw_lig, raw_iso, t, smooth_fit, vary_t, noise_lpf=noise_lpf, smooth_lpf=smooth_lpf)
 
 # %% Plot processed signal
 
 gen_title = 'Baseline Comparison, Subject {}, Session {}, Smooth Fit: {}, Vary t: {}, Noise LPF: {}, Smooth LPF: {}'
-sub_t = [0, np.inf] # [1100, 1120] #
+sub_t = [0, np.inf]  # [1100, 1120] #
 dec = 10
 
 for subj_id in sess_ids.keys():
     for sess_id in sess_ids[subj_id]:
         t = fp_data[subj_id][sess_id]['time']
 
-        fpah.view_processed_signals(fp_data[subj_id][sess_id]['processed_signals'][smooth_fit][vary_t], t, t_min=sub_t[0], t_max=sub_t[1], dec=dec,
+        nested_signals = fp_data[subj_id][sess_id]['processed_signals'][smooth_fit][vary_t]
+        flattened_signals = {}
+        for region, iso_dict in nested_signals.items():
+            for iso, signals in iso_dict.items():
+                combined_key = f"{region}_{iso}"
+                flattened_signals[combined_key] = signals
+
+        fpah.view_processed_signals(flattened_signals, t, t_min=sub_t[0], t_max=sub_t[1], dec=dec,
                                     title=gen_title.format(subj_id, sess_id, smooth_fit, vary_t, noise_lpf, smooth_lpf))
 
 
@@ -184,99 +284,184 @@ for subj_id in sess_ids.keys():
 
         regions = list(fp_data[subj_id][sess_id]['raw_signals'].keys())
         processed_signals = fp_data[subj_id][sess_id]['processed_signals']
-        
-        fig, axs = plt.subplots(len(regions), 1, figsize=(8, 3*len(regions)), layout='constrained')
-        
-        for i, region in enumerate(regions):
 
+        fig, axs = plt.subplots(len(regions), 1, figsize=(8, 3 * len(regions)), layout='constrained')
+        axs = np.atleast_1d(axs)
+                            
+        for i, region in enumerate(regions):
             ax = axs[i]
-            ax.plot(t, processed_signals[False][True][region]['dff_iso'][::dec], label='Trad. dF/F', alpha=0.6)
-            ax.plot(t, processed_signals[True][True][region]['dff_iso'][::dec], label='Updated dF/F', alpha=0.6)
+            for iso in processed_signals[False][True][region]:
+                dff_trad = processed_signals[False][True][region][iso]['dff_iso'][::dec]
+                dff_updated = processed_signals[True][True][region][iso]['dff_iso'][::dec]
+
+                ax.plot(t, dff_trad, label=f'Trad. dF/F ({iso})', alpha=0.6)
+                ax.plot(t, dff_updated, label=f'Updated dF/F ({iso})', alpha=0.6)
+
+            ax.set_title(region)
             ax.legend(loc='upper right')
 
-# %% Process signals
+# %% comparing df/f between 405 and 420 for each method: smooth, vary_t: FF, TF, TT
 
-from sklearn.decomposition import FastICA
-from scipy.optimize import curve_fit
+dec = 10
+t = t[::dec]
+
+methods = {
+    'FF': (False, False),
+    'TF': (True, False),
+    'TT': (True, True)
+}
 
 for subj_id in sess_ids.keys():
     for sess_id in sess_ids[subj_id]:
-
-        raw_signals = fp_data[subj_id][sess_id]['raw_signals']
         t = fp_data[subj_id][sess_id]['time']
-        fs = 1/(t[1] - t[0])
+        regions = list(fp_data[subj_id][sess_id]['raw_signals'].keys())
+        processed = fp_data[subj_id][sess_id]['processed_signals']
 
-        #fp_data[subj_id][sess_id]['processed_signals'] = {}
-        #fp_data[subj_id][sess_id]['processed_signals_denoised'] = {}
+        for region in regions:
+            plt.figure(figsize=(15, 10))
 
-        n_regions = len(raw_signals.keys())
+            for i, method_label in enumerate(['FF', 'TF', 'TT'], 1):
+                smooth_fit, vary_t = methods[method_label]
 
-        for region in raw_signals.keys():
+                plt.subplot(3, 1, i)
 
-            raw_lig = raw_signals[region][lig]
-            raw_iso = raw_signals[region][iso]
+                if '405' in processed[smooth_fit][vary_t][region] and '420' in processed[smooth_fit][vary_t][region]:
+                    dff_405 = processed[smooth_fit][vary_t][region]['405']['dff_iso']
+                    dff_420 = processed[smooth_fit][vary_t][region]['420']['dff_iso']
 
-            denoised_lig = fp_utils.filter_signal(raw_lig, 10, fs)
-            denoised_iso = fp_utils.filter_signal(raw_iso, 10, fs)
-            
-            fitted_iso = fp_utils.fit_signal(denoised_iso, denoised_lig, t)
-            
-            classic_dff = (denoised_lig - fitted_iso)/fitted_iso * 100
-            
-            ica = FastICA()
-            signal_ica = ica.fit_transform(np.vstack([denoised_lig, fitted_iso]).T)
-            mix_mat = ica.mixing_
-            mix_loading = np.abs(np.sum(mix_mat, axis=0))
-            
-            if mix_loading[0] > mix_loading[1]:
-                noise_idx = 0
-                sig_idx = 1
-            else:
-                noise_idx = 1
-                sig_idx = 0
-            
-            form = lambda x, a, b: a*x + b
-            params = curve_fit(form, signal_ica[:,noise_idx], fitted_iso)[0]
-            fitted_shared_signal = form(signal_ica[:,noise_idx], *params)
+                    plt.plot(t, dff_405, label=f'405 nm - {method_label}')
+                    plt.plot(t, dff_420, label=f'420 nm - {method_label}')
+                    plt.title(f'{region} - {method_label}: 405 vs 420 dF/F')
+                    plt.xlabel('Time (s)')
+                    plt.ylabel('dF/F (%)')
+                    plt.legend()
+                else:
+                    print(f"Missing 405 or 420 for {region} in method {method_label}")
 
-            params = curve_fit(form, signal_ica[:,sig_idx], denoised_lig-fitted_iso)[0]
-            fitted_unshared_signal = form(signal_ica[:,sig_idx], *params)
+            plt.tight_layout()
+            plt.suptitle(f"Subject {subj_id}, Session {sess_id} - Compare 405 vs 420 across methods", y=1.02)
+            plt.show()
+
+
+# %% comparing df/f between FF, FT, TT for 405 and then 420
+
+dec = 10
+t = t[::dec]
+
+for subj_id in sess_ids.keys():
+    for sess_id in sess_ids[subj_id]:
+        t = fp_data[subj_id][sess_id]['time']
+        regions = list(fp_data[subj_id][sess_id]['raw_signals'].keys())
+        processed = fp_data[subj_id][sess_id]['processed_signals']
+
+        for region in regions:
+            plt.figure(figsize=(12, 8))
+
+            for i, wl in enumerate(['405', '420'], 1):
+                plt.subplot(2, 1, i)
+
+                for method_label, (smooth_fit, vary_t) in methods.items():
+                    if wl in processed[smooth_fit][vary_t][region]:
+                        dff = processed[smooth_fit][vary_t][region][wl]['dff_iso']
+                        plt.plot(t, dff, label=method_label)
+                    else:
+                        print(f"Missing {wl} for {region} in method {method_label}")
+
+                plt.title(f'{region} - {wl} nm: dF/F across FF, TF, TT')
+                plt.xlabel('Time (s)')
+                plt.ylabel('dF/F (%)')
+                plt.legend()
+
+            plt.tight_layout()
+            plt.suptitle(f"Subject {subj_id}, Session {sess_id} - Compare methods across wavelengths", y=1.02)
+            plt.show()
+
+
+# %% Process signals
+
+# from sklearn.decomposition import FastICA
+# from scipy.optimize import curve_fit
+
+# for subj_id in sess_ids.keys():
+#     for sess_id in sess_ids[subj_id]:
+
+#         raw_signals = fp_data[subj_id][sess_id]['raw_signals']
+#         t = fp_data[subj_id][sess_id]['time']
+#         fs = 1/(t[1] - t[0])
+
+#         n_regions = len(raw_signals.keys())
+
+#         for region in raw_signals.keys():
+
+#             raw_lig = raw_signals[region][lig]
+#             raw_iso = raw_signals[region][iso]
+
+#             denoised_lig = fp_utils.filter_signal(raw_lig, 10, fs)
+#             denoised_iso = fp_utils.filter_signal(raw_iso, 10, fs)
+
+#             fitted_iso, _ = fp_utils.fit_signal(denoised_iso, denoised_lig, t)
+
+#             fitted_iso = np.asarray(fitted_iso).squeeze()
+
+#             if fitted_iso.shape != denoised_lig.shape:
+#                 raise ValueError(f"Shape mismatch: fitted_iso {fitted_iso.shape} vs lig {denoised_lig.shape}")
+
+#             classic_dff = (denoised_lig - fitted_iso) / fitted_iso * 100
+
+#             ica = FastICA()
+#             signal_ica = ica.fit_transform(np.vstack([denoised_lig, fitted_iso]).T)
+#             mix_mat = ica.mixing_
+#             mix_loading = np.abs(np.sum(mix_mat, axis=0))
+
+#             if mix_loading[0] > mix_loading[1]:
+#                 noise_idx = 0
+#                 sig_idx = 1
+#             else:
+#                 noise_idx = 1
+#                 sig_idx = 0
+
+#             form = lambda x, a, b: a*x + b
+#             params = curve_fit(form, signal_ica[:, noise_idx], fitted_iso)[0]
+#             fitted_shared_signal = form(signal_ica[:, noise_idx], *params)
+
+#             params = curve_fit(form, signal_ica[:, sig_idx], denoised_lig - fitted_iso)[0]
+#             fitted_unshared_signal = form(signal_ica[:, sig_idx], *params)
+
+#             ica1_dff = (denoised_lig - fitted_shared_signal) / fitted_iso * 100
+#             ica2_dff = (fitted_unshared_signal - np.mean(fitted_unshared_signal)) / fitted_iso * 100
+
+#             t_min = 1200
+#             t_max = 1220
+#             plot_t = t.copy()
+#             plot_t[(t < t_min) | (t > t_max)] = np.nan
+
+#             fig, axs = plt.subplots(2, 2, figsize=(10, 8), layout='constrained')
+
+#             ax = axs[0, 0]
+#             ax.plot(plot_t, denoised_lig, label='Lig', alpha=0.6)
+#             ax.plot(plot_t, fitted_iso, label='Fitted Iso', alpha=0.6)
+#             ax.legend(loc='upper right')
+
+#             ax = axs[0, 1]
+#             ax.plot(plot_t, denoised_lig, label='Lig', alpha=0.6)
+#             ax.plot(plot_t, fitted_shared_signal, label='IC1', alpha=0.6)
+#             ax.legend(loc='upper right')
+
+#             ax = axs[1, 0]
+#             ax.plot(plot_t, denoised_lig - fitted_iso, label='Iso Subtracted', alpha=0.6)
+#             ax.plot(plot_t, denoised_lig - fitted_shared_signal, label='IC1 Subtracted', alpha=0.6)
+#             ax.plot(plot_t, fitted_unshared_signal - np.mean(fitted_unshared_signal), label='IC2 Subtracted', alpha=0.6)
+#             ax.legend(loc='upper right')
+
+#             ax = axs[1, 1]
+#             ax.plot(plot_t, classic_dff, label='Classic dF/F', alpha=0.6)
+#             ax.plot(plot_t, ica1_dff, label='ICA1 dF/F', alpha=0.6)
+#             ax.plot(plot_t, ica2_dff, label='ICA2 dF/F', alpha=0.6)
+#             ax.legend(loc='upper right')
+
             
-            ica1_dff = (denoised_lig - fitted_shared_signal)/fitted_iso * 100
-            ica2_dff = (fitted_unshared_signal-np.mean(fitted_unshared_signal))/fitted_iso * 100
-            
-            t_min = 1200 # -np.inf # 
-            t_max = 1220 # np.inf # 
-            plot_t = t.copy()
-            plot_t[(t < t_min) | (t > t_max)] = np.nan
-            
-            fig, axs = plt.subplots(2,2, figsize=(10,8), layout='constrained')
-            
-            ax = axs[0,0]
-            ax.plot(plot_t, denoised_lig, label='Lig', alpha=0.6)
-            ax.plot(plot_t, fitted_iso, label='Fitted Iso', alpha=0.6)
-            ax.legend(loc='upper right')
-            
-            ax = axs[0,1]
-            ax.plot(plot_t, denoised_lig, label='Lig', alpha=0.6)
-            ax.plot(plot_t, fitted_shared_signal, label='IC1', alpha=0.6)
-            #ax.plot(plot_t, fitted_unshared_signal, label='IC2', alpha=0.6)
-            ax.legend(loc='upper right')
-            
-            ax = axs[1,0]
-            ax.plot(plot_t, denoised_lig - fitted_iso, label='Iso Subtracted', alpha=0.6)
-            ax.plot(plot_t, denoised_lig - fitted_shared_signal, label='IC1 Subtracted', alpha=0.6)
-            ax.plot(plot_t, fitted_unshared_signal-np.mean(fitted_unshared_signal), label='IC2 Subtracted', alpha=0.6)
-            ax.legend(loc='upper right')
-            
-            ax = axs[1,1]
-            ax.plot(plot_t, classic_dff, label='Classic dF/F', alpha=0.6)
-            ax.plot(plot_t, ica1_dff, label='ICA1 dF/F', alpha=0.6)
-            ax.plot(plot_t, ica2_dff, label='ICA2 dF/F', alpha=0.6)
-            ax.legend(loc='upper right')
-            
-            #fp_data[subj_id][sess_id]['processed_signals'][region] = get_all_processed_signals(raw_lig, raw_iso, t)
-            #fp_data[subj_id][sess_id]['processed_signals_denoised'][region] = get_all_processed_signals(denoised_lig, denoised_iso, t)
+#             #fp_data[subj_id][sess_id]['processed_signals'][region] = get_all_processed_signals(raw_lig, raw_iso, t)
+#             #fp_data[subj_id][sess_id]['processed_signals_denoised'][region] = get_all_processed_signals(denoised_lig, denoised_iso, t)
 
 
 # %%
