@@ -166,10 +166,13 @@ def plot_rate_heatmap(rate_dict, column_key, column_name, row_key, row_name, ax=
 
 # %% Trial History Methods
 
-def calc_rew_rate_hist(sess_data, n_back=5, kernel='uniform'):
+def calc_rew_rate_hist(sess_data, n_back=5, kernel='uniform', exclude_bails=True, col_suffix=None):
 
     hist_cols = ['rew_rate_hist_all', 'rew_rate_hist_left_all', 'rew_rate_hist_right_all',
                  'rew_rate_hist_left_only', 'rew_rate_hist_right_only']
+    
+    if not col_suffix is None:
+        hist_cols = [c+'_'+col_suffix for c in hist_cols]
 
     for col in hist_cols:
         sess_data[col] = None
@@ -180,6 +183,9 @@ def calc_rew_rate_hist(sess_data, n_back=5, kernel='uniform'):
         sess_sel = sess_data['sessid'] == sess_id
         ind_sess_data = sess_data[sess_sel]
         resp_sel = ind_sess_data['choice'] != 'none'
+        if not exclude_bails and 'bail' in sess_data.columns:
+            resp_sel = resp_sel | (ind_sess_data['bail'] == True)
+            
         chose_left_sel = ind_sess_data['chose_left']
         chose_right_sel = ind_sess_data['chose_right']
 
@@ -267,9 +273,12 @@ def calc_rew_rate_hist(sess_data, n_back=5, kernel='uniform'):
     sess_data['rew_rate_hist_diff_only'] = sess_data['rew_rate_hist_left_only'] - sess_data['rew_rate_hist_right_only']
 
     
-def calc_trial_hist(sess_data, n_back=5):
+def calc_trial_hist(sess_data, n_back=5, exclude_bails=True, col_suffix=None):
 
     hist_cols = ['choice_hist', 'rew_hist']
+    
+    if not col_suffix is None:
+        hist_cols = [c+'_'+col_suffix for c in hist_cols]
 
     for col in hist_cols:
         sess_data[col] = None
@@ -281,6 +290,9 @@ def calc_trial_hist(sess_data, n_back=5):
         sess_sel = sess_data['sessid'] == sess_id
         ind_sess_data = sess_data[sess_sel]
         resp_sel = ind_sess_data['choice'] != 'none'
+        if not exclude_bails and 'bail' in sess_data.columns:
+            resp_sel = resp_sel | (ind_sess_data['bail'] == True)
+            
         resp_data = ind_sess_data[resp_sel]
         
         rewards = resp_data['rewarded'].to_numpy().astype(int)
@@ -300,8 +312,8 @@ def calc_trial_hist(sess_data, n_back=5):
         # to fill in the missing values, first fill in a dataframe copy then use ffill
         hist_data = ind_sess_data[hist_cols].copy()
         # have to use to_numpy to ignore indexes because pandas is too particular
-        hist_data.loc[resp_sel, 'choice_hist'] = pd.Series(choice_hist).to_numpy()
-        hist_data.loc[resp_sel, 'rew_hist'] = pd.Series(rew_hist).to_numpy()
+        hist_data.loc[resp_sel, hist_cols[0]] = pd.Series(choice_hist).to_numpy()
+        hist_data.loc[resp_sel, hist_cols[1]] = pd.Series(rew_hist).to_numpy()
 
         # fill missing values with the value before it
         hist_data.ffill(inplace=True)
