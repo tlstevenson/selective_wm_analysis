@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import simulation_lib as sl
 import random
+import statsmodels.api as sm
 
 import pandas as pd
 import os
@@ -28,39 +29,41 @@ total_t = np.linspace(0, duration, num=fs*duration, endpoint=False)   # for the 
 
 #%% simulate signals
 
-n = 50 # was 200
+n = 100 # was 200
 time = total_t
 
-param_name = 'alpha'
-param_range = [0, 1]
-param_step = 0.1
+# param_name = 'alpha'
+# param_range = [0, 1]
+# param_step = 0.1
 
 # param_name = 'SD_frac'
 # param_range = [0, 0.5]
 # param_step = 0.05
 
-# param_name = 'SNR'
-# param_range = [0.5, 5]
-# param_step = 0.5
+param_name = 'SNR'
+param_range = [1, 15]  # was 0 to 5
+param_step = 1
 
 # param_name = 'SAR'
 # param_range = [0.5, 5]
 # param_step = 0.5
 
+
 f_range_sig = [0.1, 10]
 f_range_noise = [0.5, 10]
 max_art_count = 5
 art_duration_range = [1, 50]
-f_range_art = [0.05, 10]
+f_range_art = [0.05, 2]   # was 0.05 to 10, but changed to keep artifacts lower frequency
 form_type = 'exp_linear'
 sim_type = 2
 SD_frac_default = 0.05
-alpha_default = 0.05
+alpha_default = 0 # was 0.05
 SNR_default = 10
 SAR_default = 1
-scale = 0.1 # was 0.1
-lpf_default = 0.1
-lowpass_1mHz_cutoff = 0.001
+scale = 0.1
+lpf_default = 0.0005 # was 0.001
+my_iso_bands = [[0, 0.01], [0.01, 0.1], [0.1, 1], [1, 10]]
+smooth_sigma = 0.25
 
 simulated_signals = sl.simulate_n_signals(n, time,
     param_name, param_range, param_step,
@@ -72,7 +75,9 @@ simulated_signals = sl.simulate_n_signals(n, time,
     alpha_default,
     SNR_default,
     SAR_default, 
-    scale
+    scale,
+    fs,
+    smooth_sigma
 )
 
 # save the simulated signals after generation
@@ -100,40 +105,26 @@ processed_signals = {}
 # Count total steps for progress tracking
 n_signals_per_DV = len(next(iter(simulated_signals.values())))
 n_DVs = len(simulated_signals)
-n_methods = 4 + 1 + 1  # 4 OLS methods, 1 LPF-only, 1 IRLS
+n_methods = 5  # 1 OLS, 1 baseline_sub, 1 IRLS, 1 freqband, 1 freqband + baseline_sub
 total_steps = n_DVs * n_methods * n_signals_per_DV
 
 for DV, signal_list in tqdm(simulated_signals.items(), desc="DV groups"):
     processed_signals[DV] = {
-        'smooth_fit_True_vary_t_True': [],
-        'smooth_fit_True_vary_t_False': [],
-        'smooth_fit_False_vary_t_True': [],
-        'smooth_fit_False_vary_t_False': [],
-        'lowpass_1mHz': [],
-        'irls_regression': []
+    'OLS': [],
+    'LPF_only': [],
+    'IRLS': [],
+    'FreqBand': [],
+    'FreqBand_LPF': []
     }
+
 
     for idx, entry in enumerate(tqdm(signal_list, desc="signals", leave=False)):
         raw_lig = entry['raw_lig']
         raw_iso = entry['raw_iso']
         baseline_iso = entry['baseline_iso']
 
-        # Single call returns dict with OLS, LPF_only, IRLS
-        proc_all = sl.process_signals(raw_lig, raw_iso, baseline_iso, total_t, fs, lpf=lpf_default)
-
-        # Map OLS outputs
-        ols_map = {
-            'smooth_fit_True_vary_t_True': proc_all['OLS'].get('smooth1_varyt1'),
-            'smooth_fit_True_vary_t_False': proc_all['OLS'].get('smooth1_varyt0'),
-            'smooth_fit_False_vary_t_True': proc_all['OLS'].get('smooth0_varyt1'),
-            'smooth_fit_False_vary_t_False': proc_all['OLS'].get('smooth0_varyt0'),
-        }
-
-        # LPF-only (same result for both smooth flags)
-        lpf_only = proc_all.get('LPF_only')
-
-        # IRLS
-        irls_out = proc_all.get('IRLS')
+        # Single call returns dict with all processing methods
+        proc_all = sl.process_signals(raw_lig, raw_iso, baseline_iso, total_t, fs, lpf=lpf_default, iso_bands=my_iso_bands)
 
         # --- Validation helper ---
         def validate_and_append(key, out):
@@ -144,16 +135,16 @@ for DV, signal_list in tqdm(simulated_signals.items(), desc="DV groups"):
                 out['dff'] = np.zeros_like(total_t, dtype=float)
                 print(f"⚠️ Missing 'dff': DV={DV}, method={key}, index={idx}")
             if 'filt_t' not in out:
-                out['filt_t'] = np.array([], dtype=int)
+                out['filt_t'] = np.arange(len(total_t))
                 print(f"⚠️ Missing 'filt_t': DV={DV}, method={key}, index={idx}")
             processed_signals[DV][key].append(out)
 
         # Append all methods
-        for k, v in ols_map.items():
-            validate_and_append(k, v)
-
-        validate_and_append('lowpass_1mHz', lpf_only)
-        validate_and_append('irls_regression', irls_out)
+        validate_and_append('OLS', proc_all['OLS'])
+        validate_and_append('LPF_only', proc_all['LPF_only'])
+        validate_and_append('IRLS', proc_all['IRLS'])
+        validate_and_append('FreqBand', proc_all['FreqBand'])
+        validate_and_append('FreqBand_LPF', proc_all['FreqBand_LPF'])
 
 
 #%% report average clamping after processing signals
@@ -274,23 +265,26 @@ for DV, method_dict in processed_signals.items():  # iterate over DV keys
 
 #%% plot statistical test results and signals
 
+# All methods
 method_labels = {
-    'smooth_fit_False_vary_t_False': 'Classic',
-    'smooth_fit_True_vary_t_False': 'Smoothed Fit',
-    'smooth_fit_False_vary_t_True': 'Rotated Fit',
-    'smooth_fit_True_vary_t_True': 'Smoothed & Rotated Fit',
-    'lowpass_1mHz': 'LPF',
-    'irls_regression': 'IRLS Regression'
+    'OLS': 'Classic OLS',
+    'LPF_only': 'LPF Baseline Subtraction',
+    'IRLS': 'IRLS Regression',
+    'FreqBand': 'Frequency Band',
+    'FreqBand_LPF': 'FreqBand + LPF'
 }
 
 # Plot EV results
-sl.plot_ev_results(ev_results, param_name, exclude_outliers=False, method_labels=method_labels,
-                   alpha_default=alpha_default, SD_frac_default=SD_frac_default,
-                   SNR_default=SNR_default, SAR_default=SAR_default)
-sl.plot_ev_results(ev_results, param_name, exclude_outliers=True, method_labels=method_labels,
-                   alpha_default=alpha_default, SD_frac_default=SD_frac_default,
-                   SNR_default=SNR_default, SAR_default=SAR_default)
-
+sl.plot_ev_results(
+    ev_results, param_name, exclude_outliers=False, method_labels=method_labels,
+    alpha_default=alpha_default, SD_frac_default=SD_frac_default,
+    SNR_default=SNR_default, SAR_default=SAR_default
+)
+sl.plot_ev_results(
+    ev_results, param_name, exclude_outliers=True, method_labels=method_labels,
+    alpha_default=alpha_default, SD_frac_default=SD_frac_default,
+    SNR_default=SNR_default, SAR_default=SAR_default
+)
 
 # Find signal with the absolute minimum EV across all DVs and methods
 min_ev = float('inf')
@@ -313,7 +307,7 @@ correct_ev = ev_results[min_DV][min_method][min_idx]
 sim_list = simulated_signals[min_DV]
 i = min_idx
 
-print(f'Lowest EV = {correct_ev:.4f} from DV group: {min_DV:.4f}, method: {min_method}, index: {i}')
+print(f'Lowest EV = {correct_ev:.4f} from DV group: {min_DV}, method: {min_method}, index: {i}')
 
 # Print baseline parameters for lowest EV signal
 lig_params = sim_list[i]['lig_params']
@@ -327,14 +321,12 @@ print('Isosbestic Parameters:')
 for k, v in iso_params.items():
     print(f'  {k}: {v:.4g}')
 
-
-
+# Debugging checks
 print("DEBUG: raw_lig =", sim_list[i].get('raw_lig') is None)
 print("DEBUG: raw_iso =", sim_list[i].get('raw_iso') is None)
 print("DEBUG: baseline_iso =", sim_list[i].get('baseline_iso') is None)
 print("DEBUG: true_sig =", sim_list[i].get('scaled_true_sig') is None)
 print("DEBUG: time length =", len(total_t))
-
 
 # Plot using the lowest-EV signal
 sl.plot_comparative_figures(
@@ -394,7 +386,65 @@ for dv, methods_dict in ev_results.items():
 #               f"NaNs={nan_count}, infs={inf_count} | min={min_val:.4f}, max={max_val:.4f}")
 
 
-#%% plot lowest EV signal: fitted iso and dF/F comparisons across all methods
+#%% Plot lowest EV signal: fitted iso and dF/F comparisons across all methods
+
+# Grab the lowest EV signal across all DVs and methods
+sim_list = simulated_signals[min_DV]
+i = min_idx
+lowest_ev_signal = sim_list[i]
+
+# Extract raw signals
+raw_lig = lowest_ev_signal['raw_lig']
+raw_iso = lowest_ev_signal['raw_iso']
+true_sig = lowest_ev_signal['scaled_true_sig']
+
+# --- Methods to plot ---
+methods = ['OLS', 'IRLS', 'LPF_only', 'FreqBand', 'FreqBand_LPF']
+
+# --- Figure 1: Fitted Iso Comparison ---
+fig1, ax1 = plt.subplots(1, 1, figsize=(8, 4), layout='constrained')
+ax1.plot(total_t, raw_iso, label='Raw Iso', alpha=0.6)
+ax1.plot(total_t, raw_lig, label='Raw Lig', alpha=0.6)
+
+# Overlay fitted iso from each method for the lowest EV signal
+for method_key in methods:
+    entries = processed_signals[min_DV][method_key]
+    # Pick the entry corresponding to the lowest EV signal
+    res = entries[i] if isinstance(entries, list) else entries
+    if res is None:
+        continue
+    fitted_iso = res.get('fitted_iso', None)
+    if fitted_iso is not None:
+        label = method_key.replace('_', ' ').title()
+        ax1.plot(total_t, fitted_iso, label=label, alpha=0.7)
+
+ax1.set_xlabel('Time')
+ax1.set_ylabel('Signal')
+ax1.set_title(f"Fitted Iso Comparison | Lowest EV = {min_ev:.4f} | {param_name}={float(min_DV):.2f}")
+ax1.legend(loc='upper right', fontsize=8)
+
+# --- Figure 2: dF/F Comparison ---
+fig2, ax2 = plt.subplots(1, 1, figsize=(8, 4), layout='constrained')
+ax2.plot(total_t, true_sig, label='True Signal', color='black', linestyle='--', alpha=0.8)
+
+# Overlay dF/F from each method for the lowest EV signal
+for method_key in methods:
+    entries = processed_signals[min_DV][method_key]
+    res = entries[i] if isinstance(entries, list) else entries
+    if res is None:
+        continue
+    dff = res.get('dff', None)
+    if dff is not None:
+        label = method_key.replace('_', ' ').title()
+        ax2.plot(total_t, dff, label=label, alpha=0.7)
+
+ax2.set_xlabel('Time')
+ax2.set_ylabel('dF/F')
+ax2.set_title(f"dF/F Comparison | Lowest EV = {min_ev:.4f} | {param_name}={float(min_DV):.2f}")
+ax2.legend(loc='upper right', fontsize=8)
+
+
+#%% plot lowest EV signal (4 panels: true, raw iso, fitted iso, raw lig)
 
 # grab the lowest EV signal across all DVs and methods
 sim_list = simulated_signals[min_DV]
@@ -406,108 +456,50 @@ raw_lig = lowest_ev_signal['raw_lig']
 raw_iso = lowest_ev_signal['raw_iso']
 true_sig = lowest_ev_signal['scaled_true_sig']
 
-# --- Figure 1: Fitted Iso Comparison ---
-fig1, ax1 = plt.subplots(1, 1, figsize=(8, 4), layout='constrained')
-ax1.plot(total_t, raw_iso, label='Raw Iso', alpha=0.6)
-ax1.plot(total_t, raw_lig, label='Raw Lig', alpha=0.6)
+# define the 5 methods you want to compare
+methods_to_plot = ['OLS', 'IRLS', 'LPF_only', 'FreqBand', 'FreqBand_LPF']
 
-# overlay fitted iso from all processed methods
-for method_key, processed_entry in processed_signals[min_DV].items():
-    if method_key == 'OLS':
-        for subkey, res in processed_entry.items():
-            fitted_iso = res.get('fitted_iso', None)
-            if fitted_iso is not None:
-                label = f"OLS {subkey.replace('smooth', 'sm').replace('varyt', 'vt')}"
-                ax1.plot(total_t, fitted_iso, label=label, alpha=0.7)
-    else:
-        res = processed_entry[i]
-        fitted_iso = res.get('fitted_iso', None)
-        if fitted_iso is not None:
-            label = method_key.replace('_', ' ').title()
-            ax1.plot(total_t, fitted_iso, label=label, alpha=0.7)
+# create figure with 4 panels
+fig, axs = plt.subplots(4, 1, figsize=(10, 8), sharex=True, layout='constrained')
 
-ax1.set_xlabel('Time')
-ax1.set_ylabel('Signal')
-ax1.set_title(f"Overlayed Signal Comparisons Across Methods | Lowest EV = {min_ev:.4f} | {param_name}={float(min_DV):.2f}")
-ax1.legend(loc='upper right', fontsize=8)
-
-# --- Figure 2: dF/F Comparison ---
-fig2, ax2 = plt.subplots(1, 1, figsize=(8, 4), layout='constrained')
-ax2.plot(total_t, true_sig, label='True Signal', color='black', linestyle='--', alpha=0.8)
-
-# overlay dF/F from all processed methods
-for method_key, processed_entry in processed_signals[min_DV].items():
-    if method_key == 'OLS':
-        for subkey, res in processed_entry.items():
-            dff = res.get('dff', None)
-            if dff is not None:
-                label = f"OLS {subkey.replace('smooth', 'sm').replace('varyt', 'vt')}"
-                ax2.plot(total_t, dff, label=label, alpha=0.7)
-    else:
-        res = processed_entry[i]
-        dff = res.get('dff', None)
-        if dff is not None:
-            label = method_key.replace('_', ' ').title()
-            ax2.plot(total_t, dff, label=label, alpha=0.7)
-
-ax2.set_xlabel('Time')
-ax2.set_ylabel('dF/F')
-ax2.set_title(f"Overlayed Signal Comparisons Across Methods | Lowest EV = {min_ev:.4f} | {param_name}={float(min_DV):.2f}")
-ax2.legend(loc='upper right', fontsize=8)
-
-
-#%% plot lowest EV signal (4 panels: true, raw iso, fitted iso, raw lig)
-
-# Grab the lowest EV signal across all DVs and methods
-sim_list = simulated_signals[min_DV]
-i = min_idx
-lowest_ev_signal = sim_list[i]
-
-# extract raw signals
-raw_lig = lowest_ev_signal['raw_lig']
-raw_iso = lowest_ev_signal['raw_iso']
-true_sig = lowest_ev_signal['scaled_true_sig']
-
-# --- Determine the method that produced this lowest EV signal ---
-method_name = 'Unknown'
-fitted_iso = None
-
-# Loop over all processed signals for this DV to find the method corresponding to index i
-for method_key, processed_entry in processed_signals[min_DV].items():
-    if method_key == 'OLS':
-        for subkey, res in processed_entry.items():
-            if i < len(res['dff']):  # check index exists
-                fitted_iso = res.get('fitted_iso', None)
-                method_name = method_labels.get(subkey, subkey)
-                break
-        if fitted_iso is not None:
-            break
-    else:
-        res = processed_entry[i]
-        fitted_iso = res.get('fitted_iso', None)
-        method_name = method_labels.get(method_key, method_key)
-        break
-
-# --- Plot the 4 panels ---
-fig, axs = plt.subplots(4, 1, figsize=(8, 8), sharex=True, layout='constrained')
-
+# --- Panel 0: True signal ---
 axs[0].plot(total_t, true_sig, color='black', alpha=1.0)
 axs[0].set_title('True Signal')
 
+# --- Panel 1: Raw isosbestic ---
 axs[1].plot(total_t, raw_iso, color='red', alpha=1.0)
 axs[1].set_title('Raw Isosbestic')
 
-if fitted_iso is not None:
-    axs[2].plot(total_t, fitted_iso, color='blue', alpha=1.0)
-axs[2].set_title('Fitted Isosbestic')
+# --- Panel 2: Fitted isosbestic from all methods ---
+for method_key in methods_to_plot:
+    entries = processed_signals[min_DV].get(method_key, None)
+    if entries is None:
+        continue
+    
+    # handle OLS separately if it’s a single dict
+    if method_key == 'OLS':
+        if isinstance(entries, dict):
+            fitted_iso = entries.get('fitted_iso', None)
+        else:
+            fitted_iso = entries[i].get('fitted_iso', None)
+    else:
+        fitted_iso = entries[i].get('fitted_iso', None)
+    
+    if fitted_iso is not None:
+        label = method_key.replace('_', ' ').title()
+        axs[2].plot(total_t, fitted_iso, label=label, alpha=0.7)
 
+axs[2].set_title('Fitted Isosbestic')
+axs[2].legend(fontsize=8)
+
+# --- Panel 3: Raw ligand ---
 axs[3].plot(total_t, raw_lig, color='green', alpha=1.0)
 axs[3].set_title('Raw Ligand')
 axs[3].set_xlabel('Time')
 
-# Super title
+# --- Suptitle ---
 fig.suptitle(
-    f"Lowest EV at {param_name}: {float(min_DV):.2f} | {method_name} | idx = {i} (EV = {min_ev:.4f})",
+    f"Lowest EV at {param_name}: {float(min_DV):.2f} | idx = {i} | EV = {min_ev:.4f}",
     fontsize=14
 )
 
@@ -532,37 +524,24 @@ plt.show()
 
 
 #%% regression coefficients for all methods at lowest EV index
-print(f'\nRegression Coefficients for All Methods at DV = {min_DV}, index = {min_idx}:')
+print(f"Regression Coefficients for All Methods at DV = {min_DV}, index = {min_idx}:")
 
-# iterate over all 4 combinations of smooth_fit and vary_t + 2 LPF-only methods + IRLS
-method_keys = []
+for method_key in ['OLS', 'IRLS', 'LPF_only', 'FreqBand', 'FreqBand_LPF']:
+    entries = processed_signals[min_DV][method_key]
 
-# OLS with smooth_fit T/F and vary_t T/F
-for smooth_fit in [True, False]:
-    for vary_t in [True, False]:
-        method_keys.append(f'smooth_fit_{smooth_fit}_vary_t_{vary_t}')
-
-# LPF 1mHz
-method_keys.append('lowpass_1mHz')
-
-# IRLS 
-method_keys.append('irls_regression')
-
-# iterate and print coefficients
-for method_key in method_keys:
-    try:
-        entry = processed_signals[min_DV][method_key][min_idx]
-        fit_params = entry.get('fit_params', None)
-    except (IndexError, KeyError):
-        fit_params = None
-
-    print(f'\nMethod: {method_key}')
-    if fit_params is not None:
-        for idx, coeff in enumerate(fit_params):
-            print(f'  Param {idx + 1}: {coeff:.6g}')
+    # pick the dict corresponding to the lowest EV index
+    if method_key == 'OLS':
+        # OLS may still be a single dict or a list with one entry
+        if isinstance(entries, list):
+            entry = entries[min_idx]
+        else:
+            entry = entries
     else:
-        print('  No fit_params found.')
-        
+        entry = entries[min_idx]
+
+    fit_params = entry.get('fit_params', None)
+    print(f"{method_key}: {fit_params}")
+
 
 #%% plot random signal that is not the lowest EV
 
@@ -593,14 +572,10 @@ sl.plot_comparative_figures(
 
 #%% plot random signal that is not the lowest EV (two figures: fitted iso & dF/F)
 
-# grab list of simulated signals for this DV
+# --- pick random method and index (not min EV) ---
 sim_list = simulated_signals[min_DV]
-
-# choose a random method
 all_methods = list(ev_results[min_DV].keys())
 other_method = random.choice(all_methods)
-
-# choose a random index that is not the lowest EV
 ev_list = ev_results[min_DV][other_method]
 non_min_indices = [j for j in range(len(ev_list)) if j != min_idx]
 other_idx = random.choice(non_min_indices)
@@ -608,59 +583,90 @@ other_ev = ev_list[other_idx]
 
 print(f"Random non-min EV = {other_ev:.4f} | DV = {min_DV:.2f}, method = {other_method}, index = {other_idx}")
 
-# extract signals
 raw_lig = sim_list[other_idx]['raw_lig']
 raw_iso = sim_list[other_idx]['raw_iso']
 true_sig = sim_list[other_idx]['scaled_true_sig']
 
-# --- Figure 1: Fitted Iso Comparison ---
-fig1, ax1 = plt.subplots(1, 1, figsize=(8, 4), layout='constrained')
-ax1.plot(total_t, raw_iso, label='Raw Iso', alpha=0.6)
-ax1.plot(total_t, raw_lig, label='Raw Lig', alpha=0.6)
+methods = ['OLS', 'IRLS', 'LPF_only', 'FreqBand', 'FreqBand_LPF']
 
-# overlay fitted iso from all processed methods
-for method_key, processed_entry in processed_signals[min_DV].items():
-    if method_key == 'OLS':
-        for subkey, res in processed_entry.items():
-            fitted_iso = res.get('fitted_iso', None)
-            if fitted_iso is not None:
-                label = f"OLS {subkey.replace('smooth', 'sm').replace('varyt', 'vt')}"
-                ax1.plot(total_t, fitted_iso, label=label, alpha=0.7)
+# helper to safely extract arrays
+def safe_get(entry, key):
+    if entry is None:
+        return None
+    val = entry.get(key, None)
+    if val is None:
+        return None
+    return np.asarray(val)
+
+
+# ==============================
+# --- Figure 1: Overlayed Fitted Iso ---
+# ==============================
+fig, ax = plt.subplots(1, 1, figsize=(8, 4), layout='constrained')
+ax.set_title(f"Overlayed Fitted Iso | Random non-min EV = {other_ev:.4f} | {param_name}={float(min_DV):.2f}")
+ax.set_xlabel("Time")
+ax.set_ylabel("Fitted Iso")
+
+# plot raw iso as reference
+ax.plot(total_t, raw_iso, label='Raw Iso', color='black', linestyle='--', alpha=0.8)
+
+for method_key in methods:
+    entries = processed_signals[min_DV].get(method_key, None)
+    if entries is None:
+        continue
+
+    if isinstance(entries, dict):
+        entry = entries
+    elif isinstance(entries, list):
+        if other_idx < len(entries):
+            entry = entries[other_idx]
+        else:
+            continue
     else:
-        res = processed_entry[other_idx]
-        fitted_iso = res.get('fitted_iso', None)
-        if fitted_iso is not None:
-            label = method_key.replace('_', ' ').title()
-            ax1.plot(total_t, fitted_iso, label=label, alpha=0.7)
+        continue
 
-ax1.set_xlabel('Time')
-ax1.set_ylabel('Signal')
-ax1.set_title(f"Overlayed Signal Comparisons Across Methods | Random non-min EV = {other_ev:.4f} | {param_name}={float(min_DV):.2f}")
-ax1.legend(loc='upper right', fontsize=8)
+    fitted_iso = safe_get(entry, 'fitted_iso')
+    if fitted_iso is not None and len(fitted_iso) == len(total_t):
+        ax.plot(total_t, fitted_iso, label=method_key.replace('_', ' ').title(), alpha=0.8)
 
-# --- Figure 2: dF/F Comparison ---
-fig2, ax2 = plt.subplots(1, 1, figsize=(8, 4), layout='constrained')
-ax2.plot(total_t, true_sig, label='True Signal', color='black', linestyle='--', alpha=0.8)
+ax.legend(fontsize=8, loc='upper right')
+plt.show()
 
-# overlay dF/F from all processed methods
-for method_key, processed_entry in processed_signals[min_DV].items():
-    if method_key == 'OLS':
-        for subkey, res in processed_entry.items():
-            dff = res.get('dff', None)
-            if dff is not None:
-                label = f"OLS {subkey.replace('smooth', 'sm').replace('varyt', 'vt')}"
-                ax2.plot(total_t, dff, label=label, alpha=0.7)
+
+# ==============================
+# --- Figure 2: Overlayed dF/F ---
+# ==============================
+fig, ax = plt.subplots(1, 1, figsize=(8, 4), layout='constrained')
+ax.set_title(f"Overlayed dF/F | Random non-min EV = {other_ev:.4f} | {param_name}={float(min_DV):.2f}")
+ax.set_xlabel("Time")
+ax.set_ylabel("dF/F")
+
+# plot true signal
+ax.plot(total_t, true_sig, label='True Signal', color='black', linestyle='--', alpha=0.8)
+
+for method_key in methods:
+    entries = processed_signals[min_DV].get(method_key, None)
+    if entries is None:
+        continue
+
+    if isinstance(entries, dict):
+        entry = entries
+    elif isinstance(entries, list):
+        if other_idx < len(entries):
+            entry = entries[other_idx]
+        else:
+            continue
     else:
-        res = processed_entry[other_idx]
-        dff = res.get('dff', None)
-        if dff is not None:
-            label = method_key.replace('_', ' ').title()
-            ax2.plot(total_t, dff, label=label, alpha=0.7)
+        continue
 
-ax2.set_xlabel('Time')
-ax2.set_ylabel('dF/F')
-ax2.set_title(f"Overlayed Signal Comparisons Across Methods | Random non-min EV = {other_ev:.4f} | {param_name}={float(min_DV):.2f}")
-ax2.legend(loc='upper right', fontsize=8)
+    dff = safe_get(entry, 'dff')
+    if dff is not None and len(dff) == len(total_t):
+        ax.plot(total_t, dff, label=method_key.replace('_', ' ').title(), alpha=0.8)
+
+ax.legend(fontsize=8, loc='upper right')
+plt.show()
+
+
 
 
 #%% plotting the signal for the largest delta EV between any two methods
