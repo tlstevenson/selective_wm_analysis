@@ -441,70 +441,70 @@ def _get_new_block_var_vol(prev_var=None, prev_vol=None, no_high_high=True):
     return new_vals[0], new_vals[1]
     
 
-# %%
-d=6
-h=18
-l=6
-s_h=4
-s_l=4
-n_s=2
+# # %%
+# d=6
+# h=18
+# l=6
+# s_h=4
+# s_l=4
+# n_s=2
 
-x_h = np.concatenate((np.flip(np.arange(h, h-n_s*s_h-d, -d)), np.arange(h+d, h+n_s*s_h+d, d))) 
-x_l = np.concatenate((np.flip(np.arange(l, l-n_s*s_l-d, -d)), np.arange(l+d, l+n_s*s_l+d, d))) 
-plt.bar(x_h, sts.norm.pdf(x_h, loc=h, scale=s_h), alpha=0.5) 
-plt.bar(x_l, sts.norm.pdf(x_l, loc=l, scale=s_l), alpha=0.5)
+# x_h = np.concatenate((np.flip(np.arange(h, h-n_s*s_h-d, -d)), np.arange(h+d, h+n_s*s_h+d, d))) 
+# x_l = np.concatenate((np.flip(np.arange(l, l-n_s*s_l-d, -d)), np.arange(l+d, l+n_s*s_l+d, d))) 
+# plt.bar(x_h, sts.norm.pdf(x_h, loc=h, scale=s_h), alpha=0.5) 
+# plt.bar(x_l, sts.norm.pdf(x_l, loc=l, scale=s_l), alpha=0.5)
 
-plt.title('μ high: {}, μ low: {}, σ high: {}, σ low: {}, step: {}'.format(h, l, s_h, s_l, d))
-
-
-# %%
-d=5
-h=25
-l=10
-n_l=5
-n_h=9
-s_h=10
-s_l=6
-
-x_h = np.concatenate((np.flip(np.arange(h, h-np.ceil(n_h/2)*d, -d)), np.arange(h+d, h+np.ceil(n_h/2)*d, d))) 
-x_l = np.concatenate((np.flip(np.arange(l, l-np.ceil(n_l/2)*d, -d)), np.arange(l+d, l+np.ceil(n_l/2)*d, d))) 
-
-x_h = x_h[x_h >= 0]
-x_l = x_l[x_l >= 0]
-
-plt.bar(x_h, sts.norm.pdf(x_h, loc=h, scale=s_h), alpha=0.5) 
-plt.bar(x_l, sts.norm.pdf(x_l, loc=l, scale=s_l), alpha=0.5)
-
-plt.title('μ high: {}, μ low: {}, σ high: {}, σ low: {}, n high: {}, n low: {}, step: {}'.format(h, l, s_h, s_l, n_h, n_l, d))
+# plt.title('μ high: {}, μ low: {}, σ high: {}, σ low: {}, step: {}'.format(h, l, s_h, s_l, d))
 
 
 # %%
-r_h = [3,8]
-r_l = [20,30]
-s_mu = 2
-s_sig = 2
+# d=5
+# h=20
+# l=5
+# n_l=7
+# n_h=9
+# s_h=11
+# s_l=9
 
-def sample_block_length(block_range, size=100000):
+# x_h = np.concatenate((np.flip(np.arange(h, h-np.ceil(n_h/2)*d, -d)), np.arange(h+d, h+np.ceil(n_h/2)*d, d))) 
+# x_l = np.concatenate((np.flip(np.arange(l, l-np.ceil(n_l/2)*d, -d)), np.arange(l+d, l+np.ceil(n_l/2)*d, d))) 
 
-    n = np.random.randint(block_range[0], block_range[1]+1, size)
-    var = np.random.normal(s_mu, s_sig, size)
-    return n + np.maximum(var, 0)
+# x_h = x_h[x_h >= 0]
+# x_l = x_l[x_l >= 0]
 
-low_vol = sample_block_length(r_l)
-high_vol = sample_block_length(r_h)
-all_vol = np.concatenate([low_vol,high_vol])
+# plt.bar(x_h, sts.norm.pdf(x_h, loc=h, scale=s_h), alpha=0.5) 
+# plt.bar(x_l, sts.norm.pdf(x_l, loc=l, scale=s_l), alpha=0.5)
 
-min_len = np.min(all_vol)
-max_len = np.max(all_vol)
-bins = np.arange(min_len, max_len+1, 1)
-hist_args = dict(histtype='bar', density=True, cumulative=False, bins=bins, alpha=0.5)
+# plt.title('μ high: {}, μ low: {}, σ high: {}, σ low: {}, n high: {}, n low: {}, step: {}'.format(h, l, s_h, s_l, n_h, n_l, d))
 
-plt.hist(low_vol, **hist_args, label='Low Vol')
-plt.hist(high_vol, **hist_args, label='High Vol')
+
+# # %%
+# r_h = [3,8]
+# r_l = [20,30]
+# s_mu = 2
+# s_sig = 2
+
+# def sample_block_length(block_range, size=100000):
+
+#     n = np.random.randint(block_range[0], block_range[1]+1, size)
+#     var = np.random.normal(s_mu, s_sig, size)
+#     return n + np.maximum(var, 0)
+
+# low_vol = sample_block_length(r_l)
+# high_vol = sample_block_length(r_h)
+# all_vol = np.concatenate([low_vol,high_vol])
+
+# min_len = np.min(all_vol)
+# max_len = np.max(all_vol)
+# bins = np.arange(min_len, max_len+1, 1)
+# hist_args = dict(histtype='bar', density=True, cumulative=False, bins=bins, alpha=0.5)
+
+# plt.hist(low_vol, **hist_args, label='Low Vol')
+# plt.hist(high_vol, **hist_args, label='High Vol')
     
-plt.xlabel('Block Length (trials)')
-plt.ylabel('Proportion')
-plt.legend()
+# plt.xlabel('Block Length (trials)')
+# plt.ylabel('Proportion')
+# plt.legend()
 
 
 # %%

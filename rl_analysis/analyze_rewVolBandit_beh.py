@@ -36,8 +36,11 @@ subj_ids = subject_info['subjid']
 # optionally limit sessions based on subject ids
 #subj_ids = [401, 218, 217, 216] #[404, 275, 217] # #[179, 188, 191, 207, 182]
 # sess_ids = {k: v for k, v in sess_ids.items() if k in subj_ids}
+exclude_subjs = [] #[404, 415]
 
-n_back = 10
+subj_ids = [s for s in subj_ids if not s in exclude_subjs]
+
+n_back = 30
 
 #sess_ids = db_access.get_fp_data_sess_ids(protocol='ClassicRLTasks', stage_num=2, subj_ids=subj_ids)
 sess_ids = db_access.get_subj_sess_ids(subj_ids, protocol='ClassicRLTasks', stage_name=task_name)
