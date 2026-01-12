@@ -26,6 +26,8 @@ from pptx.util import Inches, Pt
 import time
 import copy
 import warnings
+from collections import Counter
+import itertools
 
 
 # %% Session Limiting Lookup Table
@@ -1192,7 +1194,28 @@ def stack_fp_mats(mat_dict, regions, subj_sess_ids, subjects, signal_type, filte
 
 #     return data_dict
 
+def get_region_idx_mapping(subj_regions, all_regions):
+    return np.array([next(i for i, r in enumerate(all_regions) if r in sr) for sr in subj_regions])
 
+def count_corr_pairs(subj_regions, all_regions):
+    
+    all_region_idx_mapping = get_region_idx_mapping(subj_regions, all_regions)
+    
+    # check for duplicate region indices
+    idx_counts = Counter(all_region_idx_mapping)
+    
+    pair_counts = {}
+    
+    # same region auto-correlations
+    for r, n in idx_counts.items():
+        pair_counts[(r, r)] = n
+    
+    # cross region cross-correlations
+    for r1, r2 in itertools.combinations(idx_counts.keys(), 2):
+        key = tuple(sorted([r1,r2]))
+        pair_counts[key] = idx_counts[r1] * idx_counts[r2]
+    
+    return pair_counts
 
 
 # %% Alignment Helpers

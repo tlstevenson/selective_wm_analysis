@@ -813,7 +813,6 @@ norm_dashlines = {task: {align: [aligned_time[task]['events'][align][a] for a in
 
 save_plots = True
 show_plots = True
-tone_end = 0.4
 
 # declare method to stack data matrices for the given task, alignment, and selection grouping
 def stack_mats(task, align, trial_groups, signal_types=plot_signals):
@@ -1497,6 +1496,124 @@ aligns = [Align.reward, Align.cue_reward]
 plot_avg_signals(plot_groups, group_labels, plot_titles, gen_title, aligns, gen_plot_name=gen_plot_name, tasks=task)
 
 
+# %% Calculate engaged states
+
+view_states = False
+recalculate = False
+
+engage_next_poke_thresh = 15 # time cutoff between center port on and next poke in to separate between task engaged state and not
+engage_states = ['engaged', 'disengaged', 'all']
+
+filename = 'wm_bandit_engage_data'
+save_path = path.join(utils.get_user_home(), 'db_data', filename+'.pkl')
+
+if path.exists(save_path) and not recalculate:
+    with open(save_path, 'rb') as f:
+        saved_data = pickle.load(f)
+        engaged_t_sel = saved_data['engaged_t_sel']
+        engage_metadata = saved_data['metadata']
+        
+        recalculate = engage_metadata['engage_next_poke_thresh'] != engage_next_poke_thresh
+
+elif not path.exists(save_path):
+    recalculate = True
+
+if recalculate:
+    engaged_t_sel = {subjid: {task: {} for task in tasks} for subjid in subj_ids}
+
+for subj_id in subj_ids:
+    
+    if not subj_id in engaged_t_sel:
+        engaged_t_sel[subj_id] = {task: {} for task in tasks}
+    
+    for task in tasks:
+        if task == 'wm':
+            sess_ids = wm_sess_ids 
+            loc_db = wm_loc_db 
+            sess_data = wm_sess_data
+        else:
+            sess_ids = bandit_sess_ids
+            loc_db = bandit_loc_db
+            sess_data = bandit_sess_data
+                                    
+        if not subj_id in sess_ids:
+            continue
+        
+        sess_ids = [s for s in sess_ids[subj_id] if s not in fpah.__sess_ignore]
+
+        for sess_id in sess_ids:
+            
+            if sess_id in engaged_t_sel[subj_id][task]:
+                continue
+
+            fp_data = loc_db.get_sess_fp_data(sess_id)['fp_data'][subj_id][sess_id]
+            t = fp_data['time']
+            
+            # find engaged and disengaged states
+            trial_data = sess_data[sess_data['sessid'] == sess_id]
+            
+            trial_start_ts = fp_data['trial_start_ts']
+
+            cport_on_ts = trial_start_ts[:-1] + trial_data['cport_on_time'].to_numpy()
+            cpoke_in_ts = trial_start_ts[:-1] + trial_data['cpoke_in_time'].to_numpy()
+            
+            port_on_poke_in = cpoke_in_ts - cport_on_ts
+            
+            disengaged_trial_sel = (port_on_poke_in > engage_next_poke_thresh) | np.isnan(port_on_poke_in)
+            
+            sess_engaged_t_sel = np.full_like(t, True, dtype=bool)
+
+            for i, disengaged in enumerate(disengaged_trial_sel):
+                if disengaged:
+                    
+                    if i == 0:
+                        t_start_idx = 0
+                    else:
+                        t_start_idx = np.argmin(np.abs(t - cport_on_ts[i]))
+                    
+                    disengaged_end = cpoke_in_ts[i]
+                    if np.isnan(disengaged_end):
+                        if i < len(cport_on_ts)-1:
+                            disengaged_end = cport_on_ts[i+1]
+                        else:
+                            disengaged_end = t[-1]
+                        
+                    t_end_idx = np.argmin(np.abs(t - disengaged_end))
+                    sess_engaged_t_sel[t_start_idx:t_end_idx+1] = False
+                    
+            # fill in after last trial started to end of recording
+            if (t[-1] - trial_start_ts[-1]) > engage_next_poke_thresh:
+                t_start_idx = np.argmin(np.abs(t - trial_start_ts[-1]))
+                sess_engaged_t_sel[t_start_idx:] = False
+                
+            engaged_t_sel[subj_id][task][sess_id] = sess_engaged_t_sel
+            
+            if view_states:
+        
+                lines_dict = {'Cport On': cport_on_ts, 'Cpoke In': cpoke_in_ts}
+            
+                fig, ax = plt.subplots(1, 1, sharex=True, layout='constrained', figsize=(12,4))
+                
+                fig.suptitle('Subject {}, Session {}'.format(subj_id, sess_id))
+                
+                ax.fill_between(t, 0, 1, where=sess_engaged_t_sel,
+                                color='grey', alpha=0.4, transform=ax.get_xaxis_transform())
+                
+                for j, (name, lines) in enumerate(lines_dict.items()):
+                    ax.vlines(lines, 0, 1, label=name, color='C{}'.format(j), linestyles='dashed', 
+                              transform=ax.get_xaxis_transform())
+                    
+                ax.set_xlabel('Time (s)')
+
+                ax.legend()
+                    
+                plt.show()
+                
+with open(save_path, 'wb') as f:
+    pickle.dump({'engaged_t_sel': engaged_t_sel,
+                 'metadata': {'engage_next_poke_thresh': engage_next_poke_thresh}},
+                f)
+
 # %% Regional Comparisons - Compute cross-correlations
 
 tilt_t = False
@@ -1504,8 +1621,6 @@ baseline_correction = True
 baseline_band_iso_fit = True
 band_iso_fit = False
 filter_dropout_outliers = False
-engage_next_poke_thresh = 15 # time cutoff between center port on and next poke in to separate between task engaged state and not
-engage_states = ['engaged', 'disengaged', 'all']
 
 recalculate = False
 reprocess_sess_ids = []
@@ -1529,18 +1644,16 @@ if path.exists(save_path) and not recalculate:
         saved_data = pickle.load(f)
         x_corrs = saved_data['x_corrs']
         x_corr_metadata = saved_data['metadata']
-        x_corr_engaged_t_sel = x_corr_metadata['x_corr_engaged_t_sel']
         x_corr_regions = x_corr_metadata['regions']
         corr_lags = x_corr_metadata['corr_lags']
         
-        recalculate = (x_corr_metadata['max_lag'] != max_lag) or (x_corr_metadata['engage_thresh'] != engage_next_poke_thresh)
+        recalculate = (x_corr_metadata['max_lag'] != max_lag) or (x_corr_metadata['engage_next_poke_thresh'] != engage_next_poke_thresh)
 
 elif not path.exists(save_path):
     recalculate = True
 
 if recalculate:
     x_corrs = {subjid: {task: {} for task in tasks} for subjid in subj_ids}
-    x_corr_engaged_t_sel = {subjid: {task: {} for task in tasks} for subjid in subj_ids}
     x_corr_regions = {}
 
 for subj_id in subj_ids:
@@ -1555,7 +1668,6 @@ for subj_id in subj_ids:
     
     if not subj_id in x_corrs:
         x_corrs[subj_id] = {task: {} for task in tasks}
-        x_corr_engaged_t_sel[subj_id] = {task: {} for task in tasks}
     
     for task in tasks:
         if task == 'wm':
@@ -1586,44 +1698,7 @@ for subj_id in subj_ids:
             fp_data = fp_data[subj_id][sess_id]
             t = fp_data['time']
             
-            # find engaged and disengaged states
-            trial_data = sess_data[sess_data['sessid'] == sess_id]
-            
-            trial_start_ts = fp_data['trial_start_ts']
-
-            cport_on_ts = trial_start_ts[:-1] + trial_data['cport_on_time'].to_numpy()
-            cpoke_in_ts = trial_start_ts[:-1] + trial_data['cpoke_in_time'].to_numpy()
-            
-            port_on_poke_in = cpoke_in_ts - cport_on_ts
-            
-            disengaged_trial_sel = (port_on_poke_in > engage_next_poke_thresh) | np.isnan(port_on_poke_in)
-            
-            engaged_t_sel = np.full_like(t, True, dtype=bool)
-
-            for i, disengaged in enumerate(disengaged_trial_sel):
-                if disengaged:
-                    
-                    if i == 0:
-                        t_start_idx = 0
-                    else:
-                        t_start_idx = np.argmin(np.abs(t - cport_on_ts[i]))
-                    
-                    disengaged_end = cpoke_in_ts[i]
-                    if np.isnan(disengaged_end):
-                        if i < len(cport_on_ts)-1:
-                            disengaged_end = cport_on_ts[i+1]
-                        else:
-                            disengaged_end = t[-1]
-                        
-                    t_end_idx = np.argmin(np.abs(t - disengaged_end))
-                    engaged_t_sel[t_start_idx:t_end_idx+1] = False
-                    
-            # fill in after last trial started to end of recording
-            if (t[-1] - trial_start_ts[-1]) > engage_next_poke_thresh:
-                t_start_idx = np.argmin(np.abs(t - trial_start_ts[-1]))
-                engaged_t_sel[t_start_idx:] = False
-                
-            x_corr_engaged_t_sel[subj_id][task][sess_id] = engaged_t_sel
+            sess_engaged_t_sel = engaged_t_sel[subj_id][task][sess_id]
             
             print('Calculating cross-correlation for subject {} session {}:'.format(subj_id, sess_id))
             
@@ -1648,9 +1723,9 @@ for subj_id in subj_ids:
                         for e in engage_states:
                             
                             if e == 'engaged':
-                                t_sel = engaged_t_sel
+                                t_sel = sess_engaged_t_sel
                             elif e == 'disengaged':
-                                t_sel = ~engaged_t_sel
+                                t_sel = ~sess_engaged_t_sel
                             else:
                                 t_sel = None
                             
@@ -1668,8 +1743,7 @@ for subj_id in subj_ids:
                                  'metadata': {'regions': x_corr_regions,
                                               'max_lag': max_lag,
                                               'corr_lags': corr_lags,
-                                              'x_corr_engaged_t_sel': x_corr_engaged_t_sel,
-                                              'engage_thresh': engage_next_poke_thresh}},
+                                              'engage_next_poke_thresh': engage_next_poke_thresh}},
                                 f)
 
 
@@ -1678,16 +1752,17 @@ for subj_id in subj_ids:
 plot_lag = 1.5
 t_sel = np.abs(corr_lags) < plot_lag
 
-plot_comb_task = True
+plot_sep_tasks = True
 plot_sep_states = False
-plot_ind_subj = False
-plot_comb_subj = True
+plot_ind_subj = True
+plot_comb_subj = False
 ax_size = 3
 
-plot_tasks = tasks.copy()
+plot_tasks = []
+if plot_sep_tasks:
+    plot_tasks.extend(tasks.copy())
 
-if plot_comb_task:
-    plot_tasks.append('all')
+plot_tasks.append('all')
     
 if plot_sep_states:
     plot_states = engage_states.copy()
@@ -1699,6 +1774,7 @@ engage_labels = {'engaged': 'engaged', 'disengaged': 'disengaged', 'all': 'all'}
 
 if plot_comb_subj:
     comb_xcorr = {t: {s: {e: [] for e in plot_states} for s in signal_types} for t in tasks}
+    comb_xcorr_weights = {t: {s: {e: [] for e in plot_states} for s in signal_types} for t in tasks}
 
 for subj_id in subj_ids:
     
@@ -1709,56 +1785,103 @@ for subj_id in subj_ids:
     n_regions = len(subj_regions)
     implant_side_info = implant_info[subj_id]
     
-    for task in plot_tasks:
-        
-        if (task != 'all' and len(x_corrs[subj_id][task]) == 0) or (task == 'all' and all([len(x_corrs[subj_id][t]) == 0 for t in tasks])):
-            continue
-        
-        for signal_type in signal_types:
-
-            # stack by session across regions
-            if plot_comb_subj and task != 'all':
-
-                for s in x_corrs[subj_id][task].keys():
-                    for e in plot_states:
-                        sess_xcorr = x_corrs[subj_id][task][s][signal_type][e]
-                        
-                        # get mapping of subject regions to all regions order
-                        all_region_idx_mapping = np.array([next(i for i, r in enumerate(all_regions) if r in sr) for sr in subj_regions])
-                        
-                        # check for duplicate region indices
-                        idx_counts = Counter(all_region_idx_mapping)
-                        duplicates = [i for i, count in idx_counts.items() if count > 1]
-                        
-                        if len(duplicates) == 0:
-                            # if no duplicates, can simply use indexing
-                            sess_comb_xcorr = np.full((len(all_regions), len(all_regions), len(corr_lags)), np.nan)
-
-                            sess_comb_xcorr[np.ix_(all_region_idx_mapping, all_region_idx_mapping, np.arange(len(corr_lags)))] = sess_xcorr
-                            
-                            comb_xcorr[task][signal_type][e].append(sess_comb_xcorr)
-                        else:
-                            # add each duplicate pair separately
-                            for subj_i, map_i in enumerate(all_region_idx_mapping):
-                                for subj_j, map_j in enumerate(all_region_idx_mapping[np.arange(subj_i,n_regions)]):
-                                    # don't add bilateral cross-correlations of the same region as auto-correlations
-                                    if map_i == map_j and subj_i != subj_j:
-                                        continue
-                                    
-                                    sess_comb_xcorr = np.full((len(all_regions), len(all_regions), len(corr_lags)), np.nan)
-                                    sess_comb_xcorr[map_i,map_j,:] = sess_xcorr[subj_i,subj_j,:]
-                                    if map_i != map_j:
-                                        sess_comb_xcorr[map_j,map_i,:] = sess_xcorr[subj_j,subj_i,:]
-                                    
-                                    comb_xcorr[task][signal_type][e].append(sess_comb_xcorr)
-
-            # plot individual subject averages
-            if plot_ind_subj:
-                            
-                signal_title, _ = fpah.get_signal_type_labels(signal_type)
+    # stack across subjects
+    if plot_comb_subj:
+        for task in tasks:
             
+            if len(x_corrs[subj_id][task]) == 0:
+                continue
+            
+            for signal_type in signal_types:
+    
+                # stack by session across regions
+                if plot_comb_subj and task != 'all':
+    
+                    for s in x_corrs[subj_id][task].keys():
+                        for e in plot_states:
+                            sess_xcorr = x_corrs[subj_id][task][s][signal_type][e]
+                            
+                            # get mapping of subject regions to all regions order
+                            all_region_idx_mapping = fpah.get_region_idx_mapping(subj_regions, all_regions)
+                            dup_counts = fpah.count_corr_pairs(subj_regions, all_regions)
+                            
+                            if all([v == 1 for v in dup_counts.values()]):
+                                # if no duplicates, can simply use indexing
+                                sess_comb_xcorr = np.full((len(all_regions), len(all_regions), len(corr_lags)), np.nan)
+                                sess_comb_xcorr[np.ix_(all_region_idx_mapping, all_region_idx_mapping, np.arange(len(corr_lags)))] = sess_xcorr
+                                
+                                comb_xcorr[task][signal_type][e].append(sess_comb_xcorr)
+                                
+                                weights = np.ones_like(sess_comb_xcorr)
+                                weights[np.isnan(sess_comb_xcorr)] = np.nan
+                                comb_xcorr_weights[task][signal_type][e].append(weights)
+                            else:
+                                # add each duplicate pair separately
+                                for subj_i, map_i in enumerate(all_region_idx_mapping):
+                                    for subj_j, map_j in enumerate(all_region_idx_mapping):
+                                        # only do each cross-regional comparison once
+                                        if subj_j < subj_i:
+                                            continue
+                                        # don't add bilateral cross-correlations of the same region as auto-correlations
+                                        if map_i == map_j and subj_i != subj_j:
+                                            continue
+                                        
+                                        sess_comb_xcorr = np.full((len(all_regions), len(all_regions), len(corr_lags)), np.nan)
+                                        sess_comb_xcorr[map_i,map_j,:] = sess_xcorr[subj_i,subj_j,:]
+                                        if map_i != map_j:
+                                            sess_comb_xcorr[map_j,map_i,:] = sess_xcorr[subj_j,subj_i,:]
+                                        
+                                        comb_xcorr[task][signal_type][e].append(sess_comb_xcorr)
+                                        
+                                        dup_key = tuple(sorted([map_i,map_j]))
+                                        weights = np.full_like(sess_comb_xcorr, 1/dup_counts[dup_key])
+                                        weights[np.isnan(sess_comb_xcorr)] = np.nan
+                                        comb_xcorr_weights[task][signal_type][e].append(weights)
+
+    # plot individual subject averages
+    if plot_ind_subj:
+        if plot_sep_states:
+            for task in plot_tasks:
+                for signal_type in signal_types:
+                    
+                    signal_title, _ = fpah.get_signal_type_labels(signal_type)
+            
+                    fig, axs = plt.subplots(n_regions, n_regions, sharex=True, sharey=True, figsize=(ax_size*n_regions, ax_size*n_regions), layout='constrained')
+                    fig.suptitle('Regional Cross-correlation for Subject {} in {}. (- first leading, + first lagging)\n{}'.format(subj_id, plot_beh_names[task], signal_title))
+                    
+                    for reg_i in range(n_regions):   
+                        sorted_i = sorted_region_idxs[reg_i]
+                        for reg_j in range(n_regions):
+                            sorted_j = sorted_region_idxs[reg_j]
+            
+                            ax = axs[reg_i, reg_j]
+                            
+                            plot_utils.plot_dashlines(0, dir='h', ax=ax)
+                            
+                            for e in plot_states:
+                                if task == 'all':
+                                    sess_corrs = np.hstack([np.stack([x_corrs[subj_id][t][s][signal_type][e][sorted_i, sorted_j, :] for s in x_corrs[subj_id][t].keys()], axis=1) for t in tasks if len(x_corrs[subj_id][t]) > 0])
+                                else:
+                                    sess_corrs = np.stack([x_corrs[subj_id][task][s][signal_type][e][sorted_i, sorted_j, :] for s in x_corrs[subj_id][task].keys()], axis=1)
+                                
+                                plot_utils.plot_psth(corr_lags[t_sel], np.nanmean(sess_corrs, axis=1)[t_sel], utils.stderr(sess_corrs, axis=1)[t_sel], ax, plot_x0=True, label=engage_labels[e])
+            
+                            ax.set_title('{} ({}) vs {} ({})'.format(sorted_regions[reg_i], implant_side_info[sorted_regions[reg_i]]['side'], 
+                                                                     sorted_regions[reg_j], implant_side_info[sorted_regions[reg_j]]['side']))
+                            ax.legend()
+                            
+                            if reg_i == n_regions-1:
+                                ax.set_xlabel('Time lag (s)')
+                            if reg_j == 0:
+                                ax.set_ylabel('Pearson r')
+    
+        else:
+            for signal_type in signal_types:
+                
+                signal_title, _ = fpah.get_signal_type_labels(signal_type)
+        
                 fig, axs = plt.subplots(n_regions, n_regions, sharex=True, sharey=True, figsize=(ax_size*n_regions, ax_size*n_regions), layout='constrained')
-                fig.suptitle('Regional Cross-correlation for Subject {} in {}. (- first leading, + first lagging)\n{}'.format(subj_id, plot_beh_names[task], signal_title))
+                fig.suptitle('Regional Cross-correlation for Subject {}. (- first leading, + first lagging)\n{}'.format(subj_id, signal_title))
                 
                 for reg_i in range(n_regions):   
                     sorted_i = sorted_region_idxs[reg_i]
@@ -1769,37 +1892,74 @@ for subj_id in subj_ids:
                         
                         plot_utils.plot_dashlines(0, dir='h', ax=ax)
                         
-                        for e in plot_states:
+                        for task in plot_tasks:
                             if task == 'all':
-                                sess_corrs = np.hstack([np.stack([x_corrs[subj_id][t][s][signal_type][e][sorted_i, sorted_j, :] for s in x_corrs[subj_id][t].keys()], axis=1) for t in tasks if len(x_corrs[subj_id][t]) > 0])
+                                sess_corrs = np.hstack([np.stack([x_corrs[subj_id][t][s][signal_type]['all'][sorted_i, sorted_j, :] for s in x_corrs[subj_id][t].keys()], axis=1) for t in tasks if len(x_corrs[subj_id][t]) > 0])
                             else:
-                                sess_corrs = np.stack([x_corrs[subj_id][task][s][signal_type][e][sorted_i, sorted_j, :] for s in x_corrs[subj_id][task].keys()], axis=1)
+                                sess_corrs = np.stack([x_corrs[subj_id][task][s][signal_type]['all'][sorted_i, sorted_j, :] for s in x_corrs[subj_id][task].keys()], axis=1)
                             
-                            plot_utils.plot_psth(corr_lags[t_sel], np.nanmean(sess_corrs, axis=1)[t_sel], utils.stderr(sess_corrs, axis=1)[t_sel], ax, plot_x0=True, label=engage_labels[e])
-
+                            plot_utils.plot_psth(corr_lags[t_sel], np.nanmean(sess_corrs, axis=1)[t_sel], utils.stderr(sess_corrs, axis=1)[t_sel], ax, plot_x0=True, label=plot_beh_names[task])
+        
                         ax.set_title('{} ({}) vs {} ({})'.format(sorted_regions[reg_i], implant_side_info[sorted_regions[reg_i]]['side'], 
                                                                  sorted_regions[reg_j], implant_side_info[sorted_regions[reg_j]]['side']))
-                        if plot_sep_states:
-                            ax.legend()
+                        ax.legend()
                         
                         if reg_i == n_regions-1:
                             ax.set_xlabel('Time lag (s)')
                         if reg_j == 0:
                             ax.set_ylabel('Pearson r')
+                    
                             
 # plot combined subject averages
 if plot_comb_subj:
     # stack all matrices together
     comb_xcorr = {t: {s: {e: np.stack(comb_xcorr[t][s][e], axis=-1) for e in plot_states} for s in signal_types} for t in tasks}
+    comb_xcorr_weights = {t: {s: {e: np.stack(comb_xcorr_weights[t][s][e], axis=-1) for e in plot_states} for s in signal_types} for t in tasks}
     
-    for task in plot_tasks:
+    if plot_sep_states:
+        for task in plot_tasks:
+            for signal_type in signal_types:
+                
+                signal_title, _ = fpah.get_signal_type_labels(signal_type)
+            
+                fig, axs = plt.subplots(len(all_regions), len(all_regions), sharex=True, sharey=True, 
+                                        figsize=(ax_size*len(all_regions), ax_size*len(all_regions)), layout='constrained')
+                fig.suptitle('Regional Cross-correlation for All Subjects in {}. (- first leading, + first lagging)\n{}'.format(plot_beh_names[task], signal_title))
+                
+                for reg_i in range(len(all_regions)):   
+                    for reg_j in range(len(all_regions)):
+        
+                        ax = axs[reg_i, reg_j]
+                        
+                        plot_utils.plot_dashlines(0, dir='h', ax=ax)
+                        
+                        for e in plot_states:
+                            if task == 'all':
+                                comb_corrs = np.hstack([comb_xcorr[t][signal_type][e][reg_i, reg_j, :, :] for t in tasks])
+                                comb_weights = np.hstack([comb_xcorr_weights[t][signal_type][e][reg_i, reg_j, :, :] for t in tasks])
+                            else:
+                                comb_corrs = comb_xcorr[task][signal_type][e][reg_i, reg_j, :, :]
+                                comb_weights = comb_xcorr_weights[task][signal_type][e][reg_i, reg_j, :, :]
+
+                            plot_utils.plot_psth(corr_lags[t_sel], utils.weighted_mean(comb_corrs, comb_weights, axis=1)[t_sel], 
+                                                 utils.weighted_se(comb_corrs, comb_weights, axis=1)[t_sel], ax, plot_x0=True, label=engage_labels[e])
+    
+                        ax.set_title('{} vs {}'.format(all_regions[reg_i], all_regions[reg_j]))
+                        if plot_sep_states:
+                            ax.legend()
+                        
+                        if reg_i == len(all_regions)-1:
+                            ax.set_xlabel('Time lag (s)')
+                        if reg_j == 0:
+                            ax.set_ylabel('Pearson r')
+    else:
         for signal_type in signal_types:
             
             signal_title, _ = fpah.get_signal_type_labels(signal_type)
         
             fig, axs = plt.subplots(len(all_regions), len(all_regions), sharex=True, sharey=True, 
                                     figsize=(ax_size*len(all_regions), ax_size*len(all_regions)), layout='constrained')
-            fig.suptitle('Regional Cross-correlation for All Subjects in {}. (- first leading, + first lagging)\n{}'.format(plot_beh_names[task], signal_title))
+            fig.suptitle('Regional Cross-correlation for All Subjects. (- first leading, + first lagging)\n{}'.format(signal_title))
             
             for reg_i in range(len(all_regions)):   
                 for reg_j in range(len(all_regions)):
@@ -1808,17 +1968,19 @@ if plot_comb_subj:
                     
                     plot_utils.plot_dashlines(0, dir='h', ax=ax)
                     
-                    for e in plot_states:
+                    for task in plot_tasks:
                         if task == 'all':
-                            comb_corrs = np.hstack([comb_xcorr[t][signal_type][e][reg_i, reg_j, :, :] for t in tasks])
+                            comb_corrs = np.hstack([comb_xcorr[t][signal_type]['all'][reg_i, reg_j, :, :] for t in tasks])
+                            comb_weights = np.hstack([comb_xcorr_weights[t][signal_type]['all'][reg_i, reg_j, :, :] for t in tasks])
                         else:
-                            comb_corrs = comb_xcorr[task][signal_type][e][reg_i, reg_j, :, :]
+                            comb_corrs = comb_xcorr[task][signal_type]['all'][reg_i, reg_j, :, :]
+                            comb_weights = comb_xcorr_weights[task][signal_type]['all'][reg_i, reg_j, :, :]
 
-                        plot_utils.plot_psth(corr_lags[t_sel], np.nanmean(comb_corrs, axis=1)[t_sel], utils.stderr(comb_corrs, axis=1)[t_sel], ax, plot_x0=True, label=engage_labels[e])
+                        plot_utils.plot_psth(corr_lags[t_sel], utils.weighted_mean(comb_corrs, comb_weights, axis=1)[t_sel], 
+                                             utils.weighted_se(comb_corrs, comb_weights, axis=1)[t_sel], ax, plot_x0=True, label=plot_beh_names[task])
 
                     ax.set_title('{} vs {}'.format(all_regions[reg_i], all_regions[reg_j]))
-                    if plot_sep_states:
-                        ax.legend()
+                    ax.legend()
                     
                     if reg_i == len(all_regions)-1:
                         ax.set_xlabel('Time lag (s)')
@@ -1840,7 +2002,7 @@ f_max = 20
 recalculate = False
 reprocess_sess_ids = []
 
-signal_types = ['z_dff_iso_baseline', 'z_dff_iso_baseline_fband'] # 'z_dff_iso_baseline' 
+signal_types = ['z_dff_iso_baseline_fband'] # 'z_dff_iso_baseline' 
 
 tasks = ['wm', 'bandit']
 
@@ -1886,7 +2048,7 @@ for subj_id in subj_ids:
 
         for sess_id in sess_ids:
 
-            if sess_id in ps_data[subj_id][task] and not sess_id in reprocess_sess_ids and list(ps_data[subj_id][task][sess_id].keys()) == signal_types:
+            if sess_id in ps_data[subj_id][task] and not sess_id in reprocess_sess_ids and all([t in list(ps_data[subj_id][task][sess_id].keys()) for t in signal_types]):
                 continue
             
             if sess_id not in ps_data[subj_id][task]:
@@ -1922,25 +2084,31 @@ for subj_id in subj_ids:
 #%% Plot spectra
 # plot session spectra
 
-save_plots = True
+save_plots = False
 show_plots = True
 
 plot_ind_sess = False
 plot_subj_avg = False
+plot_meta_subj = True
 plot_band_prop = True
 plot_comb_task = True
+x_rot = 90
 
-avg_tasks = tasks.copy()
+plot_tasks = tasks.copy()
 
 if plot_comb_task:
-    avg_tasks.append('all')
+    plot_tasks.append('all')
     
 plot_beh_names = {'wm': 'WM Task', 'bandit': 'Bandit Task', 'all': 'All Tasks'}
 plot_signals = ['z_dff_iso_baseline_fband']
 
 freq_range = [0, 10]
 
-prop_bands = [[0,0.1], [0.1,0.5], [0.5,1], [1,2], [2,4], [4,8], [8,12]] #[[0,0.06], [0.06,0.2], [0.2,0.6], [0.6,2], [2,6], [6,10]]
+freq_vals = [0] + list(np.logspace(np.log10(0.01), np.log10(10), 20))
+freq_vals = np.round(freq_vals, 3)
+prop_bands = list(zip(freq_vals[:-1], freq_vals[1:]))
+prop_bands = [[0,0.02], [0.02,0.1], [0.1,0.3], [0.3,1], [1,1.8], [1.8,4], [4,10]]
+#prop_bands = [[0,0.06], [0.06,0.2], [0.2,0.6], [0.6,1], [1,2], [2,6], [6,10]] #[[0,0.06], [0.06,0.2], [0.2,0.6], [0.6,2], [2,6], [6,10]]
 band_labels = ['{}-{}'.format(b[0], b[1]) for b in prop_bands]
 
 # define plotting method
@@ -2002,18 +2170,33 @@ if plot_subj_avg:
             
         for signal_type in plot_signals:
             
-            fig, axs = plt.subplots(1, len(avg_tasks), sharey=True, sharex=True, layout='constrained', figsize=(len(avg_tasks)*5, 4))
-            fig.suptitle('Subject {} Average Power Spectra, {}'.format(subj_id, fpah.get_signal_type_labels(signal_type)[0]))
+            fig_ps, axs_ps = plt.subplots(1, len(plot_tasks), sharey=True, sharex=True, layout='constrained', figsize=(len(plot_tasks)*5, 4))
+            fig_ps.suptitle('Subject {} Average Power Spectra, {}'.format(subj_id, fpah.get_signal_type_labels(signal_type)[0]))
+            
+            if plot_band_prop:
+                fig_prop, axs_prop = plt.subplots(1, len(plot_tasks), sharey=True, sharex=True, layout='constrained', figsize=(len(plot_tasks)*5, 4))
+                fig_prop.suptitle('Subject {} Average Power Proportion, {}'.format(subj_id, fpah.get_signal_type_labels(signal_type)[0]))
                 
-            for i, task in enumerate(avg_tasks):
+                fig_prop_reg, axs_prop_reg = plt.subplots(len(subj_regions), 1, layout='constrained', figsize=(6, 4*len(subj_regions)))
+                fig_prop_reg.suptitle('Subject {} Average Power Proportion, {}'.format(subj_id, fpah.get_signal_type_labels(signal_type)[0]))
+                
+                prop_avg_task = {}
+                prop_err_task = {}
+                
+            for i, task in enumerate(plot_tasks):
                 
                 if (task != 'all' and len(ps_data[subj_id][task]) == 0) or (task == 'all' and all([len(ps_data[subj_id][t]) == 0 for t in tasks])):
                     continue
                 
+                ax_ps = axs_ps[i]
+                if plot_band_prop:
+                    ax_prop = axs_prop[i]
+                
                 ps_avg = {}
                 ps_err = {}
                 
-                ax = axs[i]
+                prop_avg = {}
+                prop_err = {}
                 
                 for region in subj_regions:
                     if task == 'all':
@@ -2025,29 +2208,76 @@ if plot_subj_avg:
                     
                     ps_avg[region] = np.nanmean(reg_ps, axis=0)
                     ps_err[region] = utils.stderr(reg_ps, axis=0)
+                    
+                    prop_avg[region] = []
+                    prop_err[region] = []
+                    freq_sel = (freqs >= freq_range[0]) & (freqs <= freq_range[1])
+                    ps_tot = trapezoid(reg_ps[:, freq_sel], freqs[freq_sel], axis=1)
+                    for band in prop_bands:
+                        freq_sel = (freqs >= band[0]) & (freqs <= band[1])
+                        ps_band = trapezoid(reg_ps[:, freq_sel], freqs[freq_sel], axis=1)
+                        prop_band = ps_band/ps_tot * 100
+                        prop_avg[region].append(np.nanmean(prop_band, axis=0))
+                        prop_err[region].append(utils.stderr(prop_band, axis=0))
+                        
+                    prop_avg_task[task] = prop_avg
+                    prop_err_task[task] = prop_err
                 
-                plot_spectra(ps_avg, freqs, err_dict=ps_err, ax=ax, title=plot_beh_names[task])
+                plot_spectra(ps_avg, freqs, err_dict=ps_err, ax=ax_ps, title=plot_beh_names[task])
+                
+                if plot_band_prop:
+                    plot_vals = [prop_avg[r] for r in subj_regions]
+                    plot_err = [prop_err[r] for r in subj_regions]
+                    plot_utils.plot_stacked_bar(plot_vals, value_labels=subj_regions, x_labels=band_labels, orientation='h', ax=ax_prop, err=plot_err,
+                                                x_label_rot=x_rot)
+                    ax_prop.set_title(plot_beh_names[task])
+                    ax_prop.set_ylabel('Relative Power (%)')
+                    ax_prop.set_xlabel('Frequency Band')
+                    
+            # compare task bands by region
+            if plot_band_prop:
+                for i, region in enumerate(subj_regions):
+                    ax_prop_reg = axs_prop_reg[i]
+                    plot_vals = [prop_avg_task[t][region] for t in plot_tasks]
+                    plot_err = [prop_err_task[t][region] for t in plot_tasks]
+                    plot_utils.plot_stacked_bar(plot_vals, value_labels=[plot_beh_names[t] for t in plot_tasks], x_labels=band_labels, orientation='h', ax=ax_prop_reg, err=plot_err,
+                                                x_label_rot=x_rot)
+                    ax_prop_reg.set_title(region)
+                    ax_prop_reg.set_ylabel('Relative Power (%)')
+                    ax_prop_reg.set_xlabel('Frequency Band')
                 
             if save_plots:
-                fpah.save_fig(fig, fpah.get_figure_save_path('Power Spectra', subj_id, 'Subject {} Session Avg {}'.format(subj_id, signal_type)))
+                fpah.save_fig(fig_ps, fpah.get_figure_save_path('Power Spectra', subj_id, 'Subject {} Session Avg {}'.format(subj_id, signal_type)))
+                if plot_band_prop:
+                    fpah.save_fig(fig_prop, fpah.get_figure_save_path('Power Spectra', subj_id, 'Subject {} Session Avg {} power proportion'.format(subj_id, signal_type)))
                 
             if show_plots:
                 plt.show()
             
-            plt.close(fig)
+            plt.close(fig_ps)
+            if plot_band_prop:
+                plt.close(fig_prop)
         
-if plot_band_prop:
+if plot_meta_subj:
     for signal_type in plot_signals:
-        fig_ps, axs_ps = plt.subplots(1, len(avg_tasks), sharey=True, sharex=True, layout='constrained', figsize=(len(avg_tasks)*5, 4))
-        fig_prop, axs_prop = plt.subplots(1, len(avg_tasks), sharey=True, sharex=True, layout='constrained', figsize=(len(avg_tasks)*5, 4))
-        
+        fig_ps, axs_ps = plt.subplots(1, len(plot_tasks), sharey=True, sharex=True, layout='constrained', figsize=(len(plot_tasks)*5, 4))
         fig_ps.suptitle('Average Regional Power Spectra, {}'.format(fpah.get_signal_type_labels(signal_type)[0]))
-        fig_prop.suptitle('Average Regional Power Proportion, {}'.format(fpah.get_signal_type_labels(signal_type)[0]))
-               
-        for i, task in enumerate(avg_tasks):
-            ax_ps = axs_ps[i]
-            ax_prop = axs_prop[i]
+        
+        if plot_band_prop:
+            fig_prop, axs_prop = plt.subplots(1, len(plot_tasks), sharey=True, sharex=True, layout='constrained', figsize=(len(plot_tasks)*5, 4))
+            fig_prop.suptitle('Average Regional Power Proportion, {}'.format(fpah.get_signal_type_labels(signal_type)[0]))
             
+            fig_prop_reg, axs_prop_reg = plt.subplots(len(all_regions), 1, layout='constrained', figsize=(6, 4*len(all_regions)))
+            fig_prop_reg.suptitle('Average Regional Power Proportion\n{}'.format(fpah.get_signal_type_labels(signal_type)[0]))
+            
+            prop_avg_task = {}
+            prop_err_task = {}
+                   
+        for i, task in enumerate(plot_tasks):
+            ax_ps = axs_ps[i]
+            if plot_band_prop:
+                ax_prop = axs_prop[i]
+
             ps_avg = {}
             ps_err = {}
             
@@ -2094,29 +2324,498 @@ if plot_band_prop:
                     freq_sel = (freqs >= band[0]) & (freqs <= band[1])
                     ps_band = trapezoid(stacked_ps[:, freq_sel], freqs[freq_sel], axis=1)
                     prop_band = ps_band/ps_tot * 100
-                    prop_avg[region].append(np.nanmean(prop_band))
-                    prop_err[region].append(utils.stderr(prop_band))
+                    prop_avg[region].append(np.nanmean(prop_band, axis=0))
+                    prop_err[region].append(utils.stderr(prop_band, axis=0))
+                    
+                prop_avg_task[task] = prop_avg
+                prop_err_task[task] = prop_err
                         
             plot_spectra(ps_avg, freqs, err_dict=ps_err, ax=ax_ps, title=plot_beh_names[task])
             
-            plot_vals = [prop_avg[r] for r in all_regions]
-            plot_err = [prop_err[r] for r in all_regions]
-            plot_utils.plot_stacked_bar(plot_vals, value_labels=all_regions, x_labels=band_labels, orientation='h', ax=ax_prop, err=plot_err,
-                                        x_label_rot=30)
-            ax_prop.set_title(plot_beh_names[task])
-            ax_prop.set_ylabel('Relative Power (%)')
-            ax_prop.set_xlabel('Frequency Band')
+            if plot_band_prop:
+                plot_vals = [prop_avg[r] for r in all_regions]
+                plot_err = [prop_err[r] for r in all_regions]
+                plot_utils.plot_stacked_bar(plot_vals, value_labels=all_regions, x_labels=band_labels, orientation='h', ax=ax_prop, err=plot_err,
+                                            x_label_rot=x_rot)
+                ax_prop.set_title(plot_beh_names[task])
+                ax_prop.set_ylabel('Relative Power (%)')
+                ax_prop.set_xlabel('Frequency Band')
+
+        # compare task bands by region
+        if plot_band_prop:
+            for i, region in enumerate(all_regions):
+                ax_prop_reg = axs_prop_reg[i]
+                plot_vals = [prop_avg_task[t][region] for t in plot_tasks]
+                plot_err = [prop_err_task[t][region] for t in plot_tasks]
+                plot_utils.plot_stacked_bar(plot_vals, value_labels=[plot_beh_names[t] for t in plot_tasks], x_labels=band_labels, orientation='h', ax=ax_prop_reg, err=plot_err,
+                                            x_label_rot=x_rot)
+                ax_prop_reg.set_title(region)
+                ax_prop_reg.set_ylabel('Relative Power (%)')
+                ax_prop_reg.set_xlabel('Frequency Band')
             
         if save_plots:
-            fpah.save_fig(fig_ps, fpah.get_figure_save_path('Power Spectra', subj_id, 'Subject {} Session Avg {}'.format(subj_id, signal_type)))
-            fpah.save_fig(fig_prop, fpah.get_figure_save_path('Power Spectra', subj_id, 'Subject {} Session Avg {} power proportion'.format(subj_id, signal_type)))
+            fpah.save_fig(fig_ps, fpah.get_figure_save_path('Power Spectra', subj_id, 'Meta Subject Session Avg {}'.format(signal_type)))
+            if plot_band_prop:
+                fpah.save_fig(fig_prop, fpah.get_figure_save_path('Power Spectra', subj_id, 'Meta Subject Session Avg {} power proportion'.format(signal_type)))
             
         if show_plots:
             plt.show()
         
-        plt.close(fig)
+        plt.close(fig_ps)
+        if plot_band_prop:
+            plt.close(fig_prop)
             
                             
+# %% compute correlations by frequency band
+
+tilt_t = False
+baseline_correction = True
+baseline_band_iso_fit = True
+band_iso_fit = False
+filter_dropout_outliers = False
+
+freq_vals = [0] + list(np.logspace(np.log10(0.01), np.log10(10), 20))
+freq_vals = np.round(freq_vals, 3)
+freq_bands = list(zip(freq_vals[:-1], freq_vals[1:]))
+#freq_bands = [[0,0.02], [0.02,0.1], [0.1,0.3], [0.3,1], [1,1.8], [1.8,4], [4,10]]
+#freq_bands = [[0,0.06], [0.06,0.2], [0.2,0.6], [0.6,1], [1,2], [2,6], [6,10]]
+
+recalculate = False
+reprocess_sess_ids = []
+
+signal_types = ['dff_iso_baseline_fband'] # 'z_dff_iso_baseline' 
+
+# get dt information
+tmp_subj = list(wm_sess_ids.keys())[0]
+tmp_sess = wm_sess_ids[tmp_subj][0]
+dt = wm_loc_db.get_sess_fp_data([tmp_sess])['fp_data'][tmp_subj][tmp_sess]['dec_info']['decimated_dt']
+
+tasks = ['wm', 'bandit']
+
+filename = 'wm_bandit_fband_xcorr_data'
+save_path = path.join(utils.get_user_home(), 'db_data', filename+'.pkl')
+
+if path.exists(save_path) and not recalculate:
+    with open(save_path, 'rb') as f:
+        saved_data = pickle.load(f)
+        fband_corrs = saved_data['fband_corrs']
+        fband_corr_metadata = saved_data['metadata']
+        fband_corr_regions = fband_corr_metadata['regions']
+        
+        recalculate = fband_corr_metadata['freq_bands'] != freq_bands or (fband_corr_metadata['engage_next_poke_thresh'] != engage_next_poke_thresh)
+
+elif not path.exists(save_path):
+    recalculate = True
+
+if recalculate:
+    fband_corrs = {subjid: {task: {} for task in tasks} for subjid in subj_ids}
+    fband_corr_regions = {}
+
+for subj_id in subj_ids:
+    
+    subj_regions = list(implant_info[subj_id].keys())
+    
+    if subj_id in fpah.__region_ignore:
+        subj_regions = [r for r in subj_regions if r not in fpah.__region_ignore[subj_id]]
+        
+    fband_corr_regions[subj_id] = subj_regions
+    n_regions = len(subj_regions)
+    
+    if not subj_id in fband_corrs:
+        fband_corrs[subj_id] = {task: {} for task in tasks}
+    
+    for task in tasks:
+        if task == 'wm':
+            sess_ids = wm_sess_ids 
+            loc_db = wm_loc_db 
+            sess_data = wm_sess_data
+        else:
+            sess_ids = bandit_sess_ids
+            loc_db = bandit_loc_db
+            sess_data = bandit_sess_data
+                                    
+        if not subj_id in sess_ids:
+            continue
+        
+        sess_ids = [s for s in sess_ids[subj_id] if s not in fpah.__sess_ignore]
+
+        for sess_id in sess_ids:
+
+            if sess_id in fband_corrs[subj_id][task] and not sess_id in reprocess_sess_ids and list(fband_corrs[subj_id][task][sess_id].keys()) == signal_types:
+                continue
+            
+            if sess_id not in fband_corrs[subj_id][task]:
+                fband_corrs[subj_id][task][sess_id] = {}
+
+            fp_data, _ = fpah.load_fp_data(loc_db, {subj_id: [sess_id]}, baseline_correction=baseline_correction, tilt_t=tilt_t, 
+                                           band_iso_fit=band_iso_fit, baseline_band_iso_fit=baseline_band_iso_fit,
+                                           filter_dropout_outliers=filter_dropout_outliers)
+            fp_data = fp_data[subj_id][sess_id]
+            t = fp_data['time']
+            
+            sess_engaged_t_sel = engaged_t_sel[subj_id][task][sess_id]
+
+            print('Calculating frequency band cross-correlation for subject {} session {}:'.format(subj_id, sess_id))
+            
+            for signal_type in signal_types:
+                if signal_type in fband_corrs[subj_id][task][sess_id]:
+                    continue
+                else:
+                    fband_corrs[subj_id][task][sess_id][signal_type] = {e: np.full((n_regions, n_regions, len(freq_bands)+1), np.nan, dtype=float) for e in engage_states}
+                    
+                for reg_i in range(n_regions):
+                    if not subj_regions[reg_i] in fp_data['processed_signals']:
+                        continue
+                    signal_i = fp_data['processed_signals'][subj_regions[reg_i]][signal_type]
+                    signal_i_fbands = fp_utils.decompose_signal_fbands(signal_i, freq_bands, 1/dt)
+                    
+                    for reg_j in np.arange(reg_i+1, n_regions):
+                        if not subj_regions[reg_j] in fp_data['processed_signals']:
+                            continue
+                        signal_j = fp_data['processed_signals'][subj_regions[reg_j]][signal_type]
+                        signal_j_fbands = fp_utils.decompose_signal_fbands(signal_j, freq_bands, 1/dt)
+                        
+                        start = time.perf_counter()
+                        
+                        for e in engage_states:
+                            
+                            if e == 'engaged':
+                                t_sel = sess_engaged_t_sel
+                            elif e == 'disengaged':
+                                t_sel = ~sess_engaged_t_sel
+                            else:
+                                t_sel = None
+                                
+                            tot_xcorr, _ = fp_utils.correlate(signal_i, signal_j, dt, max_lag=0, t_sel=t_sel)
+                            
+                            fband_corrs[subj_id][task][sess_id][signal_type][e][reg_i, reg_j, -1] = tot_xcorr[0]
+                            fband_corrs[subj_id][task][sess_id][signal_type][e][reg_j, reg_i, -1] = tot_xcorr[0]
+                            
+                            for k in range(len(freq_bands)):
+                                band_xcorr, _ = fp_utils.correlate(signal_i_fbands[k,:], signal_j_fbands[k,:], dt, max_lag=0, t_sel=t_sel)
+    
+                                fband_corrs[subj_id][task][sess_id][signal_type][e][reg_i, reg_j, k] = band_xcorr[0]
+                                fband_corrs[subj_id][task][sess_id][signal_type][e][reg_j, reg_i, k] = band_xcorr[0]
+                                
+                        print('  Between {} and {} in {:.1f} s'.format(
+                            subj_regions[reg_i], subj_regions[reg_j], time.perf_counter()-start))
+    
+                with open(save_path, 'wb') as f:
+                    pickle.dump({'fband_corrs': fband_corrs,
+                                 'metadata': {'regions': fband_corr_regions,
+                                              'freq_bands': freq_bands}},
+                                f)
+
+# %% Plot frequency band correlations
+
+plot_sep_tasks = False
+plot_sep_states = True
+plot_ind_subj = True
+plot_comb_subj = True
+ax_height = 3
+ax_width = 5
+x_label_rot = 90
+
+plot_tasks = []
+if plot_sep_tasks:
+    plot_tasks.extend(tasks.copy())
+    
+plot_tasks.append('all')
+
+if plot_sep_states:
+    plot_states = engage_states.copy()
+else:
+    plot_states = ['all']
+
+plot_beh_names = {'wm': 'WM', 'bandit': 'Bandit', 'all': 'All'}
+engage_labels = {'engaged': 'engaged', 'disengaged': 'disengaged', 'all': 'all'}
+band_labels = ['{}-{}'.format(b[0], b[1]) for b in freq_bands]
+
+task_names = [plot_beh_names[t] for t in plot_tasks]
+engage_names = [engage_labels[e] for e in plot_states]
+
+if plot_comb_subj:
+    comb_fband_corr = {t: {s: {e: [] for e in plot_states} for s in signal_types} for t in tasks}
+    comb_fband_weights = {t: {s: {e: [] for e in plot_states} for s in signal_types} for t in tasks}
+
+for subj_id in subj_ids:
+    subj_regions = fband_corr_regions[subj_id]
+    sorted_regions = sort_subj_regions(subj_regions)
+    sorted_region_idxs = [subj_regions.index(r) for r in sorted_regions]
+    
+    n_regions = len(subj_regions)
+    implant_side_info = implant_info[subj_id]
+    
+    # stack across subjects
+    if plot_comb_subj:
+        for task in tasks:
+            
+            if len(fband_corrs[subj_id][task]) == 0:
+                continue
+            
+            for signal_type in signal_types:
+    
+                # stack by session across regions
+                for s in fband_corrs[subj_id][task].keys():
+                    for e in plot_states:
+
+                        sess_fband_corr = fband_corrs[subj_id][task][s][signal_type][e]
+                        
+                        # get mapping of subject regions to all regions order
+                        all_region_idx_mapping = fpah.get_region_idx_mapping(subj_regions, all_regions)
+                        dup_counts = fpah.count_corr_pairs(subj_regions, all_regions)
+    
+                        if all([v == 1 for v in dup_counts.values()]):
+                            # if no duplicates, can simply use indexing
+                            sess_comb_fband_corr = np.full((len(all_regions), len(all_regions), len(freq_bands)+1), np.nan, dtype=float)
+                            sess_comb_fband_corr[np.ix_(all_region_idx_mapping, all_region_idx_mapping, np.arange(len(freq_bands)+1))] = sess_fband_corr
+                            
+                            comb_fband_corr[task][signal_type][e].append(sess_comb_fband_corr)
+                            
+                            weights = np.ones_like(sess_comb_fband_corr)
+                            weights[np.isnan(sess_comb_fband_corr)] = np.nan
+                            comb_fband_weights[task][signal_type][e].append(weights)
+                        else:
+                            # add each duplicate pair separately
+                            for subj_i, map_i in enumerate(all_region_idx_mapping):
+                                for subj_j, map_j in enumerate(all_region_idx_mapping):
+                                    # only do each cross-regional comparison once and don't do autocorrelations
+                                    if subj_j <= subj_i:
+                                        continue
+                                    # don't add bilateral cross-correlations of the same region as auto-correlations
+                                    if map_i == map_j and subj_i != subj_j:
+                                        continue
+                                    
+                                    sess_comb_fband_corr = np.full((len(all_regions), len(all_regions), len(freq_bands)+1), np.nan, dtype=float)
+                                    sess_comb_fband_corr[map_i,map_j,:] = sess_fband_corr[subj_i,subj_j,:]
+                                    if map_i != map_j:
+                                        sess_comb_fband_corr[map_j,map_i,:] = sess_fband_corr[subj_j,subj_i,:]
+    
+                                    comb_fband_corr[task][signal_type][e].append(sess_comb_fband_corr)
+                                    
+                                    dup_key = tuple(sorted([map_i,map_j]))
+                                    weights = np.full_like(sess_comb_fband_corr, 1/dup_counts[dup_key])
+                                    weights[np.isnan(sess_comb_fband_corr)] = np.nan
+                                    comb_fband_weights[task][signal_type][e].append(weights)
+                            
+    if plot_ind_subj:
+        if plot_sep_states:
+            for task in plot_tasks:
+                for signal_type in signal_types:
+                    
+                    signal_title, _ = fpah.get_signal_type_labels(signal_type)
+            
+                    fig, axs = plt.subplots(n_regions-1, n_regions-1, figsize=(ax_width*(n_regions-1)+1, ax_height*(n_regions-1)), layout='constrained')
+                    fig.suptitle('Regional Frequency Band Correlations for Subject {} in {}.\n{}'.format(subj_id, plot_beh_names[task], signal_title))
+                    
+                    if task == 'all':
+                        stacked_subj_corrs = {e: np.concatenate([np.stack([fband_corrs[subj_id][t][s][signal_type][e] for s in fband_corrs[subj_id][t].keys()], axis=-1) for t in tasks], axis=3) for e in plot_states}
+                    else:
+                        stacked_subj_corrs = {e: np.stack([fband_corrs[subj_id][task][s][signal_type][e] for s in fband_corrs[subj_id][task].keys()], axis=-1) for e in plot_states}
+
+                    subj_corr_avg = {e: np.nanmean(stacked_subj_corrs[e], axis=3) for e in plot_states}
+                    subj_corr_err = {e: utils.stderr(stacked_subj_corrs[e], axis=3) for e in plot_states}
+                    
+                    colors = ['C{}'.format(i) for i in range(len(plot_states))]
+                    
+                    for reg_i in range(n_regions-1):   
+                        sorted_i = sorted_region_idxs[reg_i]
+                        for reg_j in np.arange(1,n_regions):
+                            sorted_j = sorted_region_idxs[reg_j]
+        
+                            ax = axs[reg_i, reg_j-1]
+                            
+                            if reg_j <= reg_i:
+                                ax.axis('off')
+                                continue
+                            
+                            fband_vals = [subj_corr_avg[e][sorted_i, sorted_j, :-1] for e in plot_states]
+                            fband_err = [subj_corr_err[e][sorted_i, sorted_j, :-1] for e in plot_states]
+                            
+                            tot_corr_vals = [subj_corr_avg[e][sorted_i, sorted_j, -1] for e in plot_states]
+                            tot_corr_err = [subj_corr_err[e][sorted_i, sorted_j, -1] for e in plot_states]
+                            
+                            plot_utils.plot_stacked_bar(fband_vals, err=fband_err, value_labels=engage_names, x_labels=band_labels, 
+                                                        orientation='h', ax=ax, x_label_rot=x_label_rot, colors=colors)
+                            
+                            for i, e in enumerate(plot_states):
+                                plot_utils.plot_shaded_error(np.arange(len(band_labels)), tot_corr_vals[i], y_err=tot_corr_err[i], ax=ax, 
+                                                             color=colors[i], label='{} Avg'.format(engage_labels[e]), linestyle='--')
+                            
+                            ax.set_title('{} ({}) vs {} ({})'.format(sorted_regions[reg_i], implant_side_info[sorted_regions[reg_i]]['side'], 
+                                                                     sorted_regions[reg_j], implant_side_info[sorted_regions[reg_j]]['side']))
+        
+                            ax.set_xlabel('Frequency Band')
+                            ax.set_ylabel('Pearson r')
+                            
+                            ax.legend()
+                            handles, labels = ax.get_legend_handles_labels()
+                            ax.legend().remove()
+                        
+                    fig.legend(handles, labels, loc='outside right center')
+        else:
+            for signal_type in signal_types:
+                
+                signal_title, _ = fpah.get_signal_type_labels(signal_type)
+        
+                fig, axs = plt.subplots(n_regions-1, n_regions-1, figsize=(ax_width*(n_regions-1)+1, ax_height*(n_regions-1)), layout='constrained')
+                fig.suptitle('Regional Frequency Band Correlations for Subject {}.\n{}'.format(subj_id, signal_title))
+                
+                stacked_subj_corrs = {t: np.stack([fband_corrs[subj_id][t][s][signal_type]['all'] for s in fband_corrs[subj_id][t].keys()], axis=-1) for t in tasks}
+                stacked_subj_corrs['all'] = np.concatenate([stacked_subj_corrs[t] for t in tasks], axis=3)
+                
+                subj_corr_avg = {t: np.nanmean(stacked_subj_corrs[t], axis=3) for t in plot_tasks}
+                subj_corr_err = {t: utils.stderr(stacked_subj_corrs[t], axis=3) for t in plot_tasks}
+                
+                colors = ['C{}'.format(i) for i in range(len(plot_tasks))]
+                
+                for reg_i in range(n_regions-1):   
+                    sorted_i = sorted_region_idxs[reg_i]
+                    for reg_j in np.arange(1,n_regions):
+                        sorted_j = sorted_region_idxs[reg_j]
+    
+                        ax = axs[reg_i, reg_j-1]
+                        
+                        if reg_j <= reg_i:
+                            ax.axis('off')
+                            continue
+                        
+                        fband_vals = [subj_corr_avg[t][sorted_i, sorted_j, :-1] for t in plot_tasks]
+                        fband_err = [subj_corr_err[t][sorted_i, sorted_j, :-1] for t in plot_tasks]
+                        
+                        tot_corr_vals = [subj_corr_avg[t][sorted_i, sorted_j, -1] for t in plot_tasks]
+                        tot_corr_err = [subj_corr_err[t][sorted_i, sorted_j, -1] for t in plot_tasks]
+                        
+                        plot_utils.plot_stacked_bar(fband_vals, err=fband_err, value_labels=task_names, x_labels=band_labels, 
+                                                    orientation='h', ax=ax, x_label_rot=x_label_rot, colors=colors)
+                        
+                        for i, t in enumerate(plot_tasks):
+                            plot_utils.plot_shaded_error(np.arange(len(band_labels)), tot_corr_vals[i], y_err=tot_corr_err[i], ax=ax, 
+                                                         color=colors[i], label='{} Avg'.format(plot_beh_names[t]), linestyle='--')
+                        
+                        ax.set_title('{} ({}) vs {} ({})'.format(sorted_regions[reg_i], implant_side_info[sorted_regions[reg_i]]['side'], 
+                                                                 sorted_regions[reg_j], implant_side_info[sorted_regions[reg_j]]['side']))
+    
+                        ax.set_xlabel('Frequency Band')
+                        ax.set_ylabel('Pearson r')
+                        
+                        ax.legend()
+                        handles, labels = ax.get_legend_handles_labels()
+                        ax.legend().remove()
+                    
+                fig.legend(handles, labels, loc='outside right center')
+                   
+# plot combined subject averages
+if plot_comb_subj:
+    # stack all matrices together
+    comb_fband_corr = {t: {s: {e: np.stack(comb_fband_corr[t][s][e], axis=-1) for e in plot_states} for s in signal_types} for t in tasks}
+    comb_fband_weights = {t: {s: {e: np.stack(comb_fband_weights[t][s][e], axis=-1) for e in plot_states} for s in signal_types} for t in tasks}
+
+    if plot_sep_states:
+        for task in plot_tasks:
+            for signal_type in signal_types:
+                signal_title, _ = fpah.get_signal_type_labels(signal_type)
+            
+                fig, axs = plt.subplots(len(all_regions)-1, len(all_regions)-1, 
+                                        figsize=(ax_width*(len(all_regions)-1)+1, ax_height*(len(all_regions)-1)), layout='constrained')
+                fig.suptitle('Regional Frequency Band Correlations for All Subjects in {}.\n{}'.format(plot_beh_names[task], signal_title))
+                
+                if task == 'all':
+                    stacked_subj_corrs = {e: np.concatenate([comb_fband_corr[t][signal_type][e] for t in tasks], axis=3) for e in plot_states}
+                    stacked_subj_weights = {e: np.concatenate([comb_fband_weights[t][signal_type][e] for t in tasks], axis=3) for e in plot_states}
+                else:
+                    stacked_subj_corrs = {e: comb_fband_corr[task][signal_type][e] for e in plot_states}
+                    stacked_subj_weights = {e: comb_fband_weights[task][signal_type][e] for e in plot_states}
+                
+                subj_corr_avg = {e: utils.weighted_mean(stacked_subj_corrs[e], stacked_subj_weights[e], axis=3) for e in plot_states}
+                subj_corr_err = {e: utils.weighted_se(stacked_subj_corrs[e], stacked_subj_weights[e], axis=3) for e in plot_states}
+                
+                colors = ['C{}'.format(i) for i in range(len(plot_states))]
+                
+                for reg_i in range(len(all_regions)-1):   
+                    for reg_j in np.arange(1, len(all_regions)):
+        
+                        ax = axs[reg_i, reg_j-1]
+                        
+                        if reg_j <= reg_i:
+                            ax.axis('off')
+                            continue
+                        
+                        fband_vals = [subj_corr_avg[e][reg_i, reg_j, :-1] for e in plot_states]
+                        fband_err = [subj_corr_err[e][reg_i, reg_j, :-1] for e in plot_states]
+                        
+                        tot_corr_vals = [subj_corr_avg[e][reg_i, reg_j, -1] for e in plot_states]
+                        tot_corr_err = [subj_corr_err[e][reg_i, reg_j, -1] for e in plot_states]
+                        
+                        plot_utils.plot_stacked_bar(fband_vals, err=fband_err, value_labels=engage_names, x_labels=band_labels, 
+                                                    orientation='h', ax=ax, x_label_rot=x_label_rot, colors=colors)
+                        
+                        for i, e in enumerate(plot_states):
+                            plot_utils.plot_shaded_error(np.arange(len(band_labels)), tot_corr_vals[i], y_err=tot_corr_err[i], ax=ax, 
+                                                         color=colors[i], label='{} Avg'.format(engage_labels[e]), linestyle='--')
+                        
+                        ax.set_title('{} vs {}'.format(all_regions[reg_i], all_regions[reg_j]))
+        
+                        ax.set_xlabel('Frequency Band')
+                        ax.set_ylabel('Pearson r')
+                        
+                        ax.legend()
+                        handles, labels = ax.get_legend_handles_labels()
+                        ax.legend().remove()
+                    
+                fig.legend(handles, labels, loc='outside right center')    
+                
+    else:
+        for signal_type in signal_types:
+            signal_title, _ = fpah.get_signal_type_labels(signal_type)
+        
+            fig, axs = plt.subplots(len(all_regions)-1, len(all_regions)-1, 
+                                    figsize=(ax_width*(len(all_regions)-1)+1, ax_height*(len(all_regions)-1)), layout='constrained')
+            fig.suptitle('Regional Frequency Band Correlations for All Subjects.\n{}'.format(signal_title))
+            
+            stacked_subj_corrs = {t: comb_fband_corr[t][signal_type]['all'] for t in tasks}
+            stacked_subj_corrs['all'] = np.concatenate([stacked_subj_corrs[t] for t in tasks], axis=3)
+            
+            stacked_subj_weights = {t: comb_fband_weights[t][signal_type]['all'] for t in tasks}
+            stacked_subj_weights['all'] = np.concatenate([stacked_subj_weights[t] for t in tasks], axis=3)
+            
+            subj_corr_avg = {t: utils.weighted_mean(stacked_subj_corrs[t], stacked_subj_weights[t], axis=3) for t in plot_tasks}
+            subj_corr_err = {t: utils.weighted_se(stacked_subj_corrs[t], stacked_subj_weights[t], axis=3) for t in plot_tasks}
+            
+            colors = ['C{}'.format(i) for i in range(len(plot_tasks))]
+            
+            for reg_i in range(len(all_regions)-1):   
+                for reg_j in np.arange(1, len(all_regions)):
+    
+                    ax = axs[reg_i, reg_j-1]
+                    
+                    if reg_j <= reg_i:
+                        ax.axis('off')
+                        continue
+                    
+                    fband_vals = [subj_corr_avg[t][reg_i, reg_j, :-1] for t in plot_tasks]
+                    fband_err = [subj_corr_err[t][reg_i, reg_j, :-1] for t in plot_tasks]
+                    
+                    tot_corr_vals = [subj_corr_avg[t][reg_i, reg_j, -1] for t in plot_tasks]
+                    tot_corr_err = [subj_corr_err[t][reg_i, reg_j, -1] for t in plot_tasks]
+                    
+                    plot_utils.plot_stacked_bar(fband_vals, err=fband_err, value_labels=task_names, x_labels=band_labels, 
+                                                orientation='h', ax=ax, x_label_rot=x_label_rot, colors=colors)
+                    
+                    for i, t in enumerate(plot_tasks):
+                        plot_utils.plot_shaded_error(np.arange(len(band_labels)), tot_corr_vals[i], y_err=tot_corr_err[i], ax=ax, 
+                                                     color=colors[i], label='{} Avg'.format(plot_beh_names[t]), linestyle='--')
+                    
+                    ax.set_title('{} vs {}'.format(all_regions[reg_i], all_regions[reg_j]))
+    
+                    ax.set_xlabel('Frequency Band')
+                    ax.set_ylabel('Pearson r')
+                    
+                    ax.legend()
+                    handles, labels = ax.get_legend_handles_labels()
+                    ax.legend().remove()
+                
+            fig.legend(handles, labels, loc='outside right center')    
 
 # %% compute correlations over time
 t_width = 0.5
@@ -2231,7 +2930,7 @@ for subj_id in subj_ids:
             fp_data = fp_data[subj_id][sess_id]
             t = fp_data['time']
                 
-            engaged_t_sel = x_corr_engaged_t_sel[subj_id][task][sess_id] 
+            sess_engaged_t_sel = engaged_t_sel[subj_id][task][sess_id] 
             
             trial_data = sess_data[sess_data['sessid'] == sess_id]
 
@@ -2262,7 +2961,7 @@ for subj_id in subj_ids:
                     signal = fp_data['processed_signals'][region][signal_type]
                     
                     ax.plot(t[::dec], signal[::dec])
-                    ax.fill_between(t, 0, 1, where=engaged_t_sel,
+                    ax.fill_between(t, 0, 1, where=sess_engaged_t_sel,
                                     color='grey', alpha=0.4, transform=ax.get_xaxis_transform())
                     
                     for j, (name, lines) in enumerate(lines_dict.items()):
