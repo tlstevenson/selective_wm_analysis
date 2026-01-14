@@ -19,7 +19,7 @@ from datetime import datetime
 import json
 from os import path
 import time
-import nummpy as np
+import numpy as np
 
 # %% Declare model(s) to fit
 
@@ -346,7 +346,7 @@ fit_config = {'fit_group_names': list(group_sess_ids.keys()), 'group_sess_ids': 
 # push behavioral data to cluster
 if run_on_cluster:
     cluster_ph = path_helper(model_beh_name, True)
-    clust_db = db.LocalDB_BasicRLTasks('twoArmBandit', data_dir=cluster_ph.data_path)
+    clust_db = db.LocalDB_BasicRLTasks('twoArmBandit', data_dir=cluster_ph.data_path, save_locally=False)
     
     clust_data_path = path.dirname(clust_db._get_sess_beh_path(''))
     existing_files = cluster_utils.get_all_files(clust_data_path)
