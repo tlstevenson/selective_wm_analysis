@@ -21,7 +21,7 @@ from os import path
 import platform
 
 os_name = platform.system()
-is_linux = os_name == 'Linux'
+is_linux = os_name == 'linux'
 
 # %% Fitting Setup Methods
 
@@ -74,14 +74,14 @@ def get_model_training_data(sess_data, limit_mask=False, n_limit_hist=2):
         basic_inputs[i, :n_trials, :] = torch.from_numpy(np.array([trial_data['choice_inputs'][:-1], trial_data['outcome_inputs'][:-1]]).T)
         two_side_inputs[i, :n_trials, :] = torch.from_numpy(np.array([trial_data['chose_left_int'][:-1], trial_data['chose_right_int'][:-1], trial_data['rewarded_int'][:-1]]).T)
         
-        left_choice_labels[i, :n_trials, :] = torch.from_numpy(np.array(trial_data['chose_left_int'][1:])[:,None])
+        left_choice_labels[i, :n_trials, :] = torch.from_numpy(trial_data['chose_left_int'].to_numpy()[1:][:,None])
         # choice class labels are the correct indices of the choices, which corresponds to whether they chose right (1) or not (0)
-        choice_class_labels[i, :n_trials, :] = torch.from_numpy(np.array(trial_data['chose_right_int'][1:])[:,None])
+        choice_class_labels[i, :n_trials, :] = torch.from_numpy(trial_data['chose_right_int'].to_numpy()[1:][:,None])
         
         mask = np.full((n_trials,1), 1)
         # always ignore forced choice trials
         if 'forced_choice' in trial_data.columns:
-            mask[trial_data['forced_choice']] = 0
+            mask[trial_data['forced_choice'].to_numpy()[1:]] = 0
             
         trial_mask_eval[i, :n_trials, :] = torch.from_numpy(mask)
             
@@ -100,6 +100,17 @@ def get_model_training_data(sess_data, limit_mask=False, n_limit_hist=2):
             'left_choice_labels': left_choice_labels, 'choice_class_labels': choice_class_labels,
             'trial_mask_train': trial_mask_train, 'trial_mask_eval': trial_mask_eval}
 
+def get_loss_output_transforms(basic_model):
+    if basic_model:
+        loss = nn.BCEWithLogitsLoss(reduction='none')
+        train_output_formatter = None
+        eval_output_transform = lambda x: 1/(1+np.exp(-x))
+    else:
+        loss = nn.CrossEntropyLoss(reduction='none')
+        train_output_formatter = lambda x: torch.reshape(x, [-1, x.shape[-1]]).squeeze(-1)
+        eval_output_transform = lambda x: torch.softmax(x, 2)[:,:,1].unsqueeze(2)
+        
+    return {'loss': loss, 'train_output_formatter': train_output_formatter, 'eval_output_transform': eval_output_transform}
 
 # %% Fitting methods at various heirarchical levels
 
@@ -107,12 +118,14 @@ def_n_fits = 2
 def_n_steps = 10000
 def_end_tol = 1e-6
 
-def fit_basic_models(inputs, labels, trial_mask_train, trial_mask_eval, subj, save_path, n_fits=def_n_fits, n_steps=def_n_steps, end_tol=def_end_tol, 
-                     skip_existing_fits=True, refit_existing=False, print_train_params=False, optim_generator=None, equal_sess_weight=False):
+def fit_basic_model(inputs, labels, trial_mask_train, trial_mask_eval, subj_name, save_path, n_fits=def_n_fits, n_steps=def_n_steps, end_tol=def_end_tol, 
+                     add_agent_dict=None, skip_existing_fits=True, refit_existing=False, print_train_params=False, optim_generator=None, equal_sess_weight=False):
     
     value_agent_gen = lambda s: agents.SingleValueAgent(**s)
-    add_agent_dict = {'Value': [], 'Value/Persev': [agents.PerseverativeAgent()], 
-                      'Value/Fall': [agents.FallacyAgent()],  'Value/Persev/Fall': [agents.PerseverativeAgent(), agents.FallacyAgent()]}
+    
+    if add_agent_dict is None:
+        add_agent_dict = {'Value': []}
+        
     model_prefix = 'Basic'
     loss = nn.BCEWithLogitsLoss(reduction='none')
     eval_output_transform = lambda x: 1/(1+np.exp(-x))
@@ -120,13 +133,13 @@ def fit_basic_models(inputs, labels, trial_mask_train, trial_mask_eval, subj, sa
     for add_agent_name, add_agent in add_agent_dict.items():
         settings = {add_agent_name: {}}
         
-        run_model_fitting(value_agent_gen, model_prefix, settings, inputs, labels, trial_mask_train, trial_mask_eval, loss, subj, save_path,
+        run_model_fitting(value_agent_gen, model_prefix, settings, inputs, labels, trial_mask_train, trial_mask_eval, loss, subj_name, save_path,
                           n_fits=n_fits, add_agents=add_agent, skip_existing_fits=skip_existing_fits, refit_existing=refit_existing,
                           n_steps=n_steps, end_tol=end_tol, eval_output_transform=eval_output_transform, optim_generator=optim_generator,
                           print_train_params=print_train_params, equal_sess_weight=equal_sess_weight)
         
         
-def fit_two_side_model(main_agent_gen, agent_name, settings, inputs, labels, trial_mask_train, trial_mask_eval, subj, save_path, 
+def fit_two_side_model(main_agent_gen, agent_name, settings, inputs, labels, trial_mask_train, trial_mask_eval, subj_name, save_path, 
                        n_fits=def_n_fits, n_steps=def_n_steps, end_tol=def_end_tol, add_agent_dict=None, 
                        skip_existing_fits=True, refit_existing=False, print_train_params=False, optim_generator=None, equal_sess_weight=False):
     
@@ -140,13 +153,13 @@ def fit_two_side_model(main_agent_gen, agent_name, settings, inputs, labels, tri
     for add_agent_name, add_agent in add_agent_dict.items():
         model_prefix = '{}/{}'.format(agent_name, add_agent_name) if not add_agent_name == '' else agent_name
         
-        run_model_fitting(main_agent_gen, model_prefix, settings, inputs, labels, trial_mask_train, trial_mask_eval, loss, subj, save_path,
+        run_model_fitting(main_agent_gen, model_prefix, settings, inputs, labels, trial_mask_train, trial_mask_eval, loss, subj_name, save_path,
                           n_fits=n_fits, add_agents=add_agent, skip_existing_fits=skip_existing_fits, refit_existing=refit_existing,
                           n_steps=n_steps, end_tol=end_tol, train_output_formatter=train_output_formatter, optim_generator=optim_generator,
                           eval_output_transform=eval_output_transform, print_train_params=print_train_params, equal_sess_weight=equal_sess_weight)
         
         
-def run_model_fitting(main_agent_gen, model_prefix, settings, inputs, labels, trial_mask_train, trial_mask_eval, loss, subj, save_path, n_fits=def_n_fits, 
+def run_model_fitting(main_agent_gen, model_prefix, settings, inputs, labels, trial_mask_train, trial_mask_eval, loss, subj_name, save_path, n_fits=def_n_fits, 
                       n_steps=def_n_steps, end_tol=def_end_tol, add_agents=None, optim_generator=None, train_output_formatter=None, 
                       eval_output_transform=None, skip_existing_fits=True, refit_existing=False, print_train_params=False, equal_sess_weight=False):
 
@@ -164,23 +177,23 @@ def run_model_fitting(main_agent_gen, model_prefix, settings, inputs, labels, tr
     else:
         model_dict = {}
         
-    if not str(subj) in model_dict:
-        model_dict[str(subj)] = {}
+    if not str(subj_name) in model_dict:
+        model_dict[str(subj_name)] = {}
 
     for label, s in settings.items():
         model_name = '{} - {}'.format(model_prefix, label)
         
-        if not model_name in model_dict[str(subj)]:
+        if not model_name in model_dict[str(subj_name)]:
             if refit_existing:
                 continue
             else:
-                model_dict[str(subj)][model_name] = []
+                model_dict[str(subj_name)][model_name] = []
                 n_model_fits = n_fits
         else:
             if skip_existing_fits:
-                n_model_fits = n_fits - len(model_dict[str(subj)][model_name])
+                n_model_fits = n_fits - len(model_dict[str(subj_name)][model_name])
             elif refit_existing:
-                n_model_fits = len(model_dict[str(subj)][model_name])
+                n_model_fits = len(model_dict[str(subj_name)][model_name])
             else:
                 n_model_fits = n_fits
         
@@ -189,7 +202,7 @@ def run_model_fitting(main_agent_gen, model_prefix, settings, inputs, labels, tr
             print('\n{}, fit {}\n'.format(model_name, i))
 
             if refit_existing:
-                fit_model = model_dict[str(subj)][model_name][i]['model'].model.clone()
+                fit_model = model_dict[str(subj_name)][model_name][i]['model'].model.clone()
             else:
                 fit_model = agents.SummationModule([main_agent_gen(s)]+add_agents) 
                 fit_model.reset_params()
@@ -218,15 +231,15 @@ def run_model_fitting(main_agent_gen, model_prefix, settings, inputs, labels, tr
                     if is_linux:
                         model_dict = agents.load_model(save_path)
                         
-                        if not str(subj) in model_dict:
-                            model_dict[str(subj)] = {}
-                        if not model_name in model_dict[str(subj)]:
-                            model_dict[str(subj)][model_name] = []
+                        if not str(subj_name) in model_dict:
+                            model_dict[str(subj_name)] = {}
+                        if not model_name in model_dict[str(subj_name)]:
+                            model_dict[str(subj_name)][model_name] = []
                     
                     if refit_existing:
-                        model_dict[str(subj)][model_name][i] = {'model': fit_model, 'perf': fit_perf}
+                        model_dict[str(subj_name)][model_name][i] = {'model': fit_model, 'perf': fit_perf}
                     else:
-                        model_dict[str(subj)][model_name].append({'model': fit_model, 'perf': fit_perf})
+                        model_dict[str(subj_name)][model_name].append({'model': fit_model, 'perf': fit_perf})
                     
                     agents.save_model(model_dict, save_path)
                 
@@ -430,10 +443,7 @@ def plot_single_val_fit_results(sess_data, output, agent_activity, agent_names, 
     
     for i, sess_id in enumerate(sess_ids):
         trial_data = sess_data[sess_data['sessid'] == sess_id]
-        if betas is None:
-            fig, axs = plt.subplots(2, 1, figsize=(12,6), layout='constrained')
-        else:
-            fig, axs = plt.subplots(3, 1, figsize=(12,9), layout='constrained')
+        fig, axs = plt.subplots(2, 1, figsize=(12,6), layout='constrained')
             
         # get block transitions
         block_switch_trials = trial_data[trial_data['block_trial'] == 1]['trial']
@@ -462,8 +472,16 @@ def plot_single_val_fit_results(sess_data, output, agent_activity, agent_names, 
         #Plot agent states over trials
         ax = axs[1]
         
+        if not betas is None:
+            if type(betas) is torch.Tensor:
+                betas = betas.detach().numpy()
+                
+            plot_agent_vals = agent_activity*betas[None,None,None,:]
+        else:
+            plot_agent_vals = agent_activity
+        
         for j, agent in enumerate(agent_names):
-            agent_vals = agent_activity[i,:len(trial_data)-1,j]
+            agent_vals = plot_agent_vals[i,:len(trial_data)-1,0,j]
             ax.plot(x, agent_vals, alpha=0.7, label=agent)
 
         ax.set_ylabel('Agent State')
@@ -476,30 +494,6 @@ def plot_single_val_fit_results(sess_data, output, agent_activity, agent_names, 
         
         _draw_choices(trial_data, ax)
         _draw_blocks(block_switch_trials, block_rates, ax)
-        
-        # plot weighted agent values
-        if not betas is None:
-            if type(betas) is torch.Tensor:
-                betas = betas.detach().numpy()
-            
-            ax = axs[2]
-
-            for j, agent in enumerate(agent_names):
-                agent_vals = agent_activity[i,:len(trial_data)-1,j]*betas[j]
-                ax.plot(x, agent_vals, alpha=0.7, label=agent)
-
-            ax.plot(x, output[i,:len(trial_data)-1,:], label='Model Output')
-
-            ax.set_ylabel('Weighted Agent State')
-            ax.set_xlabel('Trial')
-            ax.set_title('Weighted Model Agent States', fontsize=10)
-            ax.xaxis.set_major_locator(ticker.MultipleLocator(50))
-            ax.legend(fontsize=8, loc='upper left', bbox_to_anchor=(1.01, 1), borderaxespad=0)
-            ax.axhline(y=0, color='black', linestyle='dashed')
-            ax.margins(x=0.01)
-            
-            _draw_choices(trial_data, ax)
-            _draw_blocks(block_switch_trials, block_rates, ax)
 
 def plot_multi_val_fit_results(sess_data, output, agent_activity, agent_names, choice_names=['Left', 'Right'], 
                                betas=None, title_prefix='', n_sess=np.inf, trial_mask=None):

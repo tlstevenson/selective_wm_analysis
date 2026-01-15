@@ -29,20 +29,28 @@ import re
 
 # %% LOAD DATA
 
-subject_info = db_access.get_active_subj_stage(protocol='ClassicRLTasks', stage_num=2)
-subj_ids = subject_info['subjid']
+protocol = 'ClassicRLTasks'
+stage = 2
+stage_name = 'twoArmBandit'
+n_back = 6
+fp_sess_only = True
+active_subjects_only = False
+reload = False
 
-#sess_ids = db_access.get_fp_protocol_subj_sess_ids('ClassicRLTasks', 2)
+if active_subjects_only:
+    subject_info = db_access.get_active_subj_stage(protocol=protocol, stage_num=stage)
+else:
+    subject_info = db_access.get_protocol_subject_info(protocol=protocol, stage_num=stage)
 
-# optionally limit sessions based on subject ids
-subj_ids = [179, 188, 191, 207] # [401, 218, 216] #[404, 275, 217] # 
-# sess_ids = {k: v for k, v in sess_ids.items() if k in subj_ids}
+#subj_ids = subject_info['subjid']
+subj_ids = [198,199,274,400,402]
 
-#sess_ids = db_access.get_fp_data_sess_ids(protocol='ClassicRLTasks', stage_num=2, subj_ids=subj_ids)
-sess_ids = db_access.get_subj_sess_ids(subj_ids, protocol='ClassicRLTasks', stage_num=2)
-sess_ids = {subj: sess[2:] for subj, sess in sess_ids.items()}
-#sess_ids = bah.limit_sess_ids(sess_ids, 8)
-#sess_ids = {179: [95201, 95312, 95347]}
+# get session ids
+if fp_sess_only:
+    sess_ids = db_access.get_fp_data_sess_ids(subj_ids=subj_ids, protocol=protocol, stage_num=stage)
+else:
+    sess_ids = db_access.get_subj_sess_ids(subj_ids, stage_num=stage, protocol=protocol)
+    sess_ids = bah.limit_sess_ids(sess_ids, n_back)
 
 # get trial information
 reload = False
@@ -65,7 +73,7 @@ all_sess_resp = all_sess[all_sess['choice'] != 'none']
 
 # %%
 
-ind_subj = False
+ind_subj = True
 meta_subj = True
 
 # %% TRIAL COUNTS

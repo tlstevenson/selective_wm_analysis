@@ -77,15 +77,15 @@ avg_trial_std = np.std(trial_counts['trial'])
 
 
 # %% Set up variables
-signal_types = ['dff_iso', 'z_dff_iso', 'dff_iso_baseline', 'z_dff_iso_baseline', 'dff_iso_fband', 'z_dff_iso_fband']
+signal_types = ['dff_iso_baseline', 'z_dff_iso_baseline', 'dff_iso_baseline_fband', 'z_dff_iso_baseline_fband']
 alignments = [Align.cue, Align.cpoke_out, Align.resp, Align.reward]
-regions = ['DMS', 'PL']
-xlims = {Align.cue: {'DMS': [-1,2], 'PL': [-3,5]},
-         Align.cpoke_out: {'DMS': [-1,2], 'PL': [-3,5]},
-         Align.resp: {'DMS': [-1,2], 'PL': [-3,5]},
-         Align.reward: {'DMS': [-1,2], 'PL': [-3,20]}}
+regions = ['DMS', 'DLS', 'PL']
+xlims = {Align.cue: {'DMS': [-1,2], 'DLS': [-1,2], 'PL': [-3,5]},
+         Align.cpoke_out: {'DMS': [-1,2], 'DLS': [-1,2], 'PL': [-3,5]},
+         Align.resp: {'DMS': [-1,2], 'DLS': [-1,2], 'PL': [-3,5]},
+         Align.reward: {'DMS': [-1,2], 'DLS': [-1,2], 'PL': [-3,20]}}
 
-recalculate = True
+recalculate = False
 
 filename = 'two_arm_bandit_data'
 
@@ -104,15 +104,17 @@ else:
                        for subjid in subj_ids}
                        
 ignored_signals = {'PL': [],
-                   'DMS': []}
+                   'DMS': [],
+                   'DLS': []}
 
 ignored_subjects = [182] # [179]
 
 # %% Build signal matrices aligned to alignment points
 
-tilt_t = True
-band_iso_fit = True
+tilt_t = False
+band_iso_fit = False
 baseline_correction = True
+baseline_band_iso_fit = True
 save_results = True
 
 for subj_id in subj_ids:
@@ -120,7 +122,8 @@ for subj_id in subj_ids:
         if sess_id in fpah.__sess_ignore:
             continue
 
-        fp_data, _ = fpah.load_fp_data(loc_db, {subj_id: [sess_id]}, iso_lpf=10, tilt_t=tilt_t, band_iso_fit=band_iso_fit, baseline_correction=baseline_correction)
+        fp_data, _ = fpah.load_fp_data(loc_db, {subj_id: [sess_id]}, iso_lpf=10, tilt_t=tilt_t, band_iso_fit=band_iso_fit, 
+                                       baseline_correction=baseline_correction, baseline_band_iso_fit=baseline_band_iso_fit)
         fp_data = fp_data[subj_id][sess_id]
 
         trial_data = sess_data[sess_data['sessid'] == sess_id]
@@ -229,19 +232,23 @@ rew_hist_bins = pd.IntervalIndex.from_breaks(rew_hist_bin_edges)
 rew_hist_bin_strs = {b:'{:.0f}-{:.0f}%'.format(abs(b.left)*100, b.right*100) for b in rew_hist_bins}
 
 alignments = [Align.cue, Align.reward] #  
-signal_types = ['z_dff_iso', 'dff_iso', 'dff_iso_baseline', 'z_dff_iso_baseline', 'dff_iso_fband', 'z_dff_iso_fband'] # 
+signal_types = ['dff_iso_baseline', 'z_dff_iso_baseline', 'dff_iso_baseline_fband', 'z_dff_iso_baseline_fband'] # 
 
 norm_baseline = True
 analyze_peaks = True
 
 filter_props = {Align.cue: {'DMS': {'filter': True, 'use_filt_signal_props': False, 'cutoff_f': 8},
+                            'DLS': {'filter': True, 'use_filt_signal_props': False, 'cutoff_f': 8},
                             'PL': {'filter': True, 'use_filt_signal_props': True, 'cutoff_f': 1}},
                 Align.reward: {'DMS': {'filter': True, 'use_filt_signal_props': False, 'cutoff_f': 8},
-                            'PL': {'filter': True, 'use_filt_signal_props': True, 'cutoff_f': 1}}}
+                               'DLS': {'filter': True, 'use_filt_signal_props': False, 'cutoff_f': 8},
+                               'PL': {'filter': True, 'use_filt_signal_props': True, 'cutoff_f': 1}}}
 
 peak_find_props = {Align.cue: {'DMS': {'min_dist': 0.05, 'peak_tmax': 0.45, 'peak_edge_buffer': 0.08, 'lim_peak_width_to_edges': True},
+                               'DLS': {'min_dist': 0.05, 'peak_tmax': 0.45, 'peak_edge_buffer': 0.08, 'lim_peak_width_to_edges': True},
                                'PL': {'min_dist': 0.2, 'peak_tmax': 1.5, 'peak_edge_buffer': 0.2, 'lim_peak_width_to_edges': True}},
                    Align.reward: {'DMS': {'min_dist': 0.05, 'peak_tmax': 0.45, 'peak_edge_buffer': 0.08, 'lim_peak_width_to_edges': True},
+                                  'DLS': {'min_dist': 0.05, 'peak_tmax': 0.45, 'peak_edge_buffer': 0.08, 'lim_peak_width_to_edges': True},
                                   'PL': {'min_dist': 0.5, 'peak_tmax': 3.5, 'peak_edge_buffer': 0.2, 'lim_peak_width_to_edges': False}}}
 
 sides = ['contra', 'ipsi']
@@ -287,7 +294,7 @@ for subj_id in subj_ids:
         resp_rewarded = rewarded[responded]
         
         for region in regions:
-            if sess_id in ignored_signals[region]:
+            if sess_id in ignored_signals[region] or region not in implant_info[subj_id]:
                 continue
 
             region_side = implant_info[subj_id][region]['side']
@@ -469,6 +476,10 @@ parameter_labels = {'peak_time': 'Time to Peak (s)', 'peak_height': 'Peak Amplit
                     'peak_width': 'Peak FWHM (s)', 'decay_tau': 'Decay τ (s)'}
 align_labels = {'cue': 'Response Cue', 'reward': 'Reward Delivery'}
 
+dms_color = '#53C43B'
+dls_color = '#E87A2C'
+pl_color = '#BB6ED8'
+
 # %% Prepare peak metrics
 
 # make subject ids categories
@@ -581,20 +592,18 @@ if ignore_outliers:
 
 # %% Plot average traces across all groups (Fig S9-E)
 
-plot_regions = ['DMS', 'PL'] # 'DMS', 'PL'
+plot_regions = ['PL', 'DMS', 'DLS'] # 'DMS', 'PL'
 plot_aligns = [Align.cue, Align.reward]
-plot_signals = ['z_dff_iso', 'z_dff_iso_baseline', 'z_dff_iso_fband']
+plot_signals = ['z_dff_iso_baseline_fband']
 
 # plot formatting
-plot_dec = {'DMS': 1, 'PL': 2}
-x_inc = {'DMS': 0.3, 'PL': 3}
-y_inc = {'DMS': 0.2, 'PL': 0.2}
+plot_dec = {'DMS': 1, 'DLS': 1, 'PL': 2}
+x_inc = {'DMS': 0.3, 'DLS': 0.3, 'PL': 3}
+y_inc = {'DMS': 0.2, 'DLS': 0.8, 'PL': 0.2}
 
 all_color = '#08AB36'
 rew_color = '#BC141A'
 unrew_color = '#1764AB'
-dms_color = '#53C43B'
-pl_color = '#BB6ED8'
 
 separate_outcome = False
 
@@ -604,22 +613,23 @@ if separate_outcome:
     group_labels = {'rewarded': 'Rewarded', 'unrewarded': 'Unrewarded'}
 
     region_colors = {'DMS': {'rewarded': rew_color, 'unrewarded': unrew_color},
+                     'DLS': {'rewarded': rew_color, 'unrewarded': unrew_color},
                      'PL': {'rewarded': rew_color, 'unrewarded': unrew_color}}
 else:
     gen_groups = {Align.cue: {'all': 'rew_hist_{}'},
                   Align.reward: {'all': 'rew_hist_{}_rewarded'}}
     group_labels = {'all': '_'}
 
-    region_colors = {'DMS': {'all': dms_color}, 'PL': {'all': pl_color}}
+    region_colors = {'DMS': {'all': dms_color}, 'DLS': {'all': dls_color}, 'PL': {'all': pl_color}}
     
 groups = {a: {k: [v.format(rew_hist_bin_strs[rew_bin]) for rew_bin in rew_hist_bins] for k, v in gen_groups[a].items()} for a in plot_aligns}
 
 cue_to_reward = np.nanmedian(sess_data['reward_time'] - sess_data['response_cue_time'])
 
-plot_lims = {Align.cue: {'DMS': [-0.1,0.8], 'PL': [-1,1]},
-             Align.reward: {'DMS': [-0.1,1.2], 'PL': [-1,12]}}
+plot_lims = {Align.cue: {'DMS': [-0.1,0.8], 'DLS': [-0.1,0.8], 'PL': [-1,3]},
+             Align.reward: {'DMS': [-0.1,1.2], 'DLS': [-0.1,1.2], 'PL': [-1,12]}}
 
-width_ratios = [np.diff(plot_lims[align][plot_regions[0]])[0] for align in plot_aligns]
+width_ratios = [np.diff(plot_lims[align]['DMS'])[0] for align in plot_aligns]
 #width_ratios = [2,10.5]
 #width_ratios = [0.7,0.9]
 
@@ -696,7 +706,8 @@ for signal_type in plot_signals:
                 ax.set_ylabel(y_label)
             #else:
                 # ax.yaxis.set_tick_params(which='both', labelleft=True)
-            ax.legend(loc='upper right')
+            if separate_outcome:
+                ax.legend(loc='upper right')
 
             ax.set_xlabel(x_label)
 
@@ -707,28 +718,35 @@ for signal_type in plot_signals:
 
 # %% Plot average traces by reward history (Fig 5J)
 
-plot_regions = ['DMS', 'PL'] # 
+plot_regions = ['PL', 'DMS', 'DLS'] # 
 plot_aligns = [Align.reward] # Align.cue, 
-plot_signal_types = ['z_dff_iso', 'z_dff_iso_baseline', 'z_dff_iso_fband']
+plot_signal_types = ['z_dff_iso_baseline_fband']
 
 # plot formatting
-plot_dec = {'DMS': 1, 'PL': 2}
-x_inc = {'DMS': 0.3, 'PL': 3}
-y_inc = {'DMS': 0.3, 'PL': 0.3}
+plot_dec = {'DMS': 1, 'DLS': 1, 'PL': 2}
+x_inc = {'DMS': 0.3, 'DLS': 0.3, 'PL': 3}
+y_inc = {'DMS': 0.3, 'DLS': 0.8, 'PL': 0.3}
 
 #gen_groups = {Align.cue: ['rew_hist_{}_rewarded', 'rew_hist_{}_unrewarded'], Align.reward: ['rew_hist_{}_rewarded', 'rew_hist_{}_unrewarded']}
-gen_groups = {Align.cue: ['rew_hist_{}'], Align.reward: ['rew_hist_{}_rewarded', 'rew_hist_{}_unrewarded']}
-groups = {a: [group.format(rew_hist_bin_strs[rew_bin]) for group in gen_groups[a] for rew_bin in rew_hist_bins] for a in plot_aligns}
+groups = {Align.cue: ['rew_hist_{}'.format(rew_hist_bin_strs[rew_bin]) for rew_bin in rew_hist_bins], 
+          Align.reward: ['rew']+['rew_hist_{}_rewarded'.format(rew_hist_bin_strs[rew_bin]) for rew_bin in rew_hist_bins]+
+                        ['unrew']+['rew_hist_{}_unrewarded'.format(rew_hist_bin_strs[rew_bin]) for rew_bin in rew_hist_bins]}
+
+new_rew_labels = {'rewarded': '', 'unrewarded': ''}
+new_group_labels_dict = {'rew_hist_{}_{}'.format(rew_hist_bin_strs[rew_bin], rk): '{} {}'.format(bin_labels[rew_bin], rv)
+                for rew_bin in rew_hist_bins
+                for rk, rv in new_rew_labels.items()}
+new_group_labels_dict.update({'rew': 'Rew', 'unrew': 'Unrew'})
 
 rew_hist_all_colors = plt.cm.Greens(np.linspace(0.4,1,len(rew_hist_bins)))
 rew_hist_rew_colors = plt.cm.Reds(np.linspace(0.4,1,len(rew_hist_bins)))
 rew_hist_unrew_colors = plt.cm.Blues(np.linspace(0.4,1,len(rew_hist_bins)))
 
 #colors = {Align.cue: np.vstack((rew_hist_rew_colors, rew_hist_unrew_colors)), Align.reward: np.vstack((rew_hist_rew_colors, rew_hist_unrew_colors))}
-colors = {Align.cue: rew_hist_all_colors, Align.reward: np.vstack((rew_hist_rew_colors, rew_hist_unrew_colors))}
+colors = {Align.cue: rew_hist_all_colors, Align.reward: np.vstack((np.zeros((1,4)), rew_hist_rew_colors, np.zeros((1,4)), rew_hist_unrew_colors))}
 
-plot_lims = {Align.cue: {'DMS': [-0.1,0.5], 'PL': [-1,1]},
-             Align.reward: {'DMS': [-0.2,1.2], 'PL': [-2,12]}}
+plot_lims = {Align.cue: {'DMS': [-0.1,0.5], 'DLS': [-0.1,0.5], 'PL': [-1,1]},
+             Align.reward: {'DMS': [-0.2,1.2], 'DLS': [-0.2,1.2], 'PL': [-2,12]}}
 
 #width_ratios = [1,2]
 #width_ratios = [0.7,0.9]
@@ -749,7 +767,7 @@ for signal_type in plot_signal_types:
     
     plot_data[signal_type] = {}
     
-    fig, axs = plt.subplots(n_rows, n_cols, layout='constrained', figsize=(5.5, 3*n_rows+0.1), sharey='row', width_ratios=width_ratios)
+    fig, axs = plt.subplots(n_rows, n_cols, layout='constrained', figsize=(7, 3*n_rows+0.1), sharey='row', width_ratios=width_ratios)
     
     if n_rows == 1 and n_cols == 1:
         axs = np.array(axs)
@@ -786,16 +804,19 @@ for signal_type in plot_signal_types:
             plot_data[signal_type][region][align]['time'] = t_r
     
             for group, color in zip(groups[align], colors[align]):
-                act = region_signals[group]
-                error = calc_error(act, True)
-                
-                avg_act = np.nanmean(act, axis=0)[t_sel][::plot_dec[region]]
-                avg_err = error[t_sel][::plot_dec[region]]
-                
-                plot_data[signal_type][region][align][group_labels_dict[group]+'_avg'] = avg_act
-                plot_data[signal_type][region][align][group_labels_dict[group]+'_err'] = avg_err
-                
-                plot_utils.plot_psth(t_r, avg_act, avg_err, ax, label=group_labels_dict[group], color=color, plot_x0=False)
+                if group in region_signals:
+                    act = region_signals[group]
+                    error = calc_error(act, True)
+                    
+                    avg_act = np.nanmean(act, axis=0)[t_sel][::plot_dec[region]]
+                    avg_err = error[t_sel][::plot_dec[region]]
+                    
+                    plot_data[signal_type][region][align][group_labels_dict[group]+'_avg'] = avg_act
+                    plot_data[signal_type][region][align][group_labels_dict[group]+'_err'] = avg_err
+                    
+                    plot_utils.plot_psth(t_r, avg_act, avg_err, ax, label=new_group_labels_dict[group], color=color, plot_x0=False)
+                else:
+                    ax.plot(0, 0, linestyle='none', marker='None', color=color, label=new_group_labels_dict[group])
     
             ax.set_title('{} {}'.format(region, title))
             plot_utils.plot_dashlines(0, ax=ax)
@@ -804,7 +825,10 @@ for signal_type in plot_signal_types:
                 ax.set_ylabel(y_label)
             #else:
                 # ax.yaxis.set_tick_params(which='both', labelleft=True)
-            ax.legend(ncols=legend_cols, loc='upper right', title='# Rewards in last {} Trials'.format(rew_rate_n_back))
+            
+            ax.legend()
+            handles, labels = ax.get_legend_handles_labels()
+            ax.legend().remove()
 
             ax.set_xlabel(x_label)
             
@@ -813,12 +837,14 @@ for signal_type in plot_signal_types:
             
             plot_data[signal_type][region][align] = pd.DataFrame.from_dict(plot_data[signal_type][region][align])
             
+        fig.legend(handles, labels, loc='outside right center', ncols=legend_cols, title='# Rewards in last {} trials'.format(rew_rate_n_back))
+            
         fpah.save_fig(fig, fpah.get_figure_save_path('Two-armed Bandit', 'Reward History', plot_name), format='pdf')
         
 # %% Plot average traces for the groups by side
-plot_regions = ['DMS'] #, 'PL'
+plot_regions = ['DMS', 'DLS'] #, 'PL'
 plot_aligns = [Align.cue, Align.reward]
-plot_signal_types = ['z_dff_iso']
+plot_signal_types = ['z_dff_iso_baseline_fband']
 
 #gen_groups = {Align.cue: ['rew_hist_{}_rewarded_{}', 'rew_hist_{}_unrewarded_{}'], Align.reward: ['rew_hist_{}_rewarded_{}', 'rew_hist_{}_unrewarded_{}']}
 gen_groups = {Align.cue: ['rew_hist_{}_{}'], Align.reward: ['rew_hist_{}_rewarded_{}', 'rew_hist_{}_unrewarded_{}']}
@@ -830,8 +856,8 @@ rew_hist_unrew_colors = plt.cm.Blues(np.linspace(0.4,1,len(rew_hist_bins)))
 #colors = {Align.cue: np.vstack((rew_hist_rew_colors, rew_hist_unrew_colors)), Align.reward: np.vstack((rew_hist_rew_colors, rew_hist_unrew_colors))}
 colors = {Align.cue: rew_hist_all_colors, Align.reward: np.vstack((rew_hist_rew_colors, rew_hist_unrew_colors))}
 
-plot_lims = {Align.cue: {'DMS': [-0.1,0.6], 'PL': [-1,8]},
-             Align.reward: {'DMS': [-0.1,1], 'PL': [-1,12]}}
+plot_lims = {Align.cue: {'DMS': [-0.1,0.6], 'DLS': [-0.1,0.6], 'PL': [-1,8]},
+             Align.reward: {'DMS': [-0.1,1], 'DLS': [-0.1,1], 'PL': [-1,12]}}
 
 width_ratios = [np.diff(plot_lims[Align.cue][plot_regions[0]])[0], np.diff(plot_lims[Align.reward][plot_regions[0]])[0]]
 #width_ratios = [2,10.5]
@@ -898,9 +924,9 @@ for signal_type in plot_signal_types:
             
 # %% Plot average traces for stays/switches by side and prior outcome
 
-plot_regions = ['DMS', 'PL'] #
+plot_regions = ['DMS', 'DLS', 'PL'] #
 plot_aligns = [Align.cue, Align.reward]
-plot_signal_types = ['z_dff_iso']
+plot_signal_types = ['z_dff_iso_baseline_fband']
 
 gen_groups = {Align.cue: ['{}_prev_{}_contra', '{}_prev_{}_ipsi'], 
               Align.reward: ['{}_rewarded_prev_{}_contra', '{}_rewarded_prev_{}_ipsi', '{}_unrewarded_prev_{}_contra', '{}_unrewarded_prev_{}_ipsi']}
@@ -923,8 +949,8 @@ plot_titles = {Align.cue: ['Contra Choices', 'Ipsi Choices'],
 fig_titles = {Align.cue: 'Cue Responses By Side and Previous Outcome',
               Align.reward: 'Reward Responses By Side and Previous Outcome'}
 
-plot_lims = {Align.cue: {'DMS': [-0.1,0.6], 'PL': [-1,6]},
-             Align.reward: {'DMS': [-0.1,1.2], 'PL': [-1,12]}}
+plot_lims = {Align.cue: {'DMS': [-0.1,0.6], 'DLS': [-0.1,0.6], 'PL': [-1,6]},
+             Align.reward: {'DMS': [-0.1,1.2], 'DLS': [-0.1,1.2], 'PL': [-1,12]}}
 
 n_rows = len(plot_regions)
 t = aligned_signals['t']
@@ -979,9 +1005,9 @@ for signal_type in plot_signal_types:
 
 # plot over all reward histories
 
-plot_regions = ['DMS', 'PL'] #
+plot_regions = ['DMS', 'DLS', 'PL'] #
 align = Align.reward
-plot_signal_types = ['z_dff_iso']
+plot_signal_types = ['z_dff_iso_baseline_fband']
 
 gen_groups = ['{}_next_{}', '{}_next_{}_contra', '{}_next_{}_ipsi']
 
@@ -998,7 +1024,7 @@ plot_titles = ['All Choices', 'Contra Choices', 'Ipsi Choices']
 fig_title = 'Reward Responses By Outcome, Choice Side, and Next Choice'
 
 plot_lims = {#Align.cue: {'DMS': [-0.1,0.6], 'PL': [-1,6]},
-             Align.reward: {'DMS': [-0.1,1], 'PL': [-1,10]}}
+             Align.reward: {'DMS': [-0.1,1], 'DLS': [-0.1,1], 'PL': [-1,10]}}
 
 n_rows = len(plot_regions)
 t = aligned_signals['t']
@@ -1150,11 +1176,11 @@ for signal_type in signal_types:
 
 parameters = ['peak_height', 'peak_width'] # 'peak_time', 'decay_tau']
 
-regions = ['DMS', 'PL']
-region_colors = ['#53C43B', '#BB6ED8']
+regions = ['PL', 'DMS', 'DLS']
+region_colors = [pl_color, dms_color, dls_color]
 plot_aligns = ['Response Cue', 'Reward Delivery']
 subj_ids = np.unique(filt_peak_metrics['subj_id'])
-plot_signals = ['dff_iso', 'dff_iso_baseline', 'dff_iso_fband']
+plot_signals = ['dff_iso_baseline_fband', 'z_dff_iso_baseline_fband']
 
 # have same jitter for each subject
 noise = 0.075
@@ -1188,7 +1214,7 @@ for signal_type in plot_signals:
     
         plot_data[signal_type][param] = subj_avgs
     
-        # plot sensor averages in boxplots
+        # plot averages in boxplots
         sb.boxplot(data=sub_peak_metrics, x='align_label', y=param, hue='region', palette=region_colors,
                    order=plot_aligns, hue_order=regions, ax=ax, showfliers=False, whis=(5,95), log_scale=True)
         if param == 'peak_height':
@@ -1198,17 +1224,24 @@ for signal_type in plot_signals:
         ax.set_xlabel('')
     
         # add subject averages for each alignment with lines connecting them
-        dodge = 0.2
+        if len(regions) == 2:
+            dodge = 0.2
+            x = np.array([-dodge, dodge])
+        elif len(regions) == 3:
+            dodge = 0.25
+            x = np.array([-dodge, 0, dodge])
+        
 
         for j, align in enumerate(plot_aligns):
-            x = np.array([j - dodge, j + dodge])
+            plot_x = x + j
     
             for subj_id, jitter in zip(subj_ids, jitters):
                 subj_avg = subj_avgs[(subj_avgs['subj_id'] == subj_id) & (subj_avgs['align_label'] == align)]
     
-                y = [subj_avg.loc[subj_avg['region'] == r, param] for r in regions]
+                y = np.array([subj_avg.loc[subj_avg['region'] == r, param].iloc[0] for r in regions])
+                nan_sel = np.isnan(y)
     
-                ax.plot(x+jitter, y, color='black', marker='o', linestyle='solid', alpha=0.75, linewidth=1, markersize=5)
+                ax.plot((plot_x+jitter)[~nan_sel], y[~nan_sel], color='black', marker='o', linestyle='solid', alpha=0.75, linewidth=1, markersize=5)
                 
         # set y max to be a multiple of 10
         y_min, y_max = ax.get_ylim()
@@ -1219,14 +1252,14 @@ for signal_type in plot_signals:
 
 # %% make reward history comparison figures per peak property (Fig 5K)
 
-parameters = ['peak_height', 'peak_width'] # 'peak_time', 'peak_height', 'peak_width', 'decay_tau'
+parameters = ['peak_height'] # 'peak_time', 'peak_height', 'peak_width', 'decay_tau'
 
 rew_hist_rew_colors = plt.cm.Reds(np.linspace(0.4,1,len(rew_hist_bins)))
 rew_hist_palette = sb.color_palette(rew_hist_rew_colors) 
 
-plot_signals = ['dff_iso', 'dff_iso_baseline', 'dff_iso_fband']
+plot_signals = ['dff_iso_baseline_fband']
 plot_aligns = ['reward'] #'cue', 
-plot_regions = ['DMS', 'PL']
+plot_regions = ['PL', 'DMS', 'DLS']
 
 split_by_side = False
 sides = ['contra', 'ipsi']
@@ -2020,9 +2053,9 @@ def plot_regress_over_time(params, t, plot_cols, ax, ci_lower=None, ci_upper=Non
     
 # %% Prep for reward history regression over time
 
-regions = ['DMS', 'PL'] # 'DMS', 'PL'
+regions = ['PL', 'DMS', 'DLS'] # 'DMS', 'PL'
 aligns = [Align.cue, Align.reward] # Align.cue, Align.reward
-signals = ['z_dff_iso', 'z_dff_iso_baseline', 'z_dff_iso_fband']
+signals = ['z_dff_iso_baseline', 'z_dff_iso_baseline_fband']
 included_subjs = np.array(subj_ids)[~np.isin(subj_ids, ignored_subjects)]
 
 n_back = 3
@@ -2077,7 +2110,7 @@ for subj_id in included_subjs:
             rew_time = rew_time[n_back:]
             
         for region in regions:
-            if sess_id in ignored_signals[region]:
+            if sess_id in ignored_signals[region] or not region in implant_info[subj_id]:
                 continue
             
             # build predictors by region
@@ -2129,6 +2162,8 @@ for subj_id in included_subjs:
                     subj_stacked_signals[subj_id][signal_type][align][region] = np.vstack((subj_stacked_signals[subj_id][signal_type][align][region], mat))
     
     for region in regions:
+        if not region in implant_info[subj_id]:
+            continue
         subj_predictors[subj_id][region] = pd.concat(subj_predictors[subj_id][region])
     
 # for analyzing meta subject, create new subject entry with everything stacked
@@ -2137,7 +2172,7 @@ subj_stacked_signals['all'] = {s: {a: {r: [] for r in regions}
                                    for a in aligns} 
                                for s in signals}
 for region in regions:
-    subj_predictors['all'][region] = pd.concat([subj_predictors[subj_id][region] for subj_id in included_subjs])
+    subj_predictors['all'][region] = pd.concat([subj_predictors[subj_id][region] for subj_id in included_subjs if region in implant_info[subj_id]])
     
     for signal_type in signals:
         for align in aligns:
@@ -2147,7 +2182,7 @@ for region in regions:
 
 # %% perform regression with various options
 
-limit_rewarded_trials = True
+limit_rewarded_trials = False
 include_current_side = False
 include_stay_switch = False
 include_stay_side_interaction = False
@@ -2257,16 +2292,16 @@ for subj_id in analyzed_subjs:
 # Create the reward history colormap
 cmap = LinearSegmentedColormap.from_list('red_to_blue', [plt.cm.Reds(0.7), plt.cm.Blues(0.7)])
 
-plot_signals = ['z_dff_iso', 'z_dff_iso_baseline', 'z_dff_iso_fband']
-plot_regions = ['DMS', 'PL'] # 'DMS', 'PL'
+plot_signals = ['z_dff_iso_baseline_fband']
+plot_regions = ['PL', 'DMS', 'DLS'] # 'DMS', 'PL'
 plot_aligns = [Align.reward] #  Align.cue, Align.reward
 
 # plot formatting
-plot_dec = {'DMS': 1, 'PL': 2}
-x_inc = {'DMS': 0.3, 'PL': 3}
-y_inc = {'DMS': 0.3, 'PL': 0.3}
-plot_lims = {Align.cue: {'DMS': [-0.1,0.6], 'PL': [-1,2]},
-             Align.reward: {'DMS': [-0.2,1.2], 'PL': [-2,12]}}
+plot_dec = {'DMS': 1, 'DLS': 1, 'PL': 2}
+x_inc = {'DMS': 0.3, 'DLS': 0.3, 'PL': 3}
+y_inc = {'DMS': 0.3, 'DLS': 0.8, 'PL': 0.3}
+plot_lims = {Align.cue: {'DMS': [-0.1,0.6], 'DLS': [-0.1,0.6], 'PL': [-1,2]},
+             Align.reward: {'DMS': [-0.2,1.2], 'DLS': [-0.2,1.2], 'PL': [-2,12]}}
 
 plot_n_back = n_back # 
 
@@ -2279,7 +2314,7 @@ use_ci_errors = False
 plot_sig = True
 
 # Process p-values for significance
-sig_lvl = 0.05
+sig_lvl = 0.01
 method = 'bonferroni' # 'bonferroni' 'holm'
 
 if plot_sig:
@@ -2463,7 +2498,7 @@ for signal_type in plot_signals:
                         
     if plot_subj_average:
         for plot_group, group_label, colors in zip(plot_groups, plot_group_labels, group_colors):
-            fig, axs = plt.subplots(n_rows, n_cols, layout='constrained', figsize=(5.5, 3*n_rows+0.1), width_ratios=width_ratios, sharey='row')
+            fig, axs = plt.subplots(n_rows, n_cols, layout='constrained', figsize=(7, 3*n_rows+0.1), width_ratios=width_ratios, sharey='row')
             axs = np.array(axs).reshape((n_rows, n_cols))
             fig.suptitle('{} Regression, Subject Avg'.format(group_label))
             
@@ -2488,10 +2523,16 @@ for signal_type in plot_signals:
                     if j == 0:
                         ax.set_ylabel('Coefficient ({})'.format(y_label))
                         
+                    handles, labels = ax.get_legend_handles_labels()
+                    ax.legend().remove()
+            
+            fig.legend(handles, labels, loc='outside right center')
+                    
+                        
     if plot_meta_subj:
         for plot_group, group_label, colors in zip(plot_groups, plot_group_labels, group_colors):
             subj_id = 'all'
-            fig, axs = plt.subplots(n_rows, n_cols, layout='constrained', figsize=(5.5, 3*n_rows+0.1), width_ratios=width_ratios, sharey='row')
+            fig, axs = plt.subplots(n_rows, n_cols, layout='constrained', figsize=(7, 3*n_rows+0.1), width_ratios=width_ratios, sharey='row')
             axs = np.array(axs).reshape((n_rows, n_cols))
             
             fig.suptitle('{} Regression, Subj {}'.format(group_label, subj_id))
@@ -2526,6 +2567,11 @@ for signal_type in plot_signals:
                     
                     if j == 0:
                         ax.set_ylabel('Coefficient ({})'.format(y_label))
+                        
+                    handles, labels = ax.get_legend_handles_labels()
+                    ax.legend().remove()
+            
+            fig.legend(handles, labels, loc='outside right center')
                         
             plot_name = '{}_{}_time_regression_{}_{}'.format('_'.join(plot_regions), '_'.join(plot_aligns), group_label, signal_type)
             fpah.save_fig(fig, fpah.get_figure_save_path('Two-armed Bandit', 'Reward History', plot_name), format='pdf')

@@ -9,8 +9,9 @@ Created on Sat Jun 29 23:59:38 2024
 import init
 import os.path as path
 import fp_analysis_helpers as fpah
-from fp_analysis_helpers import Alignment as Align
 import pyutils.utils as utils
+
+Align = fpah.Alignment
 
 #fpah.generate_figure_ppt(path.join(fpah.get_base_figure_save_path(), 'All Sessions'), group_by=['alignment', 'behavior', 'subject'], alignments='sess')
 
@@ -24,7 +25,10 @@ import pyutils.utils as utils
 
 # fpah.generate_figure_ppt(path.join(fpah.get_base_figure_save_path(), 'Temporal Choice - 179_188_207'), group_by=['behavior', 'alignment', 'filename', 'subject'], behaviors='Intertemporal Choice', subjects=[179,188,207], alignments=[Align.cue, Align.reward])
 
-fpah.generate_figure_ppt(path.join(fpah.get_base_figure_save_path(), 'WM_Bandit'), group_by=['alignment', 'filename', 'subject', 'behavior'], behaviors=['Single Tone WM', 'Probabilistic Bandit'])
+# preprocessing signal comparison
+fpah.generate_figure_ppt(path.join(fpah.get_base_figure_save_path(), 'WM_Bandit_preprocessing'), group_by=['alignment', 'subject', 'behavior'], alignments='sess', behaviors=['Single Tone WM', 'Probabilistic Bandit'])
+fpah.generate_figure_ppt(path.join(fpah.get_base_figure_save_path(), 'WM_Bandit_beh_comp'), group_by=['alignment', 'filename', 'subject', 'behavior'], behaviors=['Single Tone WM', 'Probabilistic Bandit'], signal_types='z_dff_iso_baseline')
+#fpah.generate_figure_ppt(path.join(fpah.get_base_figure_save_path(), 'WM_Bandit_signal_comp'), group_by=['alignment', 'behavior', 'subject', 'filename'], behaviors=['Single Tone WM', 'Probabilistic Bandit'])
 
 # By Behavior, all subjects where subjects are adjacent
 #fpah.generate_figure_ppt(path.join(fpah.get_base_figure_save_path(), 'Single Tone WM - all'), group_by=['behavior', 'alignment', 'filename', 'subject'], behaviors='Single Tone WM')

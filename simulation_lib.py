@@ -77,7 +77,6 @@ def generate_gaussian_noise(time, fs, snr, smooth_sigma=5):
     noise /= np.std(noise)
     noise /= snr
     return noise
-
     
 #%% generate artifact
 
@@ -112,7 +111,6 @@ def make_art(time, max_art_count=10, art_duration_range=[1,50], n_terms=5, amp_r
             current_max_amp = 1  # avoid dividing by zero or near-zero
         art_sig_comb = art_sig_comb / current_max_amp
     return art_sig_comb
-
 
 #%% get params for baseline
 
@@ -188,7 +186,6 @@ def param_jitter (selected_params, SD_frac, form_name, use_custom_params=True):
         jit_selected_params[param] = clipped
 
     return jit_selected_params
-
 
 #%% baseline formula 
 def get_baseline_form (form_type):  
@@ -504,7 +501,6 @@ def process_signals(raw_lig, raw_iso, baseline_iso, time, fs, lpf, iso_bands=[[0
     }
 
     return results
-
 
 
 #%% calculate explained variance

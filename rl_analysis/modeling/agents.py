@@ -72,7 +72,7 @@ class UnitParam(nn.Module):
         parametrize.register_parametrization(self, 'a', UnitConstraint())
         
     def __repr__(self):
-         return 'Unit Param: {}'.format(self.to_string())
+        return 'Unit Param: {}'.format(self.to_string())
         
     def forward(self, x):
         return self.a*x
@@ -99,7 +99,7 @@ class PositiveParam(nn.Module):
         parametrize.register_parametrization(self, 'a', PositiveConstraint(beta=beta, thresh=thresh))
         
     def __repr__(self):
-         return 'Positive Param: {}'.format(self.to_string())
+        return 'Positive Param: {}'.format(self.to_string())
         
     def forward(self, x):
         return self.a*x
@@ -153,6 +153,20 @@ def _apply_constraints(agent):
 # define methods that allow for model simulation in addition to model fitting
 class ModelAgent(nn.Module):
     
+    def __init__(self, constraints=None):
+        super().__init__()
+        
+        if constraints is None:
+            constraints = {}
+
+        self.constraints = copy.deepcopy(constraints)
+
+    def __repr__(self):
+        return self.print_params()
+    
+    def apply_constraints(self):
+        _apply_constraints(self)
+    
     def reset_params(self):
         pass
     
@@ -184,23 +198,23 @@ class SingleValueAgent(ModelAgent):
     """ Reward-Seeking/Value Agent V
 
     Inputs:
-        input: tensor of shape (n_sess, n_trials, [choice_t, outcome_t])
+        input: tensor of shape (n_sess, n_trials, [choice_t, outcome_t]) if n_vals is 1 or
+                               (n_sess, n_trials, [chose_left, chose_right, outcome_t]) if n_vals is 2
 
     Outputs:
         output: the output value of the Reward-Seeking/Value Agent V on each trial. Tensor of shape (n_sess, n_trials, 1)
     """
 
-    def __init__(self, alpha0 = None):
-        super().__init__()
+    def __init__(self, alpha0=None, constraints=None):
+        super().__init__(constraints)
             
         self.alpha = UnitParam(alpha0)
+        self.apply_constraints()
         self.reset_state()
-        
-    def __repr__(self):
-        return self.print_params()
     
     def reset_params(self):
         self.alpha = UnitParam()
+        self.apply_constraints()
         self.reset_state()
     
     def reset_state(self):
@@ -210,7 +224,7 @@ class SingleValueAgent(ModelAgent):
         self.state_delta_hist = []
         self.state_hist.append(self.state.detach())
        
-    def forward(self, input):#first col of input-choice, second col of input-outcome
+    def forward(self, input):# input-choice, second col of input-outcome
         self.reset_state()
         output = torch.zeros(input.shape[0], input.shape[1], 1)
 
@@ -248,25 +262,25 @@ class PerseverativeAgent(ModelAgent):
     """ Perseverative Agent H
     
     Inputs:
-        input: tensor of shape (n_sess, n_trials, [choice_t, outcome_t])
+        input: tensor of shape (n_sess, n_trials, [choice_t, outcome_t]) if n_vals is 1 or
+                               (n_sess, n_trials, [chose_left, chose_right, outcome_t]) if n_vals is 2
 
     Outputs:
         output: the output value of the Perseverative Agent H on each trial. Tensor of shape (n_sess, n_trials, 1)
     
     """
 
-    def __init__(self, alpha0=None, n_vals=1):
-        super().__init__()
+    def __init__(self, alpha0=None, n_vals=1, constraints=None):
+        super().__init__(constraints)
 
         self.alpha = UnitParam(alpha0)
         self.n_vals = n_vals
+        self.apply_constraints()
         self.reset_state()
-        
-    def __repr__(self):
-        return self.print_params()
-     
+
     def reset_params(self):
         self.alpha = UnitParam()
+        self.apply_constraints()
         self.reset_state()
         
     def reset_state(self):
@@ -276,7 +290,7 @@ class PerseverativeAgent(ModelAgent):
         self.state_delta_hist = []
         self.state_hist.append(self.state.detach())
        
-    def forward(self, input):#first col of input-choice, second col of input-outcome
+    def forward(self, input):
         self.reset_state()
         output = torch.zeros(input.shape[0], input.shape[1], self.n_vals)
 
@@ -314,24 +328,24 @@ class FallacyAgent(ModelAgent):
     """ Gambler Fallacy Agent G
 
     Inputs:
-        input: tensor of shape (n_sess, n_trials, [choice_t, outcome_t])
+        input: tensor of shape (n_sess, n_trials, [choice_t, outcome_t]) if n_vals is 1 or
+                               (n_sess, n_trials, [chose_left, chose_right, outcome_t]) if n_vals is 2
 
     Outputs:
         output: the output value of the Gambler Fallacy Agent G on each trial. Tensor of shape (n_sess, n_trials, 1)
    """
 
-    def __init__(self, alpha0=None, n_vals=1):
-        super().__init__()
+    def __init__(self, alpha0=None, n_vals=1, constraints=None):
+        super().__init__(constraints)
 
         self.alpha = UnitParam(alpha0)
         self.n_vals = n_vals
+        self.apply_constraints()
         self.reset_state()
-        
-    def __repr__(self):
-        return self.print_params()
-     
+
     def reset_params(self):
         self.alpha = UnitParam()
+        self.apply_constraints()
         self.reset_state()
         
     def reset_state(self):
@@ -341,7 +355,7 @@ class FallacyAgent(ModelAgent):
         self.state_delta_hist = []
         self.state_hist.append(self.state.detach())
        
-    def forward(self, input):#first col of input-choice, second col of input-outcome
+    def forward(self, input):
         self.reset_state()
         output = torch.zeros(input.shape[0], input.shape[1], self.n_vals)
 
@@ -389,10 +403,7 @@ class QValueAgent(ModelAgent):
     def __init__(self, alpha_same_rew=None, alpha_same_unrew=None, alpha_diff_rew=None, alpha_diff_unrew=None, 
                  k_same_rew=1, k_same_unrew=0, k_diff_rew=0, k_diff_unrew=0, constraints=None):
         
-        super().__init__()
-        
-        if constraints is None:
-            constraints = {}
+        super().__init__(constraints)
             
         self.alpha_same_rew = UnitParam(alpha_same_rew)
         self.alpha_same_unrew = UnitParam(alpha_same_unrew)
@@ -402,17 +413,9 @@ class QValueAgent(ModelAgent):
         self.k_same_unrew = _init_param(k_same_unrew)
         self.k_diff_rew = _init_param(k_diff_rew)
         self.k_diff_unrew = _init_param(k_diff_unrew)
-        self.constraints = copy.deepcopy(constraints)
-        
+
         self.apply_constraints()
-        
         self.reset_state()
-        
-    def apply_constraints(self):
-        _apply_constraints(self)
-        
-    def __repr__(self):
-        return self.print_params()
     
     def reset_params(self):
         self.alpha_same_rew = UnitParam()
@@ -518,11 +521,8 @@ class DynamicQAgent(ModelAgent):
                  gamma_same_rew=None, gamma_same_unrew=None, gamma_diff_rew=None, gamma_diff_unrew=None,
                  k_same_rew=1, k_same_unrew=0, k_diff_rew=0, k_diff_unrew=0, inverse_update=False, global_lam=True, constraints=None):
         
-        super().__init__()
-        
-        if constraints is None:
-            constraints = {}
-        
+        super().__init__(constraints)
+
         self.alpha_same_rew = UnitParam(alpha_same_rew)
         self.alpha_same_unrew = UnitParam(alpha_same_unrew)
         self.alpha_diff_rew = UnitParam(alpha_diff_rew)
@@ -537,10 +537,8 @@ class DynamicQAgent(ModelAgent):
         self.k_diff_unrew = _init_param(k_diff_unrew)
         self.inverse_update = inverse_update
         self.global_lam = global_lam
-        self.constraints = copy.deepcopy(constraints)
         
         self.apply_constraints()
-        
         self.reset_state()
        
     def apply_constraints(self):
@@ -550,9 +548,6 @@ class DynamicQAgent(ModelAgent):
             self.constraints['gamma_diff_unrew'] = {'share': 'gamma_same_unrew'}
             
         _apply_constraints(self)
-        
-    def __repr__(self):
-         return self.print_params()
      
     def reset_params(self):
         self.alpha_same_rew = UnitParam()
@@ -690,7 +685,7 @@ class DynamicQAgent(ModelAgent):
     
 # %% Uncertainty Dynamic Learning Rate 
 
-# make another version of this that matches grossman et al. exactly
+# need to make another version of this that matches grossman et al. exactly
 class UncertaintyDynamicQAgent(ModelAgent):
     """ Q-learning Value Agent w/ two different dynamic learning rate terms based on history of RPE values.
         One term is the same multiplier as the dynamic Q agent above (expected uncertainty) but only with an inverse update rule where higher expected uncertainty decreases learning rate
@@ -709,10 +704,7 @@ class UncertaintyDynamicQAgent(ModelAgent):
                  gamma_alpha_same_rew=None, gamma_alpha_same_unrew=None, gamma_alpha_diff_rew=None, gamma_alpha_diff_unrew=None,
                  k_same_rew=1, k_same_unrew=0, k_diff_rew=0, k_diff_unrew=0, global_lam=True, shared_side_alphas=True, shared_outcome_alpha_update=True, constraints=None):
         
-        super().__init__()
-        
-        if constraints is None:
-            constraints = {}
+        super().__init__(constraints)
         
         self.alpha_same_rew = UnitParam(alpha_same_rew)
         self.alpha_same_unrew = UnitParam(alpha_same_unrew)
@@ -733,10 +725,8 @@ class UncertaintyDynamicQAgent(ModelAgent):
         self.global_lam = global_lam
         self.shared_side_alphas = shared_side_alphas
         self.shared_outcome_alpha_update = shared_outcome_alpha_update # whether to update alphas separately based on the outcome
-        self.constraints = copy.deepcopy(constraints)
         
         self.apply_constraints()
-        
         self.reset_state()
 
     def apply_constraints(self):
@@ -753,9 +743,6 @@ class UncertaintyDynamicQAgent(ModelAgent):
             self.constraints['gamma_lam_diff_unrew'] = {'share': 'gamma_lam_same_unrew'}
             
         _apply_constraints(self)
-        
-    def __repr__(self):
-        return self.print_params()
     
     def reset_params(self):
         self.alpha_same_rew = UnitParam()
@@ -1019,22 +1006,17 @@ class StateInferenceAgent(ModelAgent):
 
     def __init__(self, p_stay=None, c_same_rew=None, c_same_unrew=None, c_diff_rew=None, c_diff_unrew=None, complement_c_rew=True, complement_c_diff=True, constraints=None):
         
-        super().__init__()
-        
-        if constraints is None:
-            constraints = {}
-            
+        super().__init__(constraints)
+
         self.p_stay = UnitParam(p_stay)
         self.c_same_rew = UnitParam(c_same_rew)
         self.c_same_unrew = UnitParam(c_same_unrew)
         self.c_diff_rew = UnitParam(c_diff_rew)
         self.c_diff_unrew = UnitParam(c_diff_unrew)
-        self.constraints = copy.deepcopy(constraints)
         self.complement_c_rew = complement_c_rew
         self.complement_c_diff = complement_c_diff
         
         self.apply_constraints()
-        
         self.reset_state()
         
     def apply_constraints(self):
@@ -1053,10 +1035,7 @@ class StateInferenceAgent(ModelAgent):
             self.constraints['c_diff_unrew'] = {'share': 'c_same_unrew'}
         
         _apply_constraints(self)
-        
-        
-    def __repr__(self):
-        return self.print_params()
+
     
     def reset_params(self):
         self.p_stay = UnitParam()
@@ -1181,11 +1160,8 @@ class RLStateInferenceAgent(ModelAgent):
     def __init__(self, p_stay=None, c_same_rew=None, c_same_unrew=None, c_diff_rew=None, c_diff_unrew=None, 
                  alpha_w=None, w_high_init=0.99, w_low_init=0.01, complement_c_rew=True, complement_c_diff=True, constraints=None):
         
-        super().__init__()
-        
-        if constraints is None:
-            constraints = {}
-            
+        super().__init__(constraints)
+
         self.p_stay = UnitParam(p_stay)
         self.c_same_rew = UnitParam(c_same_rew)
         self.c_same_unrew = UnitParam(c_same_unrew)
@@ -1194,13 +1170,11 @@ class RLStateInferenceAgent(ModelAgent):
         self.alpha_w = UnitParam(alpha_w)
         self.w_high_init = UnitParam(w_high_init)
         self.w_low_init = UnitParam(w_low_init)
-        
-        self.constraints = copy.deepcopy(constraints)
+
         self.complement_c_rew = complement_c_rew
         self.complement_c_diff = complement_c_diff
         
         self.apply_constraints()
-        
         self.reset_state()
         
     def apply_constraints(self):
@@ -1219,10 +1193,7 @@ class RLStateInferenceAgent(ModelAgent):
             self.constraints['c_diff_unrew'] = {'share': 'c_same_unrew'}
         
         _apply_constraints(self)
-        
-        
-    def __repr__(self):
-        return self.print_params()
+
     
     def reset_params(self):
         self.p_stay = UnitParam()
@@ -1367,11 +1338,8 @@ class QValueStateInferenceAgent(ModelAgent):
         
         # note K's are set slightly off 1 and 0 to help with gradients
         
-        super().__init__()
-        
-        if constraints is None:
-            constraints = {}
-        
+        super().__init__(constraints)
+
         self.alpha_high_rew = UnitParam(alpha_high_rew)
         self.alpha_high_unrew = UnitParam(alpha_high_unrew)
         self.alpha_low_rew = UnitParam(alpha_low_rew)
@@ -1384,17 +1352,8 @@ class QValueStateInferenceAgent(ModelAgent):
         self.p_stay = UnitParam(p_stay)
         self.update_order = update_order
         
-        self.constraints = copy.deepcopy(constraints)
-
         self.apply_constraints()
-        
         self.reset_state()
-        
-    def apply_constraints(self):
-        _apply_constraints(self)
-        
-    def __repr__(self):
-        return self.print_params()
     
     def reset_params(self):
         self.alpha_high_rew = UnitParam()
@@ -1605,7 +1564,8 @@ def normalize(x, dim=None):
 def norm_pdf(mu, sig, vals, min_val=1e-10):
     return torch.clamp(torch.exp(-0.5*((vals - mu)/sig)**2), min=min_val)
 
-# transform the sigma variable bounded by 1 and 0 to a value between 2 and 0.01 distributed evenly in logarithmic space
+# transform a sigma (gaussian spread) variable bounded by 1 and 0 to a value between 2 and 0.02 distributed evenly in logarithmic space
+# this helps to smooth the gradient landscape for these variables and expands/constrains the max and min values
 def sig_transform(x, sig_max=2, sig_min=0.02):
     return torch.exp(torch.log(torch.tensor(sig_max))*x+torch.log(torch.tensor(sig_min))*(1-x))
 
@@ -1625,14 +1585,9 @@ class BayesianAgent(ModelAgent):
     def __init__(self, p_step=0.01, init_high_rew_mean=None, init_low_rew_mean=None, init_switch_mean=None, init_rew_sig=None, init_switch_sig=None, 
                  stay_bias_lam=None, outcome_inference_lam=None, unreward_inference_lam=None, imperfect_update_alpha=None, 
                  forget_alpha=None, switch_scatter_sig=None, update_p_switch_first=False, constraints=None):
-        
-        # note initial means are slightly off 1/0 to help with gradient calculation
-        
-        super().__init__()
-        
-        if constraints is None:
-            constraints = {}
-        
+
+        super().__init__(constraints)
+
         self.p_step = p_step
         
         self.init_high_rew_mean = UnitParam(init_high_rew_mean)
@@ -1652,18 +1607,9 @@ class BayesianAgent(ModelAgent):
         self.forget_alpha = UnitParam(forget_alpha)
         
         self.update_p_switch_first = update_p_switch_first
-    
-        self.constraints = copy.deepcopy(constraints)
 
         self.apply_constraints()
-        
         self.reset_state()
-        
-    def apply_constraints(self):
-        _apply_constraints(self)
-        
-    def __repr__(self):
-        return self.print_params()
     
     def reset_params(self):
         
@@ -1956,9 +1902,6 @@ class SummationModule(ModelAgent):
         self.output_layer = output_layer
         
         self.reset_state()
-        
-    def __repr__(self):
-         return self.print_params()
      
     def print_params(self):
         print_str = ''
@@ -2081,11 +2024,18 @@ def ModelJsonDecoder(obj):
     else:
         return obj
     
+def serialize_model(model):
+    return json.dumps(model, cls=ModelJsonEncoder)
+
+def deserialize_model(model_json):
+    model = json.loads(model_json, object_hook=ModelJsonDecoder)
+    return model.model
+
 def save_model(data, save_path):
     utils.check_make_dir(save_path)
     
     with open(save_path, 'w') as f:
-        json.dump(data, f, cls=ModelJsonEncoder)
+        json.dump(data, f, cls=ModelJsonEncoder, indent=3)
         
 def load_model(save_path):
     

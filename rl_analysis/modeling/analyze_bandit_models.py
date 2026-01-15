@@ -35,19 +35,21 @@ script_dir = Path(__file__).parent.resolve()
 
 # %% Load data
 
-subj_ids = [179, 188, 191, 207] # 182
+subj_ids = [198, 199, 274, 400, 402]#[179, 188, 191, 207] # 182
 
-save_path = path.join(script_dir, 'fit_models_local.json')
+save_path = path.join(script_dir, 'fit_models_new.json')
 if path.exists(save_path):
     all_models = agents.load_model(save_path)
 else:
     all_models = {}
 
 # load data
-sess_ids = db_access.get_subj_sess_ids(subj_ids, protocol='ClassicRLTasks', stage_num=2)
+# sess_ids = db_access.get_subj_sess_ids(subj_ids, protocol='ClassicRLTasks', stage_num=2)
 
-# start from the third session (so index=2)-->do not account for the first two sessions
-sess_ids = {subj: sess[2:] for subj, sess in sess_ids.items()}
+# # start from the third session (so index=2)-->do not account for the first two sessions
+# sess_ids = {subj: sess[2:] for subj, sess in sess_ids.items()}
+
+sess_ids = db_access.get_fp_data_sess_ids(subj_ids=subj_ids, protocol='ClassicRLTasks', stage_num=2)
 
 # get session data
 reload = False
@@ -63,12 +65,17 @@ ignore_subj = ['182']
 subjids = list(all_models.keys())
 subjids = [s for s in subjids if not s in ignore_subj]
 
-ignore_models = ['Q/Persev/Fall', 'SI/Persev', 'Q SI', 'RL SI'] # ['basic - value only']
+ignore_models = ['Basic - Value']#'Basic - Value'['Q/Persev/Fall', 'SI/Persev', 'Q SI', 'RL SI'] # ['basic - value only']
+ignore_any_match = False
+plot_best_fit_only = True
 
 model_names = list(all_models[subjids[0]].keys())
 model_names.sort(key=str.lower)
 
-model_names = [n for n in model_names if not any(im in n for im in ignore_models)]
+if ignore_any_match:
+    model_names = [n for n in model_names if not any(im in n for im in ignore_models)]
+else:
+    model_names = [n for n in model_names if not n in ignore_models]
 
 # build dataframe with accuracy and LL per fit
 fit_mets = []
@@ -123,6 +130,9 @@ for subj in subjids:
         best_model_counts[name]['bic'] += 1
     
 best_model_counts = pd.DataFrame(best_model_counts).transpose().reset_index().rename(columns={'index': 'model'})
+
+if plot_best_fit_only:
+    fit_mets = fit_mets.loc[fit_mets.groupby(['subjid', 'model'])['norm_llh'].idxmax()]
 
 perf_cols = ['diff_ll_avg', 'diff_norm_llh', 'diff_acc', 'diff_bic']
 
@@ -400,7 +410,7 @@ if ignore_outliers:
 
 # %% Compare model fit outputs
 
-subjids = [179, 188, 191] # [179, 188, 191, 207]
+subjids = [198, 199, 274, 400, 402]#[179, 188, 191] # [179, 188, 191, 207]
 
 sides = ['contra', 'ipsi']
 regions = ['DMS', 'PL']
@@ -411,8 +421,8 @@ plot_output = True
 plot_output_diffs = False
 plot_agent_states = True
 plot_rpes = True
-plot_fp_peak_amps = True
-plot_fp_rpe_corr = True
+plot_fp_peak_amps = False
+plot_fp_rpe_corr = False
 
 is_bayes_model = False
 
@@ -427,8 +437,11 @@ is_bayes_model = False
 # compare_model_info = {'Q SI - Alpha Free, K Free': {'agent_names': ['State', 'Value', 'Belief']}, 
 #                       'Q SI - Alpha Free, K Free, Belief Update First': {'agent_names': ['State', 'Value', 'Belief']}}
 
-compare_model_info = {'Bayes - No Switch Scatter, Perfect Update, No Stay Bias, Simul Updates': {'agent_names': ['p(reward)']}} 
-#                       'Q SI - Alpha Free, K Free, Belief Update First': {'agent_names': ['State', 'Value', 'Belief']}}
+compare_model_info = {'Q - Alpha Rew/Unrew Shared, All K Fixed': {'agent_names': ['Value']},
+                      'Q/Persev - Alpha Rew/Unrew Shared, All K Fixed': {'agent_names': ['Value', 'Persev']},
+                      #'SI - Separate Rew/Unrew Evidence': {'agent_names': ['Value']},
+                      #'SI/Persev - Separate Rew/Unrew Evidence': {'agent_names': ['Value', 'Persev']}}
+                     }
 
                
 compare_models = list(compare_model_info.keys())
@@ -782,10 +795,13 @@ n_limit_hist = 2
 
 n_plots = 3
 
-model_name = 'Q/Persev - All Alpha Shared, All K Fixed'
-agent_names = ['Value', 'Perseverative'] # ['State'] #
+model_name = 'Basic - Value/Persev/Fall' #'Q/Persev - All Alpha Shared, All K Fixed'
+agent_names = ['Value', 'Perseverative', 'Fallacy'] # ['State'] #
 
-subjids = [188] # [179, 188, 191, 207]
+# model_name = 'SI/Persev - Separate Rew/Unrew Evidence' #'Q/Persev - All Alpha Shared, All K Fixed'
+# agent_names = ['Value', 'Perseverative'] # ['State'] #
+
+subjids = [274, 400] #[198, 199, 274, 400, 402] # [179, 188, 191, 207]
 
 for subj in subjids: 
 
@@ -801,22 +817,29 @@ for subj in subjids:
             best_model_idx = i    
 
     model = all_models[str(subj)][model_name][best_model_idx]['model'].model.clone()
-    
-    output, agent_states = th.run_model(model, training_data['two_side_inputs'], output_transform=lambda x: torch.softmax(x, 2)[:,:,0].unsqueeze(2))
-    betas = model.beta.weight[0].detach().numpy()
-    
-    # add to the agent states for hybrid value/state inference agents
-    if isinstance(model.agents[0], agents.QValueStateInferenceAgent):
-        value_hist = torch.stack(model.agents[0].v_hist[1:], dim=1).numpy()
-        belief_hist = torch.stack(model.agents[0].belief_hist[1:], dim=1).numpy()
-        agent_states = np.insert(agent_states, 1, value_hist, axis=3)
-        agent_states = np.insert(agent_states, 2, belief_hist, axis=3)
-        betas = np.insert(betas, 1, np.array([1,1]))
 
-    if use_simple_plot:
-        th.plot_simple_multi_val_fit_results(sess_data, output, agent_states, 
-                                             agent_names, betas=betas, use_ratio=False,
-                                             title_prefix='Subj {}, {} - '.format(subj, model_name))
+    if isinstance(model.agents[0], agents.SingleValueAgent):
+        output, agent_states = th.run_model(model, training_data['basic_inputs'], output_transform=lambda x: 1/(1+np.exp(-x)))
+        betas = model.beta.weight[0].detach().numpy()
+        
+        th.plot_single_val_fit_results(sess_data, output, agent_states, agent_names, betas=betas, 
+                                       title_prefix='Subj {}, {}, '.format(subj, model_name))
     else:
-        th.plot_multi_val_fit_results(sess_data, output, agent_states, agent_names, n_sess=n_plots, trial_mask=training_data['trial_mask_train'],
-                                      betas=betas, title_prefix='Subj {}, {} - '.format(subj, model_name))
+        output, agent_states = th.run_model(model, training_data['two_side_inputs'], output_transform=lambda x: torch.softmax(x, 2)[:,:,0].unsqueeze(2))
+        betas = model.beta.weight[0].detach().numpy()
+        
+        # add to the agent states for hybrid value/state inference agents
+        if isinstance(model.agents[0], agents.QValueStateInferenceAgent):
+            value_hist = torch.stack(model.agents[0].v_hist[1:], dim=1).numpy()
+            belief_hist = torch.stack(model.agents[0].belief_hist[1:], dim=1).numpy()
+            agent_states = np.insert(agent_states, 1, value_hist, axis=3)
+            agent_states = np.insert(agent_states, 2, belief_hist, axis=3)
+            betas = np.insert(betas, 1, np.array([1,1]))
+    
+        if use_simple_plot:
+            th.plot_simple_multi_val_fit_results(sess_data, output, agent_states, 
+                                                 agent_names, betas=betas, use_ratio=False,
+                                                 title_prefix='Subj {}, {}, '.format(subj, model_name))
+        else:
+            th.plot_multi_val_fit_results(sess_data, output, agent_states, agent_names, n_sess=n_plots, trial_mask=training_data['trial_mask_train'],
+                                          betas=betas, title_prefix='Subj {}, {}, '.format(subj, model_name))

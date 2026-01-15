@@ -416,7 +416,7 @@ for method_key in methods:
     fitted_iso = res.get('fitted_iso', None)
     if fitted_iso is not None:
         label = method_key.replace('_', ' ').title()
-        ax1.plot(total_t, fitted_iso, label=label, alpha=0.7)
+        ax1.plot(total_t, fitted_iso, label=label, alpha=0.5)
 
 ax1.set_xlabel('Time')
 ax1.set_ylabel('Signal')
@@ -425,7 +425,7 @@ ax1.legend(loc='upper right', fontsize=8)
 
 # --- Figure 2: dF/F Comparison ---
 fig2, ax2 = plt.subplots(1, 1, figsize=(8, 4), layout='constrained')
-ax2.plot(total_t, true_sig, label='True Signal', color='black', linestyle='--', alpha=0.8)
+ax2.plot(total_t, true_sig, label='True Signal', color='black', linestyle='--', alpha=0.3)
 
 # Overlay dF/F from each method for the lowest EV signal
 for method_key in methods:
