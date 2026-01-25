@@ -357,7 +357,7 @@ def simulate_n_signals(n, time,
 clamp_total_points = 0
 clamp_total_calls = 0
 
-def process_signals(raw_lig, raw_iso, baseline_iso, time, fs, lpf, iso_bands=[[0,0.01], [0.01,0.1], [0.1,1], [1,10]]):
+def process_signals(raw_lig, raw_iso, baseline_iso, time, fs, lpf_general = 10, lpf_baseline = 0.0005, iso_bands=[[0,0.1], [0.1,1], [1,10]]):
     """
     Run OLS (basic), IRLS, LPF Baseline Subtraction, Frequency Band,
     and Frequency Band + LPF Baseline Subtraction fits for comparison.
@@ -365,18 +365,26 @@ def process_signals(raw_lig, raw_iso, baseline_iso, time, fs, lpf, iso_bands=[[0
     'OLS', 'IRLS', 'LPF_only', 'FreqBand', 'FreqBand_LPF'
 
     iso_bands: list of lists, optional frequency bands for frequency band methods.
+
+    Notes:
+    - filtered with lpf_general for OLS, IRLS, FreqBand
+    - baseline subtraction uses lpf_baseline
     """
     global clamp_total_points, clamp_total_calls
 
     epsilon = 1e-6  # avoid zero denominators
     results = {}
 
+    # --- Filter signals with general LPF ---
+    filtered_lig = fp_utils.filter_signal(raw_lig, cutoff_f=lpf_general, sr=fs)
+    filtered_iso = fp_utils.filter_signal(raw_iso, cutoff_f=lpf_general, sr=fs)
+
     # --- OLS (standard) ---
-    fitted_ols, fit_info_ols = fp_utils.fit_signal(raw_iso, raw_lig, time, vary_t=False)
+    fitted_ols, fit_info_ols = fp_utils.fit_signal(filtered_iso, filtered_lig, time, vary_t=False)
     fitted_ols_baseline = fit_info_ols['formula'](baseline_iso, *fit_info_ols['params'])
 
     denom = np.clip(fitted_ols, epsilon, None)
-    dff_ols = ((raw_lig - fitted_ols) / denom)
+    dff_ols = ((filtered_lig - fitted_ols) / denom)
 
     clamp_total_points += np.sum(denom == epsilon)
     clamp_total_calls += 1
@@ -391,11 +399,11 @@ def process_signals(raw_lig, raw_iso, baseline_iso, time, fs, lpf, iso_bands=[[0
     }
 
     # --- IRLS ---
-    not_nans = ~np.isnan(raw_lig) & ~np.isnan(raw_iso)
-    fitted_irls = np.full_like(raw_lig, np.nan)
+    not_nans = ~np.isnan(filtered_lig) & ~np.isnan(filtered_iso)
+    fitted_irls = np.full_like(filtered_lig, np.nan)
 
-    exog = sm.add_constant(raw_iso[not_nans])
-    endog = raw_lig[not_nans]
+    exog = sm.add_constant(filtered_iso[not_nans])
+    endog = filtered_lig[not_nans]
     rlm_mod = sm.RLM(endog, exog, M=sm.robust.norms.TukeyBiweight(c=3))
     rlm_res = rlm_mod.fit()
 
@@ -405,7 +413,7 @@ def process_signals(raw_lig, raw_iso, baseline_iso, time, fs, lpf, iso_bands=[[0
     irls_baseline = irls_formula(baseline_iso, *irls_params)
 
     denom = np.clip(fitted_irls, epsilon, None)
-    dff_irls = ((raw_lig - fitted_irls) / denom)
+    dff_irls = ((filtered_lig - fitted_irls) / denom)
 
     clamp_total_points += np.sum(denom == epsilon)
     clamp_total_calls += 1
@@ -420,18 +428,23 @@ def process_signals(raw_lig, raw_iso, baseline_iso, time, fs, lpf, iso_bands=[[0
     }
 
     # --- LPF Baseline Subtraction ---
-    baseline_lig = fp_utils.filter_signal(raw_lig, lpf, fs)
-    baseline_iso = fp_utils.filter_signal(raw_iso, lpf, fs)
+    trend_pad_len = int((1 / (2 * lpf_baseline)) * fs)
 
-    baseline_corr_lig = raw_lig - baseline_lig
-    baseline_corr_iso = raw_iso - baseline_iso
+    # compute LPF baseline using baseline LPF
+    baseline_lig = fp_utils.filter_signal(filtered_lig, cutoff_f=lpf_baseline, sr=fs, trend_pad_len=trend_pad_len)
+    baseline_iso = fp_utils.filter_signal(filtered_iso, cutoff_f=lpf_baseline, sr=fs, trend_pad_len=trend_pad_len)
 
-    # scale the isosbestic signal to best fit the ligand-dependent signal
+    # baseline corrected signals for fitting
+    baseline_corr_lig = filtered_lig - baseline_lig
+    baseline_corr_iso = filtered_iso - baseline_iso
+
+    # fit isosbestic to baseline corrected signals
     fitted_baseline_iso, fit_info_lpf = fp_utils.fit_signal(
         baseline_corr_iso, baseline_corr_lig, time, vary_t=False
     )
 
-    denom = np.clip(baseline_lig, epsilon, None)
+    # compute dF/F using baseline in denominator
+    denom = np.clip(baseline_lig + fitted_baseline_iso, epsilon, None)
     dff_lpf = ((baseline_corr_lig - fitted_baseline_iso) / denom)
 
     clamp_total_points += np.sum(denom == epsilon)
@@ -451,12 +464,13 @@ def process_signals(raw_lig, raw_iso, baseline_iso, time, fs, lpf, iso_bands=[[0
     }
 
     # --- Frequency Band ---
+    # use general filtered signals for fitting
     fitted_fband_iso, fit_info_fband = fp_utils.fit_signal(
-        raw_iso, raw_lig, time, vary_t=False, fit_bands=True, f_bands=iso_bands
+        filtered_iso, filtered_lig, time, vary_t=False, fit_bands=True, f_bands=iso_bands
     )
 
     denom = np.clip(fitted_fband_iso, epsilon, None)
-    dff_fband = ((raw_lig - fitted_fband_iso) / denom)
+    dff_fband = ((filtered_lig - fitted_fband_iso) / denom)
 
     clamp_total_points += np.sum(denom == epsilon)
     clamp_total_calls += 1
@@ -471,17 +485,14 @@ def process_signals(raw_lig, raw_iso, baseline_iso, time, fs, lpf, iso_bands=[[0
     }
 
     # --- Frequency Band + LPF Baseline Subtraction ---
-    baseline_lig = fp_utils.filter_signal(raw_lig, lpf, fs)
-    baseline_iso = fp_utils.filter_signal(raw_iso, lpf, fs)
-
-    baseline_corr_lig = raw_lig - baseline_lig
-    baseline_corr_iso = raw_iso - baseline_iso
+    baseline_corr_lig = filtered_lig - baseline_lig
+    baseline_corr_iso = filtered_iso - baseline_iso
 
     fitted_fband_lpf_iso, fit_info_fband_lpf = fp_utils.fit_signal(
         baseline_corr_iso, baseline_corr_lig, time, vary_t=False, fit_bands=True, f_bands=iso_bands
     )
 
-    denom = np.clip(baseline_lig, epsilon, None)
+    denom = np.clip(baseline_lig + fitted_fband_lpf_iso, epsilon, None)
     dff_fband_lpf = ((baseline_corr_lig - fitted_fband_lpf_iso) / denom)
 
     clamp_total_points += np.sum(denom == epsilon)
@@ -576,10 +587,31 @@ def plot_ev_results(ev_results, DV_name, exclude_outliers=False, alpha_default=N
     plt.ylim(-0.05, 1.05)
     plt.show()
 
+#%% helper for plotting fitted iso consistently across methods
+
+def get_plot_fitted_iso(entry, method_key):
+    """
+    Return a fluorescence-like fitted iso for plotting.
+    LPF-based methods store residuals and need baseline added back.
+    """
+    if entry is None or not isinstance(entry, dict):
+        return None
+
+    fitted_iso = entry.get('fitted_iso', None)
+    if fitted_iso is None:
+        return None
+
+    if method_key in ['LPF_only', 'FreqBand_LPF']:
+        baseline_iso = entry.get('baseline_iso', None)
+        if baseline_iso is None:
+            return None
+        return baseline_iso + fitted_iso
+
+    return fitted_iso
 
 #%% plot the signals processed with all current methods
 def plot_comparative_figures(
-    raw_lig, raw_iso, baseline_iso, time, true_sig, fs=200, lpf=0.1,
+    raw_lig, raw_iso, baseline_iso, time, true_sig, fs=200,
     suptitle_text=None, ev=None, dv=None, param_name=None, extra_title=None):
     """
     Plot raw signals, fitted isos, and dF/F across all processing methods returned by process_signals.
@@ -588,7 +620,7 @@ def plot_comparative_figures(
     import matplotlib.pyplot as plt
 
     # --- Run processing ---
-    results = process_signals(raw_lig, raw_iso, baseline_iso, time, fs, lpf=lpf)
+    results = process_signals(raw_lig, raw_iso, baseline_iso, time, fs)
 
     # --- Methods to plot ---
     method_labels = ['OLS', 'IRLS', 'LPF_only', 'FreqBand', 'FreqBand_LPF']
@@ -597,6 +629,11 @@ def plot_comparative_figures(
     fig, axes = plt.subplots(n_methods, 2, figsize=(12, 3 * n_methods), sharex=True)
     if n_methods == 1:
         axes = axes.reshape(1, 2)
+        
+    # --- Subhead titles for left/right panels ---
+    fig.subplots_adjust(top=0.92)  # make room for suptitle
+    axes[0, 0].set_title("Raw Ligand vs Fitted Iso", fontsize=12)
+    axes[0, 1].set_title("True Signal vs dF/F", fontsize=12)
 
     for idx, method_key in enumerate(method_labels):
         entries = results.get(method_key, None)
@@ -616,15 +653,19 @@ def plot_comparative_figures(
 
         # Plot raw ligand and true signal once per method
         ax_left.plot(time, raw_lig, label='raw_lig', color='skyblue', alpha=0.7)
-        ax_right.plot(time, true_sig, label='true_sig', color='steelblue', alpha=0.7)
+        ax_right.plot(time, true_sig, label='true_sig', color='orange', alpha=0.7)
 
         for entry in entries:
             if not isinstance(entry, dict):
                 continue  # skip if something went wrong
+                
             if 'fitted_iso' in entry and entry['fitted_iso'] is not None:
-                ax_left.plot(time, entry['fitted_iso'], label=f'{method_key}', alpha=0.7)
+                plot_iso = entry['fitted_iso']
+                if method_key in ['LPF_only', 'FreqBand_LPF']:
+                    plot_iso = plot_iso + baseline_iso
+                ax_left.plot(time, plot_iso, label=f'{method_key}', color='orange', alpha=0.7)
             if 'dff' in entry and entry['dff'] is not None:
-                ax_right.plot(time, entry['dff'], label=f'{method_key}', alpha=0.7)
+                ax_right.plot(time, entry['dff'], label=f'{method_key}', color='skyblue', alpha=0.7)
 
         ax_left.set_ylabel(method_key, fontsize=8)
         ax_left.legend(loc='upper right')

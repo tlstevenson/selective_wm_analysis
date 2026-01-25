@@ -19,8 +19,8 @@ from tqdm import tqdm
 
 #%% define recording length
 
-fs = 30  # sampling freq. 
-duration = 500
+fs = 30  # sampling freq. (Hz)
+duration = 500 # session length (s)
 total_t = np.linspace(0, duration, num=fs*duration, endpoint=False)   # for the entire duration 
 
 #%% define save file path
@@ -61,7 +61,8 @@ alpha_default = 0 # was 0.05
 SNR_default = 10
 SAR_default = 1
 scale = 0.1
-lpf_default = 0.0005 # was 0.001
+lpf_general = 10.0    # Hz, general smoothing for all regression fits
+lpf_baseline = 0.0005 # Hz, for slow baseline estimation (LPF methods)
 my_iso_bands = [[0, 0.01], [0.01, 0.1], [0.1, 1], [1, 10]]
 smooth_sigma = 0.25
 
@@ -124,7 +125,7 @@ for DV, signal_list in tqdm(simulated_signals.items(), desc="DV groups"):
         baseline_iso = entry['baseline_iso']
 
         # Single call returns dict with all processing methods
-        proc_all = sl.process_signals(raw_lig, raw_iso, baseline_iso, total_t, fs, lpf=lpf_default, iso_bands=my_iso_bands)
+        proc_all = sl.process_signals(raw_lig, raw_iso, baseline_iso, total_t, fs, lpf_general = lpf_general, lpf_baseline = lpf_baseline, iso_bands = my_iso_bands)
 
         # --- Validation helper ---
         def validate_and_append(key, out):
@@ -413,10 +414,11 @@ for method_key in methods:
     res = entries[i] if isinstance(entries, list) else entries
     if res is None:
         continue
-    fitted_iso = res.get('fitted_iso', None)
-    if fitted_iso is not None:
+    
+    plot_iso = sl.get_plot_fitted_iso(res, method_key)
+    if plot_iso is not None:
         label = method_key.replace('_', ' ').title()
-        ax1.plot(total_t, fitted_iso, label=label, alpha=0.5)
+        ax1.plot(total_t, plot_iso, label=label, alpha=0.5)
 
 ax1.set_xlabel('Time')
 ax1.set_ylabel('Signal')
@@ -475,19 +477,13 @@ for method_key in methods_to_plot:
     entries = processed_signals[min_DV].get(method_key, None)
     if entries is None:
         continue
-    
-    # handle OLS separately if it’s a single dict
-    if method_key == 'OLS':
-        if isinstance(entries, dict):
-            fitted_iso = entries.get('fitted_iso', None)
-        else:
-            fitted_iso = entries[i].get('fitted_iso', None)
-    else:
-        fitted_iso = entries[i].get('fitted_iso', None)
-    
-    if fitted_iso is not None:
+
+    entry = entries if isinstance(entries, dict) else entries[i]
+
+    plot_iso = sl.get_plot_fitted_iso(entry, method_key)
+    if plot_iso is not None:
         label = method_key.replace('_', ' ').title()
-        axs[2].plot(total_t, fitted_iso, label=label, alpha=0.7)
+        axs[2].plot(total_t, plot_iso, label=label, alpha=0.7)
 
 axs[2].set_title('Fitted Isosbestic')
 axs[2].legend(fontsize=8)
@@ -625,9 +621,9 @@ for method_key in methods:
     else:
         continue
 
-    fitted_iso = safe_get(entry, 'fitted_iso')
-    if fitted_iso is not None and len(fitted_iso) == len(total_t):
-        ax.plot(total_t, fitted_iso, label=method_key.replace('_', ' ').title(), alpha=0.8)
+    plot_iso = sl.get_plot_fitted_iso(entry, method_key)
+    if plot_iso is not None and len(plot_iso) == len(total_t):
+        ax.plot(total_t, plot_iso, label=method_key.replace('_', ' ').title(), alpha=0.8)
 
 ax.legend(fontsize=8, loc='upper right')
 plt.show()
