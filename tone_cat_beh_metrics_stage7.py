@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Script to investigate performance on the tone categorization task stage 8 - multi tone
+Script to investigate performance on the tone categorization task stage 7 - single tone
 
 @author: tanner stevenson
 """
@@ -21,6 +21,7 @@ import pandas as pd
 stage = 7
 stage_name = 'growDelay'
 n_back = 6
+fp_sess_only = True
 active_subjects_only = False
 reload = False
 
@@ -32,12 +33,15 @@ else:
 #subj_ids = subject_info['subjid']
 #subj_ids = subj_ids[subj_ids != 187]
 #subj_ids = [187,190,192,193,198,199,400,402]
-subj_ids = [402]
+subj_ids = [198,199,274,400,402]
 
 # get session ids
-sess_ids = db_access.get_subj_sess_ids(subj_ids, stage_num=stage, protocol='ToneCatDelayResp')
-# sess_ids = db_access.get_fp_data_sess_ids(protocol='ToneCatDelayResp', stage_num=stage)
-sess_ids = bah.limit_sess_ids(sess_ids, n_back)
+if fp_sess_only:
+    sess_ids = db_access.get_fp_data_sess_ids(subj_ids=subj_ids, protocol='ToneCatDelayResp', stage_num=stage)
+else:
+    sess_ids = db_access.get_subj_sess_ids(subj_ids, stage_num=stage, protocol='ToneCatDelayResp')
+    # sess_ids = db_access.get_fp_data_sess_ids(protocol='ToneCatDelayResp', stage_num=stage)
+    sess_ids = bah.limit_sess_ids(sess_ids, n_back)
 
 # get trial information
 loc_db = db.LocalDB_ToneCatDelayResp()
@@ -148,6 +152,14 @@ for subj_id in plot_subjs:
     # p(bail|previous bail)
     # p(bail|previously incorrect)
     # p(bail|previously correct)
+    
+    # TO-DO:
+    # p(correct | previously same)
+    # p(correct | previously diff)
+    # p(correct | previously same & correct)
+    # p(correct | previously same & incorrect)
+    # p(correct | previously diff & correct)
+    # p(correct | previously diff & incorrect)
 
     n_right_prev_right = {'num': 0, 'denom': 0}
     n_right_prev_left = {'num': 0, 'denom': 0}
@@ -157,6 +169,8 @@ for subj_id in plot_subjs:
     n_bail_prev_bail = {'num': 0, 'denom': 0}
     n_bail_prev_correct = {'num': 0, 'denom': 0}
     n_bail_prev_incorrect = {'num': 0, 'denom': 0}
+    
+    # TO-DO: Create dictionaries for each rate metric
 
     for sess_id in subj_sess_ids:
         ind_sess = subj_sess[subj_sess['sessid'] == sess_id]
@@ -197,11 +211,14 @@ for subj_id in plot_subjs:
         n_bail_prev_correct['denom'] += sum(prev_correct)
         n_bail_prev_incorrect['num'] += sum(cur_bail & prev_incorrect)
         n_bail_prev_incorrect['denom'] += sum(prev_incorrect)
+        
+        # TO-DO: Accumulate counts for each rate metric
+        
+        
 
     # PLOT HIT/BAIL RATES AND RESPONSE PROBABILITIES
 
     # plot hit metrics
-
     if plot_bail:
         fig = plt.figure(layout='constrained', figsize=(8, 5))
         gs = GridSpec(2, 2, figure=fig, height_ratios=[2,1])
@@ -224,8 +241,11 @@ for subj_id in plot_subjs:
 
     # plot probabilities
     def comp_p(n_dict): return n_dict['num']/n_dict['denom']
+    
+    # TO-DO: Add label for each metric
     prob_labels = ['p(right|prev right)', 'p(right|prev left)', 'p(repeat choice)', 'p(stay|correct)',
                    'p(switch|incorrect)', 'p(bail|bail)', 'p(bail|incorrect)', 'p(bail|correct)']
+    # TO-DO: Add call to 'comp_p' for each metric's dictionary
     prob_values = [comp_p(n_right_prev_right), comp_p(n_right_prev_left), comp_p(n_repeat_choice),
                    comp_p(n_win_stay), comp_p(n_lose_switch), comp_p(n_bail_prev_bail),
                    comp_p(n_bail_prev_incorrect), comp_p(n_bail_prev_correct)]
