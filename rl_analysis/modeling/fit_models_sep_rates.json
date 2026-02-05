@@ -1,0 +1,4034 @@
+{
+   "198 (75/10)": {
+      "Q - All Alpha Free, All K Fixed": [
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        1.7544046640396118
+                     ]
+                  ],
+                  "bias": 0.05368584766983986,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.863288402557373,
+                           "alpha_same_unrew": 0.6556669473648071,
+                           "alpha_diff_rew": 0.5417657494544983,
+                           "alpha_diff_unrew": 0.7137888073921204,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -519.165854556486,
+               "ll_avg": -0.3543794229054512,
+               "norm_llh": 0.7016087104311987,
+               "acc": 0.837542662116041,
+               "bic": 1082.069372382015,
+               "n_params": 6,
+               "n_trials": 1465.0
+            }
+         },
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        1.7513411045074463
+                     ]
+                  ],
+                  "bias": 0.053755421191453934,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.8672046065330505,
+                           "alpha_same_unrew": 0.6556668877601624,
+                           "alpha_diff_rew": 0.5401028394699097,
+                           "alpha_diff_unrew": 0.7126927971839905,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -519.160272827372,
+               "ll_avg": -0.3543756128514484,
+               "norm_llh": 0.7016113836033667,
+               "acc": 0.837542662116041,
+               "bic": 1082.0582089237869,
+               "n_params": 6,
+               "n_trials": 1465.0
+            }
+         },
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        1.747391700744629
+                     ]
+                  ],
+                  "bias": 0.053810298442840576,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.8717356324195862,
+                           "alpha_same_unrew": 0.6556411981582642,
+                           "alpha_diff_rew": 0.5358059406280518,
+                           "alpha_diff_unrew": 0.71070796251297,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -519.1546955108643,
+               "ll_avg": -0.35437180580946365,
+               "norm_llh": 0.7016140546724455,
+               "acc": 0.837542662116041,
+               "bic": 1082.0470542907715,
+               "n_params": 6,
+               "n_trials": 1465.0
+            }
+         }
+      ],
+      "Q/Persev (free alpha) - All Alpha Free, All K Fixed": [
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        1.517942190170288,
+                        0.19094771146774292
+                     ]
+                  ],
+                  "bias": 0.051824841648340225,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.9283862709999084,
+                           "alpha_same_unrew": 0.7435386776924133,
+                           "alpha_diff_rew": 0.4007379114627838,
+                           "alpha_diff_unrew": 0.4851147532463074,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     },
+                     {
+                        "type": "PerseverativeAgent",
+                        "data": {
+                           "alpha": 0.9881014823913574,
+                           "n_vals": 2
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -516.2841406036168,
+               "ll_avg": -0.35241238266458486,
+               "norm_llh": 0.702990161237191,
+               "acc": 0.8389078498293515,
+               "bic": 1090.8851642943919,
+               "n_params": 8,
+               "n_trials": 1465.0
+            }
+         },
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        1.5163525342941284,
+                        0.19121502339839935
+                     ]
+                  ],
+                  "bias": 0.05186006426811218,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.9305968880653381,
+                           "alpha_same_unrew": 0.7436777353286743,
+                           "alpha_diff_rew": 0.4003585875034332,
+                           "alpha_diff_unrew": 0.48444151878356934,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     },
+                     {
+                        "type": "PerseverativeAgent",
+                        "data": {
+                           "alpha": 0.9874115586280823,
+                           "n_vals": 2
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -516.2833008933812,
+               "ll_avg": -0.3524118094835367,
+               "norm_llh": 0.702990564177944,
+               "acc": 0.8389078498293515,
+               "bic": 1090.8834848739207,
+               "n_params": 8,
+               "n_trials": 1465.0
+            }
+         },
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        1.5160948038101196,
+                        0.19160422682762146
+                     ]
+                  ],
+                  "bias": 0.05181597173213959,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.9307820200920105,
+                           "alpha_same_unrew": 0.743991494178772,
+                           "alpha_diff_rew": 0.40035635232925415,
+                           "alpha_diff_unrew": 0.4847041070461273,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     },
+                     {
+                        "type": "PerseverativeAgent",
+                        "data": {
+                           "alpha": 0.9839332103729248,
+                           "n_vals": 2
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -516.2862746249884,
+               "ll_avg": -0.3524138393344631,
+               "norm_llh": 0.7029891372133443,
+               "acc": 0.8389078498293515,
+               "bic": 1090.889432337135,
+               "n_params": 8,
+               "n_trials": 1465.0
+            }
+         }
+      ]
+   },
+   "402 (75/10)": {
+      "Q - All Alpha Free, All K Fixed": [
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        2.4580907821655273
+                     ]
+                  ],
+                  "bias": -0.0943981260061264,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.8282649517059326,
+                           "alpha_same_unrew": 0.7047183513641357,
+                           "alpha_diff_rew": 0.04489767551422119,
+                           "alpha_diff_unrew": 0.7905877232551575,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -445.5365854804404,
+               "ll_avg": -0.2889342318290794,
+               "norm_llh": 0.7490614681853597,
+               "acc": 0.8398184176394293,
+               "bic": 935.1181843886152,
+               "n_params": 6,
+               "n_trials": 1542.0
+            }
+         },
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        2.456317186355591
+                     ]
+                  ],
+                  "bias": -0.09445539116859436,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.8272582292556763,
+                           "alpha_same_unrew": 0.7043671607971191,
+                           "alpha_diff_rew": 0.04387054219841957,
+                           "alpha_diff_unrew": 0.7902665138244629,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -445.53713332442567,
+               "ll_avg": -0.2889345871105225,
+               "norm_llh": 0.7490612020577676,
+               "acc": 0.8398184176394293,
+               "bic": 935.1192800765857,
+               "n_params": 6,
+               "n_trials": 1542.0
+            }
+         },
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        2.458648681640625
+                     ]
+                  ],
+                  "bias": -0.094504214823246,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.8279277086257935,
+                           "alpha_same_unrew": 0.7047490477561951,
+                           "alpha_diff_rew": 0.04374491423368454,
+                           "alpha_diff_unrew": 0.7906830310821533,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -445.53644858673215,
+               "ll_avg": -0.2889341430523555,
+               "norm_llh": 0.7490615346845858,
+               "acc": 0.8398184176394293,
+               "bic": 935.1179106011987,
+               "n_params": 6,
+               "n_trials": 1542.0
+            }
+         }
+      ],
+      "Q/Persev (free alpha) - All Alpha Free, All K Fixed": [
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        2.256227970123291,
+                        0.27414825558662415
+                     ]
+                  ],
+                  "bias": -0.09117632359266281,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.9166527390480042,
+                           "alpha_same_unrew": 0.796516478061676,
+                           "alpha_diff_rew": 0.02893206663429737,
+                           "alpha_diff_unrew": 0.8723843693733215,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     },
+                     {
+                        "type": "PerseverativeAgent",
+                        "data": {
+                           "alpha": 0.2094498723745346,
+                           "n_vals": 2
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -441.1431927080266,
+               "ll_avg": -0.28608507957718976,
+               "norm_llh": 0.7511987015601058,
+               "acc": 0.8592736705577172,
+               "bic": 941.0130699863657,
+               "n_params": 8,
+               "n_trials": 1542.0
+            }
+         },
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        2.2447397708892822,
+                        0.2762991487979889
+                     ]
+                  ],
+                  "bias": -0.09122548997402191,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.9278697967529297,
+                           "alpha_same_unrew": 0.7974803447723389,
+                           "alpha_diff_rew": 0.030898883938789368,
+                           "alpha_diff_unrew": 0.8721305131912231,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     },
+                     {
+                        "type": "PerseverativeAgent",
+                        "data": {
+                           "alpha": 0.20926320552825928,
+                           "n_vals": 2
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -441.14174733450636,
+               "ll_avg": -0.2860841422402765,
+               "norm_llh": 0.751199405686708,
+               "acc": 0.8592736705577172,
+               "bic": 941.0101792393252,
+               "n_params": 8,
+               "n_trials": 1542.0
+            }
+         },
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        2.2674367427825928,
+                        0.27275189757347107
+                     ]
+                  ],
+                  "bias": -0.09144525974988937,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.909365177154541,
+                           "alpha_same_unrew": 0.7957836985588074,
+                           "alpha_diff_rew": 0.02567441575229168,
+                           "alpha_diff_unrew": 0.8733628392219543,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     },
+                     {
+                        "type": "PerseverativeAgent",
+                        "data": {
+                           "alpha": 0.20745538175106049,
+                           "n_vals": 2
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -441.1482010097243,
+               "ll_avg": -0.28608832750306373,
+               "norm_llh": 0.7511962617263688,
+               "acc": 0.8592736705577172,
+               "bic": 941.0230865897611,
+               "n_params": 8,
+               "n_trials": 1542.0
+            }
+         }
+      ]
+   },
+   "meta (75/10)": {
+      "Q - All Alpha Free, All K Fixed": [
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        2.182206392288208
+                     ]
+                  ],
+                  "bias": -0.22620058059692383,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.814479410648346,
+                           "alpha_same_unrew": 0.7082546949386597,
+                           "alpha_diff_rew": 0.2719998061656952,
+                           "alpha_diff_unrew": 0.7665145397186279,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -2270.4333950337023,
+               "ll_avg": -0.303736909034609,
+               "norm_llh": 0.7380550165167142,
+               "acc": 0.8416053511705686,
+               "bic": 4594.382704984397,
+               "n_params": 6,
+               "n_trials": 7475.0
+            }
+         },
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        2.1771633625030518
+                     ]
+                  ],
+                  "bias": -0.22624406218528748,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.8182337284088135,
+                           "alpha_same_unrew": 0.7081276774406433,
+                           "alpha_diff_rew": 0.2656554877758026,
+                           "alpha_diff_unrew": 0.7660743594169617,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -2270.427681652829,
+               "ll_avg": -0.3037361447027196,
+               "norm_llh": 0.738055580635915,
+               "acc": 0.8416053511705686,
+               "bic": 4594.37127822265,
+               "n_params": 6,
+               "n_trials": 7475.0
+            }
+         },
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        2.1786954402923584
+                     ]
+                  ],
+                  "bias": -0.22623370587825775,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.8167800307273865,
+                           "alpha_same_unrew": 0.7081452012062073,
+                           "alpha_diff_rew": 0.2658854126930237,
+                           "alpha_diff_unrew": 0.7662206292152405,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -2270.43202480115,
+               "ll_avg": -0.3037367257259064,
+               "norm_llh": 0.7380551518086341,
+               "acc": 0.8416053511705686,
+               "bic": 4594.379964519292,
+               "n_params": 6,
+               "n_trials": 7475.0
+            }
+         }
+      ],
+      "Q/Persev (free alpha) - All Alpha Free, All K Fixed": [
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        2.0210800170898438,
+                        0.18499206006526947
+                     ]
+                  ],
+                  "bias": -0.20784977078437805,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.8749815225601196,
+                           "alpha_same_unrew": 0.777698278427124,
+                           "alpha_diff_rew": 0.26087889075279236,
+                           "alpha_diff_unrew": 0.7822728753089905,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     },
+                     {
+                        "type": "PerseverativeAgent",
+                        "data": {
+                           "alpha": 0.26671865582466125,
+                           "n_vals": 2
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -2262.5059085944667,
+               "ll_avg": -0.30267637573170125,
+               "norm_llh": 0.7388381636445108,
+               "acc": 0.8480267558528428,
+               "bic": 4596.36637041159,
+               "n_params": 8,
+               "n_trials": 7475.0
+            }
+         },
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        2.0171358585357666,
+                        0.18574735522270203
+                     ]
+                  ],
+                  "bias": -0.20775116980075836,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.8776895999908447,
+                           "alpha_same_unrew": 0.7778869271278381,
+                           "alpha_diff_rew": 0.2612511217594147,
+                           "alpha_diff_unrew": 0.7819428443908691,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     },
+                     {
+                        "type": "PerseverativeAgent",
+                        "data": {
+                           "alpha": 0.26687556505203247,
+                           "n_vals": 2
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -2262.505398343317,
+               "ll_avg": -0.30267630747067786,
+               "norm_llh": 0.7388382140783618,
+               "acc": 0.8481605351170568,
+               "bic": 4596.365349909291,
+               "n_params": 8,
+               "n_trials": 7475.0
+            }
+         },
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        2.0356409549713135,
+                        0.18247680366039276
+                     ]
+                  ],
+                  "bias": -0.2080206573009491,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.8622951507568359,
+                           "alpha_same_unrew": 0.776748538017273,
+                           "alpha_diff_rew": 0.2613072693347931,
+                           "alpha_diff_unrew": 0.7839184403419495,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     },
+                     {
+                        "type": "PerseverativeAgent",
+                        "data": {
+                           "alpha": 0.2648170590400696,
+                           "n_vals": 2
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -2262.5617030309513,
+               "ll_avg": -0.3026838398703614,
+               "norm_llh": 0.7388326488745915,
+               "acc": 0.8477591973244147,
+               "bic": 4596.477959284559,
+               "n_params": 8,
+               "n_trials": 7475.0
+            }
+         }
+      ]
+   },
+   "199 (75/10)": {
+      "Q - All Alpha Free, All K Fixed": [
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        2.6808021068573
+                     ]
+                  ],
+                  "bias": -0.10494758188724518,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.7133172154426575,
+                           "alpha_same_unrew": 0.6577797532081604,
+                           "alpha_diff_rew": 0.2198074609041214,
+                           "alpha_diff_unrew": 0.7303820848464966,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -376.598371330183,
+               "ll_avg": -0.23820263841251296,
+               "norm_llh": 0.7880429871333338,
+               "acc": 0.8817204301075269,
+               "bic": 797.3916202848777,
+               "n_params": 6,
+               "n_trials": 1581.0
+            }
+         },
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        2.678476572036743
+                     ]
+                  ],
+                  "bias": -0.10496318340301514,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.714001476764679,
+                           "alpha_same_unrew": 0.6575956344604492,
+                           "alpha_diff_rew": 0.22068458795547485,
+                           "alpha_diff_unrew": 0.7301802039146423,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -376.59848641464487,
+               "ll_avg": -0.23820271120470896,
+               "norm_llh": 0.7880429297699563,
+               "acc": 0.8817204301075269,
+               "bic": 797.3918504538015,
+               "n_params": 6,
+               "n_trials": 1581.0
+            }
+         },
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        2.6769678592681885
+                     ]
+                  ],
+                  "bias": -0.10494159162044525,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.7143678069114685,
+                           "alpha_same_unrew": 0.6574752330780029,
+                           "alpha_diff_rew": 0.22049152851104736,
+                           "alpha_diff_unrew": 0.7301937937736511,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -376.5990559491329,
+               "ll_avg": -0.2382030714415768,
+               "norm_llh": 0.7880426458878906,
+               "acc": 0.8817204301075269,
+               "bic": 797.3929895227775,
+               "n_params": 6,
+               "n_trials": 1581.0
+            }
+         }
+      ],
+      "Q/Persev (free alpha) - All Alpha Free, All K Fixed": [
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        2.4894251823425293,
+                        0.26799824833869934
+                     ]
+                  ],
+                  "bias": -0.11156100779771805,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.6953171491622925,
+                           "alpha_same_unrew": 0.7614648342132568,
+                           "alpha_diff_rew": 0.1412869393825531,
+                           "alpha_diff_unrew": 0.5840181112289429,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     },
+                     {
+                        "type": "PerseverativeAgent",
+                        "data": {
+                           "alpha": 0.6665048003196716,
+                           "n_vals": 2
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -373.05998491565697,
+               "ll_avg": -0.23596456983912523,
+               "norm_llh": 0.7898086564848462,
+               "acc": 0.8924731182795699,
+               "bic": 805.0464720590971,
+               "n_params": 8,
+               "n_trials": 1581.0
+            }
+         },
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        2.484666109085083,
+                        0.26859554648399353
+                     ]
+                  ],
+                  "bias": -0.11156073957681656,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.6966066360473633,
+                           "alpha_same_unrew": 0.7614903450012207,
+                           "alpha_diff_rew": 0.141175776720047,
+                           "alpha_diff_unrew": 0.5835485458374023,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     },
+                     {
+                        "type": "PerseverativeAgent",
+                        "data": {
+                           "alpha": 0.666053831577301,
+                           "n_vals": 2
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -373.0616808757186,
+               "ll_avg": -0.2359656425526367,
+               "norm_llh": 0.7898078092468833,
+               "acc": 0.8924731182795699,
+               "bic": 805.0498639792204,
+               "n_params": 8,
+               "n_trials": 1581.0
+            }
+         },
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        2.497246503829956,
+                        0.269593209028244
+                     ]
+                  ],
+                  "bias": -0.11176405847072601,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.6950927972793579,
+                           "alpha_same_unrew": 0.7629942893981934,
+                           "alpha_diff_rew": 0.13707837462425232,
+                           "alpha_diff_unrew": 0.5913991332054138,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     },
+                     {
+                        "type": "PerseverativeAgent",
+                        "data": {
+                           "alpha": 0.6503557562828064,
+                           "n_vals": 2
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -373.06098372791894,
+               "ll_avg": -0.23596520159893672,
+               "norm_llh": 0.7898081575156359,
+               "acc": 0.8924731182795699,
+               "bic": 805.0484696836211,
+               "n_params": 8,
+               "n_trials": 1581.0
+            }
+         }
+      ]
+   },
+   "274 (75/10)": {
+      "Q - All Alpha Free, All K Fixed": [
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        2.259186029434204
+                     ]
+                  ],
+                  "bias": -0.27239465713500977,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.7008296251296997,
+                           "alpha_same_unrew": 0.8412759304046631,
+                           "alpha_diff_rew": 0.2058679759502411,
+                           "alpha_diff_unrew": 0.7876539826393127,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -495.8520631287247,
+               "ll_avg": -0.3323405248852042,
+               "norm_llh": 0.7172430421603809,
+               "acc": 0.814343163538874,
+               "bic": 1035.5513628907502,
+               "n_params": 6,
+               "n_trials": 1492.0
+            }
+         },
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        2.253870725631714
+                     ]
+                  ],
+                  "bias": -0.2724018096923828,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.7040407061576843,
+                           "alpha_same_unrew": 0.8411787748336792,
+                           "alpha_diff_rew": 0.2063092142343521,
+                           "alpha_diff_unrew": 0.7877346277236938,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -495.85072421003133,
+               "ll_avg": -0.33233962748661616,
+               "norm_llh": 0.7172436858135631,
+               "acc": 0.814343163538874,
+               "bic": 1035.5486850533634,
+               "n_params": 6,
+               "n_trials": 1492.0
+            }
+         },
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        2.2627763748168945
+                     ]
+                  ],
+                  "bias": -0.2722301185131073,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.6987830400466919,
+                           "alpha_same_unrew": 0.8414157032966614,
+                           "alpha_diff_rew": 0.220163956284523,
+                           "alpha_diff_unrew": 0.7879517078399658,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -495.8533258577809,
+               "ll_avg": -0.3323413712183518,
+               "norm_llh": 0.7172424351340764,
+               "acc": 0.814343163538874,
+               "bic": 1035.5538883488625,
+               "n_params": 6,
+               "n_trials": 1492.0
+            }
+         }
+      ],
+      "Q/Persev (free alpha) - All Alpha Free, All K Fixed": [
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        2.260134696960449,
+                        1.2283734349693987e-06
+                     ]
+                  ],
+                  "bias": -0.27242493629455566,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.7007379531860352,
+                           "alpha_same_unrew": 0.8413344621658325,
+                           "alpha_diff_rew": 0.20572859048843384,
+                           "alpha_diff_unrew": 0.7877301573753357,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     },
+                     {
+                        "type": "PerseverativeAgent",
+                        "data": {
+                           "alpha": 0.9981561303138733,
+                           "n_vals": 2
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -495.8519582115114,
+               "ll_avg": -0.33234045456535616,
+               "norm_llh": 0.7172430925968045,
+               "acc": 0.814343163538874,
+               "bic": 1050.1668986007571,
+               "n_params": 8,
+               "n_trials": 1492.0
+            }
+         },
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        2.2834665775299072,
+                        1.5600988263031468e-05
+                     ]
+                  ],
+                  "bias": -0.27250808477401733,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.6886847615242004,
+                           "alpha_same_unrew": 0.8418644070625305,
+                           "alpha_diff_rew": 0.20309852063655853,
+                           "alpha_diff_unrew": 0.7877010107040405,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     },
+                     {
+                        "type": "PerseverativeAgent",
+                        "data": {
+                           "alpha": 0.8244910836219788,
+                           "n_vals": 2
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -495.8618859304115,
+               "ll_avg": -0.3323471085324474,
+               "norm_llh": 0.717238320100748,
+               "acc": 0.814343163538874,
+               "bic": 1050.1867540385574,
+               "n_params": 8,
+               "n_trials": 1492.0
+            }
+         },
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        2.2077865600585938,
+                        0.060908813029527664
+                     ]
+                  ],
+                  "bias": -0.2608851492404938,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.7177183032035828,
+                           "alpha_same_unrew": 0.8596441745758057,
+                           "alpha_diff_rew": 0.21906091272830963,
+                           "alpha_diff_unrew": 0.8026308417320251,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     },
+                     {
+                        "type": "PerseverativeAgent",
+                        "data": {
+                           "alpha": 0.16963157057762146,
+                           "n_vals": 2
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -495.71586091443896,
+               "ll_avg": -0.33224923653782773,
+               "norm_llh": 0.7173085210810528,
+               "acc": 0.814343163538874,
+               "bic": 1049.8947040066123,
+               "n_params": 8,
+               "n_trials": 1492.0
+            }
+         }
+      ]
+   },
+   "199 (50/10)": {
+      "Q - All Alpha Free, All K Fixed": [
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        2.862494468688965
+                     ]
+                  ],
+                  "bias": -0.3343348801136017,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.7394496202468872,
+                           "alpha_same_unrew": 0.5817890763282776,
+                           "alpha_diff_rew": 0.9531444311141968,
+                           "alpha_diff_unrew": 0.6663295030593872,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -484.8525160464924,
+               "ll_avg": -0.3796809052830794,
+               "norm_llh": 0.684079660594721,
+               "acc": 0.7893500391542678,
+               "bic": 1012.6186444587074,
+               "n_params": 6,
+               "n_trials": 1277.0
+            }
+         },
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        2.861220598220825
+                     ]
+                  ],
+                  "bias": -0.3345412015914917,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.7418450117111206,
+                           "alpha_same_unrew": 0.5821873545646667,
+                           "alpha_diff_rew": 0.9235811829566956,
+                           "alpha_diff_unrew": 0.6659738421440125,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -484.8526904932223,
+               "ll_avg": -0.37968104188975904,
+               "norm_llh": 0.6840795671448764,
+               "acc": 0.7893500391542678,
+               "bic": 1012.6189933521673,
+               "n_params": 6,
+               "n_trials": 1277.0
+            }
+         },
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        2.919158697128296
+                     ]
+                  ],
+                  "bias": -0.3352215588092804,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.7256844639778137,
+                           "alpha_same_unrew": 0.5850058197975159,
+                           "alpha_diff_rew": 0.9051920771598816,
+                           "alpha_diff_unrew": 0.6650539636611938,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -484.85393832204863,
+               "ll_avg": -0.3796820190462401,
+               "norm_llh": 0.6840788986924203,
+               "acc": 0.7893500391542678,
+               "bic": 1012.6214890098199,
+               "n_params": 6,
+               "n_trials": 1277.0
+            }
+         }
+      ],
+      "Q/Persev (free alpha) - All Alpha Free, All K Fixed": [
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        3.065363645553589,
+                        0.15755507349967957
+                     ]
+                  ],
+                  "bias": -0.3079541325569153,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.6850044131278992,
+                           "alpha_same_unrew": 0.6724610924720764,
+                           "alpha_diff_rew": 0.8443575501441956,
+                           "alpha_diff_unrew": 0.4354877173900604,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     },
+                     {
+                        "type": "PerseverativeAgent",
+                        "data": {
+                           "alpha": 0.9812126755714417,
+                           "n_vals": 2
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -481.1763539824169,
+               "ll_avg": -0.3768021566033022,
+               "norm_llh": 0.6860517912868814,
+               "acc": 0.7948316366483946,
+               "bic": 1019.5708590573631,
+               "n_params": 8,
+               "n_trials": 1277.0
+            }
+         },
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        3.064965009689331,
+                        0.1576833575963974
+                     ]
+                  ],
+                  "bias": -0.3079262375831604,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.6851174831390381,
+                           "alpha_same_unrew": 0.6725256443023682,
+                           "alpha_diff_rew": 0.8442860245704651,
+                           "alpha_diff_unrew": 0.43547549843788147,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     },
+                     {
+                        "type": "PerseverativeAgent",
+                        "data": {
+                           "alpha": 0.9802455306053162,
+                           "n_vals": 2
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -481.17718733556103,
+               "ll_avg": -0.37680280918994596,
+               "norm_llh": 0.6860513435787916,
+               "acc": 0.7940485512920908,
+               "bic": 1019.5725257636514,
+               "n_params": 8,
+               "n_trials": 1277.0
+            }
+         },
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        3.064870595932007,
+                        0.15769442915916443
+                     ]
+                  ],
+                  "bias": -0.30792367458343506,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.6851365566253662,
+                           "alpha_same_unrew": 0.672527551651001,
+                           "alpha_diff_rew": 0.8443267941474915,
+                           "alpha_diff_unrew": 0.4354754090309143,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     },
+                     {
+                        "type": "PerseverativeAgent",
+                        "data": {
+                           "alpha": 0.9801495671272278,
+                           "n_vals": 2
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -481.17726656154264,
+               "ll_avg": -0.37680287123065204,
+               "norm_llh": 0.6860513010156832,
+               "acc": 0.7940485512920908,
+               "bic": 1019.5726842156146,
+               "n_params": 8,
+               "n_trials": 1277.0
+            }
+         }
+      ]
+   },
+   "402 (50/10)": {
+      "Q - All Alpha Free, All K Fixed": [
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        2.6243176460266113
+                     ]
+                  ],
+                  "bias": 0.016658073291182518,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.6975409388542175,
+                           "alpha_same_unrew": 0.4412415027618408,
+                           "alpha_diff_rew": 0.9869608879089355,
+                           "alpha_diff_unrew": 0.7511934638023376,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -525.4793272842653,
+               "ll_avg": -0.3427784261475964,
+               "norm_llh": 0.7097954662536776,
+               "acc": 0.8362687540769732,
+               "bic": 1094.9685460785404,
+               "n_params": 6,
+               "n_trials": 1533.0
+            }
+         },
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        2.61594295501709
+                     ]
+                  ],
+                  "bias": 0.01624826341867447,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.7021901607513428,
+                           "alpha_same_unrew": 0.4411652982234955,
+                           "alpha_diff_rew": 0.9323353171348572,
+                           "alpha_diff_unrew": 0.7502046227455139,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -525.4911611815915,
+               "ll_avg": -0.3427861455848607,
+               "norm_llh": 0.7097899870532536,
+               "acc": 0.8362687540769732,
+               "bic": 1094.9922138731927,
+               "n_params": 6,
+               "n_trials": 1533.0
+            }
+         },
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        2.614874839782715
+                     ]
+                  ],
+                  "bias": 0.01657096855342388,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.6999953985214233,
+                           "alpha_same_unrew": 0.4405854642391205,
+                           "alpha_diff_rew": 0.9987444877624512,
+                           "alpha_diff_unrew": 0.7513902187347412,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -525.4752188567072,
+               "ll_avg": -0.3427757461557125,
+               "norm_llh": 0.7097973685023155,
+               "acc": 0.8362687540769732,
+               "bic": 1094.9603292234242,
+               "n_params": 6,
+               "n_trials": 1533.0
+            }
+         }
+      ],
+      "Q/Persev (free alpha) - All Alpha Free, All K Fixed": [
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        2.7345049381256104,
+                        0.34673622250556946
+                     ]
+                  ],
+                  "bias": 0.009745287708938122,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.649581789970398,
+                           "alpha_same_unrew": 0.6215294599533081,
+                           "alpha_diff_rew": 0.9408717155456543,
+                           "alpha_diff_unrew": 0.6411705613136292,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     },
+                     {
+                        "type": "PerseverativeAgent",
+                        "data": {
+                           "alpha": 0.6029438972473145,
+                           "n_vals": 2
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -516.3843382925261,
+               "ll_avg": -0.3368456218477013,
+               "norm_llh": 0.7140190603379286,
+               "acc": 0.8434442270058709,
+               "bic": 1091.4485319317318,
+               "n_params": 8,
+               "n_trials": 1533.0
+            }
+         },
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        2.71659255027771,
+                        0.34677159786224365
+                     ]
+                  ],
+                  "bias": 0.009646429680287838,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.6535854935646057,
+                           "alpha_same_unrew": 0.6207184791564941,
+                           "alpha_diff_rew": 0.9630676507949829,
+                           "alpha_diff_unrew": 0.6411750912666321,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     },
+                     {
+                        "type": "PerseverativeAgent",
+                        "data": {
+                           "alpha": 0.6025967597961426,
+                           "n_vals": 2
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -516.3802616761532,
+               "ll_avg": -0.33684296260675356,
+               "norm_llh": 0.714020959089176,
+               "acc": 0.8440965427266797,
+               "bic": 1091.440378698986,
+               "n_params": 8,
+               "n_trials": 1533.0
+            }
+         },
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        2.7170591354370117,
+                        0.3468690514564514
+                     ]
+                  ],
+                  "bias": 0.009681003168225288,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.653266966342926,
+                           "alpha_same_unrew": 0.6207790374755859,
+                           "alpha_diff_rew": 0.9829139113426208,
+                           "alpha_diff_unrew": 0.6416085362434387,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     },
+                     {
+                        "type": "PerseverativeAgent",
+                        "data": {
+                           "alpha": 0.6021887063980103,
+                           "n_vals": 2
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -516.3756136295851,
+               "ll_avg": -0.3368399306129062,
+               "norm_llh": 0.7140231239996129,
+               "acc": 0.8440965427266797,
+               "bic": 1091.43108260585,
+               "n_params": 8,
+               "n_trials": 1533.0
+            }
+         }
+      ]
+   },
+   "400 (50/10)": {
+      "Q - All Alpha Free, All K Fixed": [
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        2.547977924346924
+                     ]
+                  ],
+                  "bias": -0.4850824773311615,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.677923858165741,
+                           "alpha_same_unrew": 0.32800835371017456,
+                           "alpha_diff_rew": 0.9984941482543945,
+                           "alpha_diff_unrew": 0.9995781779289246,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -453.62590463855304,
+               "ll_avg": -0.30363179694682263,
+               "norm_llh": 0.7381325990977635,
+               "acc": 0.8500669344042838,
+               "bic": 951.1070834775455,
+               "n_params": 6,
+               "n_trials": 1494.0
+            }
+         },
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        2.565880537033081
+                     ]
+                  ],
+                  "bias": -0.4857649803161621,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.6717199087142944,
+                           "alpha_same_unrew": 0.32892999053001404,
+                           "alpha_diff_rew": 0.9912207722663879,
+                           "alpha_diff_unrew": 0.9954533576965332,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -453.65597711200826,
+               "ll_avg": -0.3036519257777833,
+               "norm_llh": 0.7381177415009833,
+               "acc": 0.8500669344042838,
+               "bic": 951.167228424456,
+               "n_params": 6,
+               "n_trials": 1494.0
+            }
+         },
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        2.5703115463256836
+                     ]
+                  ],
+                  "bias": -0.4860574007034302,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.6704316735267639,
+                           "alpha_same_unrew": 0.32921215891838074,
+                           "alpha_diff_rew": 0.9927144646644592,
+                           "alpha_diff_unrew": 0.9941617846488953,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -453.6611207490787,
+               "ll_avg": -0.30365536864061493,
+               "norm_llh": 0.7381152002672203,
+               "acc": 0.8500669344042838,
+               "bic": 951.1775156985968,
+               "n_params": 6,
+               "n_trials": 1494.0
+            }
+         }
+      ],
+      "Q/Persev (free alpha) - All Alpha Free, All K Fixed": [
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        2.5081942081451416,
+                        0.28880688548088074
+                     ]
+                  ],
+                  "bias": -0.4478878080844879,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.6095348000526428,
+                           "alpha_same_unrew": 0.44271060824394226,
+                           "alpha_diff_rew": 0.9933839440345764,
+                           "alpha_diff_unrew": 0.7040329575538635,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     },
+                     {
+                        "type": "PerseverativeAgent",
+                        "data": {
+                           "alpha": 0.9973024129867554,
+                           "n_vals": 2
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -445.49191363039427,
+               "ll_avg": -0.2981873585210136,
+               "norm_llh": 0.7421622762943811,
+               "acc": 0.8681392235609103,
+               "bic": 949.457524923142,
+               "n_params": 8,
+               "n_trials": 1494.0
+            }
+         },
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        2.5184249877929688,
+                        0.28866106271743774
+                     ]
+                  ],
+                  "bias": -0.4476585388183594,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.6065900921821594,
+                           "alpha_same_unrew": 0.44299283623695374,
+                           "alpha_diff_rew": 0.9889733195304871,
+                           "alpha_diff_unrew": 0.7053031325340271,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     },
+                     {
+                        "type": "PerseverativeAgent",
+                        "data": {
+                           "alpha": 0.9966705441474915,
+                           "n_vals": 2
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -445.4999409047887,
+               "ll_avg": -0.2981927315293097,
+               "norm_llh": 0.7421582886610263,
+               "acc": 0.8681392235609103,
+               "bic": 949.4735794719309,
+               "n_params": 8,
+               "n_trials": 1494.0
+            }
+         },
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        2.5194637775421143,
+                        0.2888842523097992
+                     ]
+                  ],
+                  "bias": -0.4474167823791504,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.6059529781341553,
+                           "alpha_same_unrew": 0.4430374205112457,
+                           "alpha_diff_rew": 0.9987521171569824,
+                           "alpha_diff_unrew": 0.7059206366539001,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     },
+                     {
+                        "type": "PerseverativeAgent",
+                        "data": {
+                           "alpha": 0.9950008988380432,
+                           "n_vals": 2
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -445.50470465118997,
+               "ll_avg": -0.298195920114585,
+               "norm_llh": 0.742155922229808,
+               "acc": 0.8681392235609103,
+               "bic": 949.4831069647335,
+               "n_params": 8,
+               "n_trials": 1494.0
+            }
+         }
+      ]
+   },
+   "meta (50/10)": {
+      "Q - All Alpha Free, All K Fixed": [
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        2.5936121940612793
+                     ]
+                  ],
+                  "bias": -0.19424772262573242,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.6856090426445007,
+                           "alpha_same_unrew": 0.517708957195282,
+                           "alpha_diff_rew": 0.8629198670387268,
+                           "alpha_diff_unrew": 0.7427948713302612,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -2615.8404330257326,
+               "ll_avg": -0.3798229175295096,
+               "norm_llh": 0.6839825198031371,
+               "acc": 0.7932336285755772,
+               "bic": 5284.7052114494145,
+               "n_params": 6,
+               "n_trials": 6887.0
+            }
+         },
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        2.594095230102539
+                     ]
+                  ],
+                  "bias": -0.19429165124893188,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.6859567165374756,
+                           "alpha_same_unrew": 0.5178770422935486,
+                           "alpha_diff_rew": 0.8595170378684998,
+                           "alpha_diff_unrew": 0.7427176237106323,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -2615.841729396023,
+               "ll_avg": -0.3798231057639063,
+               "norm_llh": 0.6839823910541122,
+               "acc": 0.7932336285755772,
+               "bic": 5284.707804189995,
+               "n_params": 6,
+               "n_trials": 6887.0
+            }
+         },
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        2.58172345161438
+                     ]
+                  ],
+                  "bias": -0.1937321126461029,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.687055230140686,
+                           "alpha_same_unrew": 0.5165908336639404,
+                           "alpha_diff_rew": 0.9344210624694824,
+                           "alpha_diff_unrew": 0.7458548545837402,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -2615.78979074955,
+               "ll_avg": -0.3798155642151227,
+               "norm_llh": 0.6839875493601323,
+               "acc": 0.7941048351967475,
+               "bic": 5284.603926897049,
+               "n_params": 6,
+               "n_trials": 6887.0
+            }
+         }
+      ],
+      "Q/Persev (free alpha) - All Alpha Free, All K Fixed": [
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        2.4967353343963623,
+                        0.1943134367465973
+                     ]
+                  ],
+                  "bias": -0.1794249713420868,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.6903470754623413,
+                           "alpha_same_unrew": 0.6122016310691833,
+                           "alpha_diff_rew": 0.6617565751075745,
+                           "alpha_diff_unrew": 0.5758599638938904,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     },
+                     {
+                        "type": "PerseverativeAgent",
+                        "data": {
+                           "alpha": 0.7664641737937927,
+                           "n_vals": 2
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -2596.476303116884,
+               "ll_avg": -0.3770112244978778,
+               "norm_llh": 0.6859083748757132,
+               "acc": 0.8102221576883984,
+               "bic": 5263.651733431034,
+               "n_params": 8,
+               "n_trials": 6887.0
+            }
+         },
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        2.5135812759399414,
+                        0.19949983060359955
+                     ]
+                  ],
+                  "bias": -0.17822642624378204,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.6863149404525757,
+                           "alpha_same_unrew": 0.616167426109314,
+                           "alpha_diff_rew": 0.6800510287284851,
+                           "alpha_diff_unrew": 0.5848801136016846,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     },
+                     {
+                        "type": "PerseverativeAgent",
+                        "data": {
+                           "alpha": 0.7327879071235657,
+                           "n_vals": 2
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -2596.535117844818,
+               "ll_avg": -0.3770197644612775,
+               "norm_llh": 0.6859025172683082,
+               "acc": 0.8092057499636998,
+               "bic": 5263.769362886902,
+               "n_params": 8,
+               "n_trials": 6887.0
+            }
+         },
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        2.5142252445220947,
+                        0.19853058457374573
+                     ]
+                  ],
+                  "bias": -0.1784071922302246,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.6856091022491455,
+                           "alpha_same_unrew": 0.6155149936676025,
+                           "alpha_diff_rew": 0.6792789697647095,
+                           "alpha_diff_unrew": 0.5834540128707886,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     },
+                     {
+                        "type": "PerseverativeAgent",
+                        "data": {
+                           "alpha": 0.7387261986732483,
+                           "n_vals": 2
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -2596.5243797714356,
+               "ll_avg": -0.3770182052811726,
+               "norm_llh": 0.6859035867147008,
+               "acc": 0.8096413532742849,
+               "bic": 5263.747886740137,
+               "n_params": 8,
+               "n_trials": 6887.0
+            }
+         }
+      ]
+   },
+   "274 (50/10)": {
+      "Q - All Alpha Free, All K Fixed": [
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        3.611079454421997
+                     ]
+                  ],
+                  "bias": -0.10872674733400345,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.4409042000770569,
+                           "alpha_same_unrew": 0.6608341932296753,
+                           "alpha_diff_rew": 0.922429621219635,
+                           "alpha_diff_unrew": 0.612829864025116,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -558.6635499915574,
+               "ll_avg": -0.40987787967098854,
+               "norm_llh": 0.6637313002720484,
+               "acc": 0.7666911225238444,
+               "bic": 1160.631760780234,
+               "n_params": 6,
+               "n_trials": 1363.0
+            }
+         },
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        3.6084189414978027
+                     ]
+                  ],
+                  "bias": -0.10874121636152267,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.4413178265094757,
+                           "alpha_same_unrew": 0.6608014702796936,
+                           "alpha_diff_rew": 0.9204466342926025,
+                           "alpha_diff_unrew": 0.6128044724464417,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -558.6637327579665,
+               "ll_avg": -0.4098780137622645,
+               "norm_llh": 0.6637312112714775,
+               "acc": 0.7666911225238444,
+               "bic": 1160.6321263130521,
+               "n_params": 6,
+               "n_trials": 1363.0
+            }
+         },
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        3.6123459339141846
+                     ]
+                  ],
+                  "bias": -0.10883826017379761,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.44089892506599426,
+                           "alpha_same_unrew": 0.6608874201774597,
+                           "alpha_diff_rew": 0.9127210378646851,
+                           "alpha_diff_unrew": 0.6125543713569641,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -558.6632866464788,
+               "ll_avg": -0.4098776864610996,
+               "norm_llh": 0.6637314285115117,
+               "acc": 0.7666911225238444,
+               "bic": 1160.6312340900768,
+               "n_params": 6,
+               "n_trials": 1363.0
+            }
+         }
+      ],
+      "Q/Persev (free alpha) - All Alpha Free, All K Fixed": [
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        3.676330804824829,
+                        0.10104649513959885
+                     ]
+                  ],
+                  "bias": -0.11104171723127365,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.4370545446872711,
+                           "alpha_same_unrew": 0.6920108199119568,
+                           "alpha_diff_rew": 0.9163185954093933,
+                           "alpha_diff_unrew": 0.6280254125595093,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     },
+                     {
+                        "type": "PerseverativeAgent",
+                        "data": {
+                           "alpha": 0.15466520190238953,
+                           "n_vals": 2
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -558.2004514365108,
+               "ll_avg": -0.40953811550734465,
+               "norm_llh": 0.6639568506969756,
+               "acc": 0.7798972853998533,
+               "bic": 1174.1404506025137,
+               "n_params": 8,
+               "n_trials": 1363.0
+            }
+         },
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        3.616467237472534,
+                        3.900118827004917e-06
+                     ]
+                  ],
+                  "bias": -0.10879532247781754,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.44025740027427673,
+                           "alpha_same_unrew": 0.6609494686126709,
+                           "alpha_diff_rew": 0.9179019927978516,
+                           "alpha_diff_unrew": 0.6126604080200195,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     },
+                     {
+                        "type": "PerseverativeAgent",
+                        "data": {
+                           "alpha": 0.7630577087402344,
+                           "n_vals": 2
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -558.663058445265,
+               "ll_avg": -0.4098775190354109,
+               "norm_llh": 0.6637315396372124,
+               "acc": 0.7666911225238444,
+               "bic": 1175.0656646200223,
+               "n_params": 8,
+               "n_trials": 1363.0
+            }
+         },
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        3.6875689029693604,
+                        0.1007838249206543
+                     ]
+                  ],
+                  "bias": -0.11162152886390686,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.43582916259765625,
+                           "alpha_same_unrew": 0.6921640038490295,
+                           "alpha_diff_rew": 0.8993507027626038,
+                           "alpha_diff_unrew": 0.6276074051856995,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     },
+                     {
+                        "type": "PerseverativeAgent",
+                        "data": {
+                           "alpha": 0.1546669453382492,
+                           "n_vals": 2
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -558.2043832546333,
+               "ll_avg": -0.40954100018681827,
+               "norm_llh": 0.6639549353970395,
+               "acc": 0.7798972853998533,
+               "bic": 1174.1483142387588,
+               "n_params": 8,
+               "n_trials": 1363.0
+            }
+         }
+      ]
+   },
+   "400 (75/10)": {
+      "Q - All Alpha Free, All K Fixed": [
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        2.2539260387420654
+                     ]
+                  ],
+                  "bias": -0.8264723420143127,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.9905369877815247,
+                           "alpha_same_unrew": 0.7167520523071289,
+                           "alpha_diff_rew": 0.4261164963245392,
+                           "alpha_diff_unrew": 0.6354109644889832,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -378.20801668288186,
+               "ll_avg": -0.2711168578371913,
+               "norm_llh": 0.7625273838975379,
+               "acc": 0.8666666666666667,
+               "bic": 799.8599306130782,
+               "n_params": 6,
+               "n_trials": 1395.0
+            }
+         },
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        2.24769926071167
+                     ]
+                  ],
+                  "bias": -0.820146918296814,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.9749470353126526,
+                           "alpha_same_unrew": 0.7204577326774597,
+                           "alpha_diff_rew": 0.9946050047874451,
+                           "alpha_diff_unrew": 0.6360874176025391,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -378.3566944785416,
+               "ll_avg": -0.27122343690218037,
+               "norm_llh": 0.762446118772591,
+               "acc": 0.8666666666666667,
+               "bic": 800.1572862043977,
+               "n_params": 6,
+               "n_trials": 1395.0
+            }
+         },
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        2.248889684677124
+                     ]
+                  ],
+                  "bias": -0.8200860023498535,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.9729310870170593,
+                           "alpha_same_unrew": 0.7204499840736389,
+                           "alpha_diff_rew": 0.9986642599105835,
+                           "alpha_diff_unrew": 0.6362107396125793,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -378.3615083838813,
+               "ll_avg": -0.27122688773038084,
+               "norm_llh": 0.7624434877065627,
+               "acc": 0.8666666666666667,
+               "bic": 800.166914015077,
+               "n_params": 6,
+               "n_trials": 1395.0
+            }
+         }
+      ],
+      "Q/Persev (free alpha) - All Alpha Free, All K Fixed": [
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        2.2547433376312256,
+                        1.0862569297387381e-06
+                     ]
+                  ],
+                  "bias": -0.826435923576355,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.9890733361244202,
+                           "alpha_same_unrew": 0.7167544364929199,
+                           "alpha_diff_rew": 0.4273572266101837,
+                           "alpha_diff_unrew": 0.6354666948318481,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     },
+                     {
+                        "type": "PerseverativeAgent",
+                        "data": {
+                           "alpha": 0.9445661306381226,
+                           "n_vals": 2
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -378.2135090022348,
+               "ll_avg": -0.27112079498368086,
+               "norm_llh": 0.7625243817214352,
+               "acc": 0.8666666666666667,
+               "bic": 814.3522156057879,
+               "n_params": 8,
+               "n_trials": 1395.0
+            }
+         },
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        2.248213052749634,
+                        4.260540663381107e-06
+                     ]
+                  ],
+                  "bias": -0.8201111555099487,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.9741645455360413,
+                           "alpha_same_unrew": 0.7204755544662476,
+                           "alpha_diff_rew": 0.998417854309082,
+                           "alpha_diff_unrew": 0.6361657381057739,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     },
+                     {
+                        "type": "PerseverativeAgent",
+                        "data": {
+                           "alpha": 0.5689740777015686,
+                           "n_vals": 2
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -378.3578250352293,
+               "ll_avg": -0.27122424733708195,
+               "norm_llh": 0.7624455008598962,
+               "acc": 0.8666666666666667,
+               "bic": 814.640847671777,
+               "n_params": 8,
+               "n_trials": 1395.0
+            }
+         },
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        2.2234084606170654,
+                        0.0994018167257309
+                     ]
+                  ],
+                  "bias": -0.7786781787872314,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.9905850291252136,
+                           "alpha_same_unrew": 0.7329126596450806,
+                           "alpha_diff_rew": 0.5390342473983765,
+                           "alpha_diff_unrew": 0.6506994962692261,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     },
+                     {
+                        "type": "PerseverativeAgent",
+                        "data": {
+                           "alpha": 0.08237554877996445,
+                           "n_vals": 2
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -377.98462146986276,
+               "ll_avg": -0.2709567178995432,
+               "norm_llh": 0.7626495047632033,
+               "acc": 0.8666666666666667,
+               "bic": 813.8944405410439,
+               "n_params": 8,
+               "n_trials": 1395.0
+            }
+         }
+      ]
+   },
+   "198 (50/10)": {
+      "Q - All Alpha Free, All K Fixed": [
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        2.192962408065796
+                     ]
+                  ],
+                  "bias": -0.05882089585065842,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.9967237114906311,
+                           "alpha_same_unrew": 0.6586174964904785,
+                           "alpha_diff_rew": 0.2002401500940323,
+                           "alpha_diff_unrew": 0.49852243065834045,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -525.3775065485388,
+               "ll_avg": -0.43063730044962195,
+               "norm_llh": 0.650094657059448,
+               "acc": 0.7573770491803279,
+               "bic": 1093.3946500904858,
+               "n_params": 6,
+               "n_trials": 1220.0
+            }
+         },
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        2.193119525909424
+                     ]
+                  ],
+                  "bias": -0.05881662666797638,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.9965283274650574,
+                           "alpha_same_unrew": 0.6586071252822876,
+                           "alpha_diff_rew": 0.20032799243927002,
+                           "alpha_diff_unrew": 0.4985390305519104,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -525.3788490220904,
+               "ll_avg": -0.43063840083777905,
+               "norm_llh": 0.65009394170338,
+               "acc": 0.7573770491803279,
+               "bic": 1093.397335037589,
+               "n_params": 6,
+               "n_trials": 1220.0
+            }
+         },
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        2.193006992340088
+                     ]
+                  ],
+                  "bias": -0.05881931632757187,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.9966536164283752,
+                           "alpha_same_unrew": 0.6586124897003174,
+                           "alpha_diff_rew": 0.20027311146259308,
+                           "alpha_diff_unrew": 0.4985278844833374,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -525.3779756445438,
+               "ll_avg": -0.4306376849545441,
+               "norm_llh": 0.6500944070949006,
+               "acc": 0.7573770491803279,
+               "bic": 1093.3955882824957,
+               "n_params": 6,
+               "n_trials": 1220.0
+            }
+         }
+      ],
+      "Q/Persev (free alpha) - All Alpha Free, All K Fixed": [
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        2.127926826477051,
+                        0.06534166634082794
+                     ]
+                  ],
+                  "bias": -0.05460244044661522,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.9971041083335876,
+                           "alpha_same_unrew": 0.68095862865448,
+                           "alpha_diff_rew": 0.2016870081424713,
+                           "alpha_diff_unrew": 0.4153434932231903,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     },
+                     {
+                        "type": "PerseverativeAgent",
+                        "data": {
+                           "alpha": 0.8879955410957336,
+                           "n_vals": 2
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -524.6586725497618,
+               "ll_avg": -0.4300480922539031,
+               "norm_llh": 0.6504778110270246,
+               "acc": 0.7565573770491804,
+               "bic": 1106.1701931525022,
+               "n_params": 8,
+               "n_trials": 1220.0
+            }
+         },
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        2.127910852432251,
+                        0.06538325548171997
+                     ]
+                  ],
+                  "bias": -0.05459866672754288,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.9971001744270325,
+                           "alpha_same_unrew": 0.6809786558151245,
+                           "alpha_diff_rew": 0.20169666409492493,
+                           "alpha_diff_unrew": 0.4153381586074829,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     },
+                     {
+                        "type": "PerseverativeAgent",
+                        "data": {
+                           "alpha": 0.887315571308136,
+                           "n_vals": 2
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -524.6587057737634,
+               "ll_avg": -0.4300481194866913,
+               "norm_llh": 0.6504777933127004,
+               "acc": 0.7557377049180328,
+               "bic": 1106.1702596005052,
+               "n_params": 8,
+               "n_trials": 1220.0
+            }
+         },
+         {
+            "model": {
+               "type": "SummationModule",
+               "data": {
+                  "betas": [
+                     [
+                        2.128026247024536,
+                        0.0653407946228981
+                     ]
+                  ],
+                  "bias": -0.054599761962890625,
+                  "agents": [
+                     {
+                        "type": "QValueAgent",
+                        "data": {
+                           "alpha_same_rew": 0.9969847798347473,
+                           "alpha_same_unrew": 0.6809527277946472,
+                           "alpha_diff_rew": 0.20172759890556335,
+                           "alpha_diff_unrew": 0.415358304977417,
+                           "k_same_rew": 1.0,
+                           "k_same_unrew": 0.0,
+                           "k_diff_rew": 0.0,
+                           "k_diff_unrew": 0.0,
+                           "constraints": {
+                              "k_same_rew": {
+                                 "fit": false
+                              },
+                              "k_same_unrew": {
+                                 "fit": false
+                              },
+                              "k_diff_rew": {
+                                 "fit": false
+                              },
+                              "k_diff_unrew": {
+                                 "fit": false
+                              }
+                           }
+                        }
+                     },
+                     {
+                        "type": "PerseverativeAgent",
+                        "data": {
+                           "alpha": 0.887948751449585,
+                           "n_vals": 2
+                        }
+                     }
+                  ]
+               }
+            },
+            "perf": {
+               "ll_total": -524.6595890875906,
+               "ll_avg": -0.4300488435144185,
+               "norm_llh": 0.6504773223489125,
+               "acc": 0.7565573770491804,
+               "bic": 1106.1720262281597,
+               "n_params": 8,
+               "n_trials": 1220.0
+            }
+         }
+      ]
+   }
+}
