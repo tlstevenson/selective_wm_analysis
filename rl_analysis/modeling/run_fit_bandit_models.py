@@ -41,7 +41,7 @@ all_main_agent_gens['Q'] = lambda s: agents.QValueAgent(constraints=s)
 
 all_main_agent_settings['Q'] = {
         # All Alphas Free, Different K Fixes
-        # 'All Free': {},
+         'All Free': {},
         
         # 'All Alpha Free, S/R K Fixed': {'k_same_rew': {'fit': False}},
         
@@ -160,7 +160,7 @@ all_main_agent_settings['SI'] = {
         
         'Separate Rew/Unrew Evidence': {'complement_c_rew':False, 'complement_c_diff':True}, 
         
-        # 'All Separate Evidence': {'complement_c_rew':False, 'complement_c_diff':False},
+         'All Separate Evidence': {'complement_c_rew':False, 'complement_c_diff':False},
         
         # 'Free Same/Diff Rew Evidence': {'complement_c_rew':False, 'complement_c_diff':False,
         #                                 'constraints': {'c_same_unrew': {'fit': False, 'init': 0}, 
@@ -301,8 +301,9 @@ print_train_params = False
 # limit_mask = False
 # n_limit_hist = 2
 
-n_fits = 3
-n_steps = 10000
+#limitations
+n_fits = 3 
+n_steps = 10000 
 end_tol = 1e-6
 
 meta_subj_name = 'meta'
@@ -343,6 +344,7 @@ fit_config = {'fit_group_names': list(group_sess_ids.keys()), 'group_sess_ids': 
               'equal_sess_weight': equal_sess_weight, 'skip_existing_fits': skip_existing_fits, 'refit_existing': refit_existing, 
               'print_train_params': print_train_params, 'n_fits': n_fits, 'n_steps': n_steps, 'end_tol': end_tol}
 
+#%%
 # push behavioral data to cluster
 if run_on_cluster:
     cluster_ph = path_helper(model_beh_name, True)

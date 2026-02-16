@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+
 """
 Created on Fri Dec 20 13:00:09 2024
 
@@ -444,38 +445,38 @@ class QValueAgent(ModelAgent):
        
     def forward(self, input):
         self.reset_state()
-        output = torch.zeros(input.shape[0], input.shape[1], 2)
+        output = torch.zeros(input.shape[0], input.shape[1], 2) #input shape == (7,3); 2 represents a 2-class output that consists of Ct=+1 and Ct=-1
 
         # Propogate input through the network
-        for t in range(input.shape[1]):
-            output[:,t,:] = self.step(input[:,t,:])
+        for t in range(input.shape[1]): 
+            output[:,t,:] = self.step(input[:,t,:]) #input[:,t,:] represents Vt,Ht, and Gt in the equation, which is stored in output [:,t,:]
 
         return output
 
     def step(self, input):
-        left_side_outcome_sel = torch.cat([(input[:,0]*input[:,2]).unsqueeze(1), (input[:,0]*(1-input[:,2])).unsqueeze(1), 
-                                           (input[:,1]*input[:,2]).unsqueeze(1), (input[:,1]*(1-input[:,2])).unsqueeze(1)], dim=1)
-        right_side_outcome_sel = left_side_outcome_sel[:,[2,3,0,1]]
+        left_side_outcome_sel= torch.cat([(input[:,0]*input[:,2]).unsqueeze(1), (input[:,0]*(1-input[:,2])).unsqueeze(1), #if they pick left side that's rewarded, store 1 on left side; if they pick right side that's rewarded, store 1 on right side; if they pick left side that's unrewarded, store 1 on left side; if they pick right side that's unrewarded, store 1 on right side
+                                           (input[:,1]*input[:,2]).unsqueeze(1), (input[:,1]*(1-input[:,2])).unsqueeze(1)], dim=1) #input[:,0}=Vt, input[:,1]=Ht, input[:,2]=Gt
+        right_side_outcome_sel = left_side_outcome_sel[:,[2,3,0,1]] #swaps the positions from left side outcome 
         
-        left_diffs = self.k_vals - self.state[:,0].unsqueeze(1)
+        left_diffs = self.k_vals - self.state[:,0].unsqueeze(1) #computes difference between k_vals and current internal state
         right_diffs = self.k_vals - self.state[:,1].unsqueeze(1)
-        
-        left_state_diffs = left_side_outcome_sel*left_diffs
-        right_state_diffs = right_side_outcome_sel*right_diffs
+    
+        left_state_diffs = left_side_outcome_sel*left_diffs #keep only the differences between k val and desired outcome
+        right_state_diffs = right_side_outcome_sel*right_diffs 
         
         # update state
-        left_state_deltas = left_state_diffs * self.alphas
+        left_state_deltas = left_state_diffs * self.alphas #delta, which is the adjustment you make, is calculated by multiplying alpha(learning rate) by error
         right_state_deltas = right_state_diffs * self.alphas
         
-        state_diff = torch.cat([left_state_diffs.sum(dim=1).unsqueeze(1), right_state_diffs.sum(dim=1).unsqueeze(1)], dim=1)
-        state_delta = torch.cat([left_state_deltas.sum(dim=1).unsqueeze(1), right_state_deltas.sum(dim=1).unsqueeze(1)], dim=1)
+        state_diff = torch.cat([left_state_diffs.sum(dim=1).unsqueeze(1), right_state_diffs.sum(dim=1).unsqueeze(1)], dim=1) #calculates differnce between k val and current state
+        state_delta = torch.cat([left_state_deltas.sum(dim=1).unsqueeze(1), right_state_deltas.sum(dim=1).unsqueeze(1)], dim=1) #summing up the delta
         
-        self.state = self.state + state_delta
+        self.state = self.state + state_delta #updates current state
 
         # record state histories
-        self.state_hist.append(self.state.detach())
-        self.state_diff_hist.append(state_diff.detach())
-        self.state_delta_hist.append(state_delta.detach())
+        self.state_hist.append(self.state.detach()) #save history of current state
+        self.state_diff_hist.append(state_diff.detach()) #save history of difference between current state and kval
+        self.state_delta_hist.append(state_delta.detach()) #save history of delta
 
         return self.state
     

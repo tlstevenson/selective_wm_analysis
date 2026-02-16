@@ -37,11 +37,27 @@ script_dir = Path(__file__).parent.resolve()
 
 subj_ids = [198, 199, 274, 400, 402]#[179, 188, 191, 207] # 182
 
+cluster_path = path.join(script_dir, 'fit_models_sep_rates.json')
 save_path = path.join(script_dir, 'fit_models_new.json')
-if path.exists(save_path):
+all_models={}
+print(f"Cluster file at: {cluster_path}")
+print(f"File exists: {path.exists(cluster_path)}")
+
+if path.exists(cluster_path):
+    all_models = agents.load_model(cluster_path)
+    print(f"Loaded models from: {cluster_path}")
+    print(f"Type of all_models: {type(all_models)}")
+    print(f"Subjects found: {list(all_models.keys())}")
+elif path.exists(save_path):
     all_models = agents.load_model(save_path)
+    print(f"Loaded models from local save: {save_path}")
 else:
     all_models = {}
+    print("No fit results found in cluster path or local save path")
+
+print(f"Final all_models keys: {list(all_models.keys())}")
+    
+
 
 # load data
 # sess_ids = db_access.get_subj_sess_ids(subj_ids, protocol='ClassicRLTasks', stage_num=2)
@@ -58,12 +74,13 @@ all_sess = loc_db.get_behavior_data(utils.flatten(sess_ids), reload=reload)
 
 all_sess = th.define_choice_outcome(all_sess)
     
-# %% Investigate Fit Results
 
+# %% Investigate Fit Results
 ignore_subj = ['182']
 # plot accuracy and total LL
 subjids = list(all_models.keys())
-subjids = [s for s in subjids if not s in ignore_subj]
+subjids = [s for s in subjids if 'meta' not in s.lower() and not any(ign in s for ign in ignore_subj)]
+
 
 ignore_models = ['Basic - Value']#'Basic - Value'['Q/Persev/Fall', 'SI/Persev', 'Q SI', 'RL SI'] # ['basic - value only']
 ignore_any_match = False

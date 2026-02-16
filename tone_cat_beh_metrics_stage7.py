@@ -153,14 +153,21 @@ for subj_id in plot_subjs:
     # p(bail|previously incorrect)
     # p(bail|previously correct)
     
-    # TO-DO:
     # p(correct | previously same)
     # p(correct | previously diff)
     # p(correct | previously same & correct)
     # p(correct | previously same & incorrect)
     # p(correct | previously diff & correct)
     # p(correct | previously diff & incorrect)
+    
+    # p(correct | prev bail)
+    # p(correct | prev bail & same tone)
+    # p(correct | prev bail & diff tone)
+    
+    # p(correct | response)
 
+    # Create dictionaries for each rate metric
+    
     n_right_prev_right = {'num': 0, 'denom': 0}
     n_right_prev_left = {'num': 0, 'denom': 0}
     n_repeat_choice = {'num': 0, 'denom': 0}
@@ -169,8 +176,21 @@ for subj_id in plot_subjs:
     n_bail_prev_bail = {'num': 0, 'denom': 0}
     n_bail_prev_correct = {'num': 0, 'denom': 0}
     n_bail_prev_incorrect = {'num': 0, 'denom': 0}
+    n_bail_prev_correct_diff = {'num': 0, 'denom': 0}
     
-    # TO-DO: Create dictionaries for each rate metric
+    n_hit_prev_stim_same = {'num': 0, 'denom': 0}
+    n_hit_prev_stim_diff = {'num': 0, 'denom': 0}
+    n_hit_prev_stim_same_prev_correct = {'num': 0, 'denom': 0}
+    n_hit_prev_stim_same_prev_incorrect = {'num': 0, 'denom': 0}
+    n_hit_prev_stim_diff_prev_correct = {'num': 0, 'denom': 0}
+    n_hit_prev_stim_diff_prev_incorrect = {'num': 0, 'denom': 0}
+    
+    n_hit_prev_bail = {'num': 0, 'denom': 0}
+    n_hit_prev_bail_same_tone = {'num': 0, 'denom': 0}
+    n_hit_prev_bail_diff_tone = {'num': 0, 'denom': 0}
+    
+    n_hit_response = {'num': 0, 'denom': 0}
+
 
     for sess_id in subj_sess_ids:
         ind_sess = subj_sess[subj_sess['sessid'] == sess_id]
@@ -178,7 +198,9 @@ for subj_id in plot_subjs:
 
         if len(ind_sess) == 0:
             continue
-
+        
+        # Accumulate counts for each rate metric
+        
         # p(choice|previous choice)
         choices = ind_sess_no_bails['choice'].to_numpy()
         prev_choice_right = choices[:-1] == 'right'
@@ -192,11 +214,11 @@ for subj_id in plot_subjs:
 
         # p(win-stay/lose-switch)
         stays = choices[:-1] == choices[1:]
-        hits = ind_sess_no_bails['hit'].astype(bool).to_numpy()[:-1]
-        n_win_stay['num'] += sum(stays & hits)
-        n_win_stay['denom'] += sum(hits)
-        n_lose_switch['num'] += sum(~stays & ~hits)
-        n_lose_switch['denom'] += sum(~hits)
+        hits_no_bails = ind_sess_no_bails['hit'].astype(bool).to_numpy()
+        n_win_stay['num'] += sum(stays & hits_no_bails[:-1])
+        n_win_stay['denom'] += sum(hits_no_bails[:-1])
+        n_lose_switch['num'] += sum(~stays & ~hits_no_bails[:-1])
+        n_lose_switch['denom'] += sum(~hits_no_bails[:-1])
 
         # p(bail|previous result)
         bails = ind_sess['bail'].to_numpy()
@@ -212,9 +234,51 @@ for subj_id in plot_subjs:
         n_bail_prev_incorrect['num'] += sum(cur_bail & prev_incorrect)
         n_bail_prev_incorrect['denom'] += sum(prev_incorrect)
         
-        # TO-DO: Accumulate counts for each rate metric
+        # p(correct | previously same)
+        stims = ind_sess_no_bails['relevant_tone_info'].to_numpy()
+        prev_stim_same = stims[:-1] == stims[1:]
+        n_hit_prev_stim_same['num'] += sum(hits_no_bails[1:] & prev_stim_same)
+        n_hit_prev_stim_same['denom'] += sum(prev_stim_same)
         
+        # p(correct | previously diff)
+        n_hit_prev_stim_diff['num'] += sum(hits_no_bails[1:] & ~prev_stim_same)
+        n_hit_prev_stim_diff['denom'] += sum(~prev_stim_same)
         
+        # p(correct | previously same & correct)
+        n_hit_prev_stim_same_prev_correct['num'] += sum(hits_no_bails[1:] & prev_stim_same & hits_no_bails[:-1])
+        n_hit_prev_stim_same_prev_correct['denom'] += sum(prev_stim_same & hits_no_bails[:-1])
+        
+        # p(correct | previously same & incorrect)
+        n_hit_prev_stim_same_prev_incorrect['num'] += sum(hits_no_bails[1:] & prev_stim_same & ~hits_no_bails[:-1])
+        n_hit_prev_stim_same_prev_incorrect['denom'] += sum(prev_stim_same & ~hits_no_bails[:-1])
+        
+        # p(correct | previously diff & correct)
+        n_hit_prev_stim_diff_prev_correct['num'] += sum(hits_no_bails[1:] & ~prev_stim_same & hits_no_bails[:-1])
+        n_hit_prev_stim_diff_prev_correct['denom'] += sum(~prev_stim_same & hits_no_bails[:-1])
+        
+        # p(correct | previously diff & incorrect)
+        n_hit_prev_stim_diff_prev_incorrect['num'] += sum(hits_no_bails[1:] & ~prev_stim_same & ~hits_no_bails[:-1])
+        n_hit_prev_stim_diff_prev_incorrect['denom'] += sum(~prev_stim_same & ~hits_no_bails[:-1])
+        
+        # p(correct | prev bail)
+        stims = ind_sess['relevant_tone_info'].to_numpy()
+        prev_stim_same = stims[:-1] == stims[1:]
+        current_correct = hits[1:] == True
+        response = bails[1:] == False
+        n_hit_prev_bail['num'] += sum(current_correct & prev_bail & response)
+        n_hit_prev_bail['denom'] += sum(prev_bail & response)
+        
+        # p(correct | prev bail & same tone)
+        n_hit_prev_bail_same_tone['num'] += sum(current_correct & prev_bail & prev_stim_same & response)
+        n_hit_prev_bail_same_tone['denom'] += sum(prev_bail & prev_stim_same & response)
+        
+        # p(correct | prev bail & diff tone)
+        n_hit_prev_bail_diff_tone['num'] += sum(current_correct & prev_bail & ~prev_stim_same & response)
+        n_hit_prev_bail_diff_tone['denom'] += sum(prev_bail & ~prev_stim_same & response)
+        
+        # Overall hit rate
+        n_hit_response['num'] += sum(hits_no_bails)
+        n_hit_response['denom'] += len(hits_no_bails)
 
     # PLOT HIT/BAIL RATES AND RESPONSE PROBABILITIES
 
@@ -242,21 +306,29 @@ for subj_id in plot_subjs:
     # plot probabilities
     def comp_p(n_dict): return n_dict['num']/n_dict['denom']
     
-    # TO-DO: Add label for each metric
-    prob_labels = ['p(right|prev right)', 'p(right|prev left)', 'p(repeat choice)', 'p(stay|correct)',
-                   'p(switch|incorrect)', 'p(bail|bail)', 'p(bail|incorrect)', 'p(bail|correct)']
-    # TO-DO: Add call to 'comp_p' for each metric's dictionary
-    prob_values = [comp_p(n_right_prev_right), comp_p(n_right_prev_left), comp_p(n_repeat_choice),
-                   comp_p(n_win_stay), comp_p(n_lose_switch), comp_p(n_bail_prev_bail),
-                   comp_p(n_bail_prev_incorrect), comp_p(n_bail_prev_correct)]
+    #Add label for each metric
+    prob_labels = ['p(right|prev right)', 'p(right|prev left)', 'p(repeat choice)', 'p(stay|correct)', 'p(switch|incorrect)',
+                   'p(hit|same tone)', 'p(hit|same tone & hit)', 'p(hit|same tone & miss)',
+                   'p(hit|diff tone)', 'p(hit|diff tone & hit)', 'p(hit|diff tone & miss)',
+                   'p(hit|bail)', 'p(hit|bail & same tone)', 'p(hit|bail & diff tone)',
+                   'p(bail|bail)', 'p(bail|miss)', 'p(bail|hit)']
+    # Add call to 'comp_p' for each metric's dictionary
+    prob_values = [comp_p(n_right_prev_right), comp_p(n_right_prev_left), comp_p(n_repeat_choice), comp_p(n_win_stay), comp_p(n_lose_switch), 
+                   comp_p(n_hit_prev_stim_same), comp_p(n_hit_prev_stim_same_prev_correct), comp_p(n_hit_prev_stim_same_prev_incorrect), 
+                   comp_p(n_hit_prev_stim_diff), comp_p(n_hit_prev_stim_diff_prev_correct), comp_p(n_hit_prev_stim_diff_prev_incorrect), 
+                   comp_p(n_hit_prev_bail), comp_p(n_hit_prev_bail_same_tone), comp_p(n_hit_prev_bail_diff_tone),
+                   comp_p(n_bail_prev_bail), comp_p(n_bail_prev_incorrect), comp_p(n_bail_prev_correct)] 
 
+    hit_rate = comp_p(n_hit_response)
+    
     ax = fig.add_subplot(gs[1, :])
     ax.plot(np.arange(len(prob_labels)), prob_values, 'o')
     ax.axhline(0.5, dashes=[4, 4], c='k', lw=1)
+    ax.axhline(hit_rate, dashes=[4, 4], c='r', lw=1)
     ax.set_ylabel('Probability')
     ax.set_ylim(0, 1)
     ax.set_yticks(np.arange(0, 1.25, 0.25))
-    ax.set_xticks(np.arange(len(prob_labels)), prob_labels, rotation=-45)
+    ax.set_xticks(np.arange(len(prob_labels)), prob_labels, rotation=-60)
     ax.yaxis.grid(True)
     ax.set_title('Response Probabilities')
 
