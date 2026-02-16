@@ -249,10 +249,10 @@ class SingleValueAgent(ModelAgent):
         return 'Value Agent: α = {}'.format(self.alpha.to_string())
     
     def toJson(self):
-        return super().formatJson({'alpha': self.alpha.a.item()})
+        return super().formatJson({'alpha': self.alpha.a.item(), 'constraints': self.constraints})
     
     def fromJson(data):
-        return SingleValueAgent(alpha0=data['alpha'])
+        return SingleValueAgent(alpha0=data['alpha'], constraints=data['constraints'])
     
     def clone(self):
         return SingleValueAgent.fromJson(self.toJson()['data'])
@@ -315,10 +315,10 @@ class PerseverativeAgent(ModelAgent):
         return 'Perseverative Agent: α = {}'.format(self.alpha.to_string())
     
     def toJson(self):
-        return super().formatJson({'alpha': self.alpha.a.item(), 'n_vals': self.n_vals})
+        return super().formatJson({'alpha': self.alpha.a.item(), 'n_vals': self.n_vals, 'constraints': self.constraints})
     
     def fromJson(data):
-        return PerseverativeAgent(alpha0=data['alpha'], n_vals=data['n_vals'])
+        return PerseverativeAgent(alpha0=data['alpha'], n_vals=data['n_vals'], constraints=data['constraints'])
     
     def clone(self):
         return PerseverativeAgent.fromJson(self.toJson()['data'])
@@ -380,10 +380,10 @@ class FallacyAgent(ModelAgent):
         return 'Fallacy Agent: α = {}'.format(self.alpha.to_string())
     
     def toJson(self):
-        return super().formatJson({'alpha': self.alpha.a.item(), 'n_vals': self.n_vals})
+        return super().formatJson({'alpha': self.alpha.a.item(), 'n_vals': self.n_vals, 'constraints': self.constraints})
     
     def fromJson(data):
-        return FallacyAgent(alpha0=data['alpha'], n_vals=data['n_vals'])
+        return FallacyAgent(alpha0=data['alpha'], n_vals=data['n_vals'], constraints=data['constraints'])
     
     def clone(self):
         return FallacyAgent.fromJson(self.toJson()['data'])
