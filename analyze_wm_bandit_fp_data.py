@@ -166,7 +166,7 @@ if path.exists(save_path) and not recalculate:
         aligned_time = saved_data['aligned_time']
         aligned_metadata = saved_data['metadata']
         
-        recalculate_regions = aligned_metadata['xlims'] != xlims
+        recalculate = aligned_metadata['xlims'] != xlims
 
 elif not path.exists(save_path):
     recalculate = True
