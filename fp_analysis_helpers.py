@@ -109,7 +109,7 @@ default_preferred_isos = ['420', '415', '405']
 # %% Loading methods
 
 def load_fp_data(loc_db, subj_sess_ids, isos=None, ligs=None, reload=False, baseline_correction=True, band_iso_fit=False, baseline_band_iso_fit=True, irls_fit=False,
-                 lig_lpf=10, iso_lpf=10, baseline_lpf=0.0005, tilt_t=False, filter_dropout_outliers=False, iso_bands=[[0,0.1], [0.1,1], [1,10]]):
+                 lig_lpf=10, iso_lpf=10, baseline_lpf=0.0005, tilt_t=False, filter_dropout_outliers=False, iso_bands=[[0,0.1], [0.1,1], [1,10]], allow_neg_coeffs=False):
     ''' Loads and processes fiber photometry data, optionally choosing which wavelengths are ligand and isosbsestic.'''
 
     start = time.perf_counter()
@@ -181,17 +181,16 @@ def load_fp_data(loc_db, subj_sess_ids, isos=None, ligs=None, reload=False, base
                                                                                                    baseline_lpf=baseline_lpf, tilt_t=tilt_t,
                                                                                                    band_iso_fit=band_iso_fit, iso_bands=iso_bands,
                                                                                                    baseline_band_iso_fit=baseline_band_iso_fit,
-                                                                                                   irls_fit=irls_fit)
+                                                                                                   irls_fit=irls_fit, allow_neg_coeffs=allow_neg_coeffs)
 
                 print('  Processed FP data in {:.1f} s'.format(time.perf_counter()-start))
-
 
     return fp_data, implant_info
 
 
 def get_all_processed_signals(raw_lig, raw_iso, t, subj_id=None, sess_id=None, region=None, trial_start_ts=None, baseline_correction=True,
                               lig_lpf=10, iso_lpf=10, baseline_lpf=0.0005, filter_dropout_outliers=False, tilt_t=False, band_iso_fit=False,
-                              baseline_band_iso_fit=True, iso_bands=[[0,0.01], [0.01,0.1], [0.1,1], [1,10]], irls_fit=False):
+                              baseline_band_iso_fit=True, iso_bands=[[0,0.1], [0.1,1], [1,10]], irls_fit=False, allow_neg_coeffs=False):
     ''' Gets all possible processed signals and intermediaries for the given raw signals.
         Will check to see if any signals should be excluded. Also will also optionally exclude signals before and after the behavior.'''
 
@@ -350,7 +349,7 @@ def get_all_processed_signals(raw_lig, raw_iso, t, subj_id=None, sess_id=None, r
             sub_filt_iso = fp_utils.filter_signal(sub_raw_iso, iso_lpf, sr)
 
             # isosbestic correction
-            sub_dff_iso, sub_fitted_iso, _ = fp_utils.calc_iso_dff(sub_filt_lig, sub_filt_iso, t[start_idx:end_idx], vary_t=tilt_t)
+            sub_dff_iso, sub_fitted_iso, _ = fp_utils.calc_iso_dff(sub_filt_lig, sub_filt_iso, t[start_idx:end_idx], vary_t=tilt_t, allow_neg_coeffs=allow_neg_coeffs)
 
             sub_empty_signal = np.full_like(sub_raw_lig, np.nan)
             sub_baseline_lig = sub_empty_signal.copy()
@@ -393,18 +392,18 @@ def get_all_processed_signals(raw_lig, raw_iso, t, subj_id=None, sess_id=None, r
                 sub_baseline_corr_iso = sub_filt_iso - sub_baseline_iso
 
                 # scale the isosbestic signal to best fit the ligand-dependent signal
-                sub_fitted_baseline_iso, _ = fp_utils.fit_signal(sub_baseline_corr_iso, sub_baseline_corr_lig, t[start_idx:end_idx], vary_t=False)
+                sub_fitted_baseline_iso, _ = fp_utils.fit_signal(sub_baseline_corr_iso, sub_baseline_corr_lig, t[start_idx:end_idx], vary_t=False, allow_neg_coeffs=allow_neg_coeffs)
 
-                sub_dff_iso_baseline = ((sub_baseline_corr_lig - sub_fitted_baseline_iso)/(sub_baseline_lig + sub_fitted_baseline_iso))*100
+                sub_dff_iso_baseline = ((sub_baseline_corr_lig - sub_fitted_baseline_iso)/(sub_baseline_lig + sub_fitted_baseline_iso)) * 100
                 
                 if baseline_band_iso_fit:
                     sub_fitted_baseline_fband_iso, _ = fp_utils.fit_signal(sub_baseline_corr_iso, sub_baseline_corr_lig, t[start_idx:end_idx], 
-                                                                  vary_t=False, fit_bands=True, f_bands=iso_bands)
+                                                                           vary_t=False, fit_bands=True, f_bands=iso_bands, allow_neg_coeffs=allow_neg_coeffs)
                     sub_dff_iso_baseline_fband = ((sub_baseline_corr_lig - sub_fitted_baseline_fband_iso)/(sub_baseline_lig + sub_fitted_baseline_fband_iso)) * 100
                 
             if band_iso_fit:
                 sub_fitted_fband_iso, _ = fp_utils.fit_signal(sub_filt_iso, sub_filt_lig, t[start_idx:end_idx], 
-                                                              vary_t=tilt_t, fit_bands=True, f_bands=iso_bands)
+                                                              vary_t=tilt_t, fit_bands=True, f_bands=iso_bands, allow_neg_coeffs=allow_neg_coeffs)
                 sub_dff_iso_fband = ((sub_filt_lig - sub_fitted_fband_iso)/sub_fitted_fband_iso) * 100
                 
             if irls_fit:
@@ -960,9 +959,9 @@ def plot_aligned_signals(signal_dict, t, title, sub_titles_dict, x_label, y_labe
         fig.colorbar(hm, ax=axs[i*2,:].ravel().tolist(), label=y_label)
 
 
-def plot_avg_signals(plot_groups, group_labels, data_mat_dict, regions, t, title, plot_titles, x_label, y_label,
-                     xlims_dict=None, dashlines=None, x_ticks=None, plot_x0=True, legend_params=None, use_se=True, 
-                     group_colors=None, ph=3.5, pw=5, implant_info=None):
+def plot_avg_signals(data_mat_dict, parent_groups, parent_group_titles, plot_groups, plot_group_titles, plot_group_labels, t, title, x_label, y_label,
+                     parents_on_rows=True, xlims=None, dashlines=None, x_ticks=None, plot_x0=True, legend_params=None, use_se=True, 
+                     group_colors=None, ph=3.5, pw=5):
 
     def calc_error(mat):
         if use_se:
@@ -972,9 +971,16 @@ def plot_avg_signals(plot_groups, group_labels, data_mat_dict, regions, t, title
 
     plotted = False
 
-    n_rows = len(regions)
-    n_cols = len(plot_groups)
-    fig, axs = plt.subplots(n_rows, n_cols, figsize=(pw*n_cols, ph*n_rows), layout='constrained', sharey='row')
+    if parents_on_rows:
+        n_rows = len(parent_groups)
+        n_cols = len(plot_groups)
+        sharey='row'
+    else:
+        n_cols = len(parent_groups)
+        n_rows = len(plot_groups)
+        sharey='col'
+        
+    fig, axs = plt.subplots(n_rows, n_cols, figsize=(pw*n_cols, ph*n_rows), layout='constrained', sharey=sharey)
 
     if n_rows == 1:
         axs = axs[None,:]
@@ -983,33 +989,34 @@ def plot_avg_signals(plot_groups, group_labels, data_mat_dict, regions, t, title
 
     fig.suptitle(title)
 
-    for i, region in enumerate(regions):
+    for i, (parent_group, parent_group_title) in enumerate(zip(parent_groups, parent_group_titles)):
         
-        if not region in data_mat_dict:
+        if not parent_group in data_mat_dict:
             continue
         
         if type(t) is dict:
-            # some regions have a side identifier for bilateral implants of the same side
-            reg_key = [k for k in t.keys() if k in region][0]
-            reg_t = t[reg_key]
+            parent_t = t[parent_group]
         else:
-            reg_t = t
-
+            parent_t = t
+        
         # limit x axis like this so that the y is scaled to what is plotted
-        if xlims_dict is None:
-            t_sel = np.full(reg_t.shape, True)
+        if xlims is None:
+            t_sel = np.full(parent_t.shape, True)
         else:
-            # some regions have a side identifier for bilateral implants of the same side
-            reg_key = [k for k in xlims_dict.keys() if k in region][0]
-            t_sel = (reg_t > xlims_dict[reg_key][0]) & (reg_t < xlims_dict[reg_key][1])
-
-        for j, (plot_group, plot_title) in enumerate(zip(plot_groups, plot_titles)):
-            ax = axs[i,j]
-            if implant_info is None:
-                ax.set_title(region + ' ' + plot_title)
+            if type(xlims) is dict:
+                t_sel = (parent_t > xlims[parent_group][0]) & (parent_t < xlims[parent_group][1])
             else:
-                ax.set_title('{} ({}) {}'.format(region, implant_info[region]['side'], plot_title))
-                
+                t_sel = (parent_t > xlims[0]) & (parent_t < xlims[1])
+
+        for j, (plot_group, plot_group_title) in enumerate(zip(plot_groups, plot_group_titles)):
+            
+            if parents_on_rows:
+                ax = axs[i,j]
+            else:
+                ax = axs[j,i]
+            
+            ax.set_title(parent_group_title + ' ' + plot_group_title)
+            
             if not dashlines is None:
                 plot_utils.plot_dashlines(dashlines, ax=ax)
 
@@ -1018,15 +1025,16 @@ def plot_avg_signals(plot_groups, group_labels, data_mat_dict, regions, t, title
                 warnings.simplefilter('ignore', RuntimeWarning)
                 
                 for k, group in enumerate(plot_group):
-                    if group in data_mat_dict[region]:
-                        act = data_mat_dict[region][group]
+                    if group in data_mat_dict[parent_group]:
+                        act = data_mat_dict[parent_group][group]
+                        
                         if len(act) > 0:
                             plotted = True
                             
                             if not group_colors is None:
-                                plot_utils.plot_psth(reg_t[t_sel], np.nanmean(act, axis=0)[t_sel], calc_error(act)[t_sel], ax, label=group_labels[group], color=group_colors[k], plot_x0=plot_x0)
+                                plot_utils.plot_psth(parent_t[t_sel], np.nanmean(act, axis=0)[t_sel], calc_error(act)[t_sel], ax, label=plot_group_labels[group], color=group_colors[k], plot_x0=plot_x0)
                             else:
-                                plot_utils.plot_psth(reg_t[t_sel], np.nanmean(act, axis=0)[t_sel], calc_error(act)[t_sel], ax, label=group_labels[group], plot_x0=plot_x0)
+                                plot_utils.plot_psth(parent_t[t_sel], np.nanmean(act, axis=0)[t_sel], calc_error(act)[t_sel], ax, label=plot_group_labels[group], plot_x0=plot_x0)
 
             if j == 0:
                 ax.set_ylabel(y_label)
@@ -1039,8 +1047,8 @@ def plot_avg_signals(plot_groups, group_labels, data_mat_dict, regions, t, title
                 ax.set_xticklabels(x_ticks['labels'])
 
             if not legend_params is None:
-                if region in legend_params and not legend_params[region] is None:
-                    ax.legend(**legend_params[region])
+                if parent_group in legend_params and not legend_params[parent_group] is None:
+                    ax.legend(**legend_params[parent_group])
                 else:
                     ax.legend(**legend_params)
             else:
