@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Wed Jun 18 13:23:22 2025
+Created on Thu Feb 19 20:15:24 2026
 
 @author: alex
-
-READ ME: Before running this script, make sure all the videos you need to run 
-are all in the same directory. Make sure you ran sleap_vid_reformat.py with that
-directory. The naming convention (all reformatted videos end in _r.mp4) is
-necessary. 
 """
+
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 import os
 import sys
 import sleap 
@@ -48,7 +46,7 @@ def RunInferenceList(video_paths, single_path, centroid_path, centered_path, ana
         animal_name = os.path.basename(os.path.dirname(file_path))
         video_name = name_without_ext
         
-        # 2. Get the date
+        # 2. Get the date (FIX TO BE CURRENT DATE)
         date_str = get_mp4_creation_date_ffmpeg(file_path)
         date_part = date_str.split('T')[0] if "Error" not in date_str and "not found" not in date_str else "UnknownDate"
         
@@ -71,14 +69,13 @@ def RunInferenceList(video_paths, single_path, centroid_path, centered_path, ana
         try:
             print(f"  > Running inference...", flush=True)
             RunInference(file_path, single_path, centroid_path, centered_path, write_path)
-            # Notice: No renaming logic here anymore!
         except Exception as e:
             print(f"  > FAILED to analyze the video: {filename}. Error: {e}", flush=True)
 
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
-        print("Error: Missing arguments.")
+        print("Error: Missing arguments. Expected config path and at least one video path.")
         sys.exit(1)
 
     config_path = sys.argv[1]
@@ -87,7 +84,6 @@ if __name__ == "__main__":
     with open(config_path, "r") as file:
         config = json.load(file)
         
-        # Look for the new analysis_folder key
         analysis_folder = config.get("analysis_folder")
         single_path = config.get("single_model_path", "NoFile")
         centroid_path = config.get("centroid_model_path", "NoFile")

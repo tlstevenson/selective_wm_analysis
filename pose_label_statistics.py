@@ -17,8 +17,7 @@ import math
 from scipy.ndimage import gaussian_filter
 import pandas as pd
 #%%Initial file reading and processing
-hdf5_file_paths = ["/Users/alex/Downloads/mov_0001_r_labels.hdf5",
-                   "/Users/alex/Downloads/mov_0001_r_labels.hdf5"] #ADD FILEPATHS
+hdf5_file_paths = ["/Users/alex/Downloads/postsurgery_all_vid_bulky.012_mov_0013_r.analysis (1).h5"] #ADD FILEPATHS
 processed_dict_list = [0 for i in range(len(hdf5_file_paths))]
 file_labels = [0 for i in range(len(hdf5_file_paths))]
 locations = [0 for i in range(len(hdf5_file_paths))]
@@ -184,8 +183,8 @@ fig,ax = plt.subplots(layout="constrained")
 for file_i in range(len(hdf5_file_paths)):
     for node_i in range(locations[file_i].shape[1]):
         x_pos = x[node_i] + width * file_i
-        print(np.shape(gap_length_f[file_idx][node_i]))
-        parts = ax.violinplot(gap_length_f[file_idx][node_i],
+        print(np.shape(gap_length_f[file_i][node_i]))
+        parts = ax.violinplot(gap_length_f[file_i][node_i],
                 [x_pos], widths=[width], showmeans=False, showmedians=True,
                 showextrema=True)
         if node_i==0:
@@ -211,7 +210,7 @@ fig,ax = plt.subplots(layout="constrained")
 for file_i in range(len(hdf5_file_paths)):
     for node_i in range(locations[file_i].shape[1]):
         x_pos = x[node_i] + width * file_i
-        parts = ax.violinplot(gap_length_dx[file_idx][node_i],
+        parts = ax.violinplot(gap_length_dx[file_i][node_i],
                 [x_pos], widths=[width], showmeans=False, showmedians=True,
                 showextrema=True)
         if node_i==0:
@@ -420,7 +419,7 @@ fig,ax = plt.subplots()
 num_nose_nodes_removed_all = [np.sum(nose_outlier_mask_all[i]) for i in range(len(nose_outlier_mask_all))]
 
 x = np.arange(len(hdf5_file_paths))
-ax.bar(x, height=num_nose_nodes_removed, width=1, label=file_labels, color=colors)
+ax.bar(x, height=num_nose_nodes_removed_all, width=1, label=file_labels, color=colors)
 ax.legend(loc='upper left')
 ax.set_ylabel("Num Nose Outliers (frames)")
 ax.set_title("Outlier Detection Nose Angle")
