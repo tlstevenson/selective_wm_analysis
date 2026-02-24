@@ -8,12 +8,13 @@ Created on Mon Feb 23 23:02:26 2026
 import os
 import sys
 import subprocess
+import path_manager_NEW as pm
 
 def create_dataset(config_path, dataset_name, h5_files, conda_env_path):
     #Edit config file
     #Run python script from the conda environment
     update_disk_dataset_config(config_path, dataset_name, h5_files)
-    programs_folder = os.path.join(conda_env_path, "DISK", )
+    programs_folder = pm.get_disk_scripts_parent_dir()
     command = ["conda", "run", "--no-capture-output", "-p", conda_env_path, 
                "python", "create_dataset.py"]
     try:
@@ -49,7 +50,7 @@ def update_disk_dataset_config(config_path, dataset_name, h5_files):
         lines = f.readlines()
 
     # Format the list of files for YAML: ['path1', 'path2']
-    h5_list_str = str([os.path.abspath(f) for f in h5_files])
+    h5_list_str = str([os.path.abspath(f).replace("\\", "/") for f in h5_files])
 
     new_lines = []
     for line in lines:

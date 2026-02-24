@@ -27,7 +27,8 @@ def load_or_create_config(config_name="hanks_pose_config.json"):
         "single_model_path": "C:/path/to/model",
         "centroid_model_path": "C:/path/to/model",
         "centered_model_path": "C:/path/to/model",
-        "disk_env_path": "C:/path/to/disk_env"
+        "disk_env_path": "C:/path/to/disk_env",
+        "disk_files_path": "C:/path/to/disk_parent_folder"
     }
     config_path = os.path.join(user_home, config_name)
     # Check if the file already exists

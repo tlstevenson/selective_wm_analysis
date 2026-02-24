@@ -8,16 +8,21 @@ Created on Mon Feb 23 19:09:21 2026
 import os
 import inference_config_setup as ics
 
-def vid_to_h5_raw(path):
+def vid_to_slp_raw(path):
     path_without_ext, ext = os.path.splitext(path)
     print(f"Mirrored path naked: {path_without_ext}")
-    print(f"Final path h5: {path_without_ext[:-2]}_raw.h5")
-    return f"{path_without_ext[:-2]}_raw.h5" #Replace _r.mp4 with _raw.h5
+    print(f"Final path slp: {path_without_ext[:-2]}_raw.slp")
+    return f"{path_without_ext[:-2]}_raw.slp" #Replace _r.mp4 with _raw.slp
+
+def slp_to_h5(path):
+    path_without_ext, ext = os.path.splitext(path)
+    print(f"Final path h5: {path[:path.rfind('_')]}_raw.h5")
+    return f"{path[:path.rfind('_')]}_raw.h5"
 
 def h5_raw_to_any(path, ending):
     return f"{path[:path.rfind('_')]}_{ending}.h5"
 
-def get_mirrored_path(parent_folder, child_file, new_folder):
+def get_mirrored_path_slp(parent_folder, child_file, new_folder):
     """
     Finds the mirrored path of a child file in a new destination folder.
     """
@@ -30,7 +35,7 @@ def get_mirrored_path(parent_folder, child_file, new_folder):
         # Append the relative path to the new destination folder
         mirrored_path = os.path.join(new_folder, vid_rel_path_in_dir)
         print(f"Mirrored vid path: {mirrored_path}")
-        return vid_to_h5_raw(mirrored_path) #Replace _r.mp4 with _raw.h5
+        return vid_to_slp_raw(mirrored_path) #Replace _r.mp4 with _raw.h5
         
     except ValueError:
         # This triggers if the child file isn't actually inside the parent folder
@@ -38,19 +43,32 @@ def get_mirrored_path(parent_folder, child_file, new_folder):
 
 def get_manual_path(analysis_folder, animal_num, video_file):
     filename = os.path.basename(video_file)
-    return os.path.join(analysis_folder, str(animal_num), vid_to_h5_raw(filename)) #Replace _r.mp4 with _raw.h5
+    return os.path.join(analysis_folder, str(animal_num), vid_to_slp_raw(filename)) #Replace _r.mp4 with _raw.h5
 
+#%% DISK Configuration Getters
 def get_conf(conf_name):
     config = ics.load_or_create_config()
-    return os.path.join(config["disk_env_path"], "DISK", "conf", conf_name)
+    path = os.path.join(config["disk_files_path"], "DISK", "conf", conf_name)
+    if os.path.exists(path):
+        return path
+    else:
+        raise Exception(f"Path {path} of the config file does not exist.")
 
 def get_create_dataset_conf():
-    get_conf("conf_create_dataset.yaml")
+    return get_conf("conf_create_dataset.yaml")
 def get_proba_missing_files_conf(disk_env_path):
-    get_conf("conf_proba_missing_files.yaml")
+    return get_conf("conf_proba_missing_files.yaml")
 def get_impute_conf(disk_env_path):
-    get_conf("conf_impute.yaml")
+    return get_conf("conf_impute.yaml")
 def get_missing_conf(disk_env_path):
-    get_conf("conf_missing.yaml")
+    return get_conf("conf_missing.yaml")
 def get_test_conf(disk_env_path):
-    get_conf("conf_test.yaml")
+    return get_conf("conf_test.yaml")
+#%%
+def get_disk_scripts_parent_dir():
+    config = ics.load_or_create_config()
+    path = os.path.join(config["disk_files_path"], "DISK")
+    if os.path.exists(path):
+        return path
+    else:
+        raise Exception(f"Path {path} of the config file does not exist.")
