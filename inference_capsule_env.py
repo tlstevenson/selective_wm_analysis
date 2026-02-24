@@ -13,6 +13,7 @@ import sys
 import sleap 
 import json
 import ffmpeg
+import logging
 
 def get_mp4_creation_date_ffmpeg(filepath: str) -> str:
     if not os.path.exists(filepath): return f"Error: File not found at {filepath}"
@@ -25,52 +26,37 @@ def get_mp4_creation_date_ffmpeg(filepath: str) -> str:
         return f"An unexpected error occurred: {e}"
 
 def RunInference(vid_path, single_path, centroid_path, centered_path, write_path):
-    if single_path != "NoFile":
+    if os.path.exists(single_path):
         predictor = sleap.load_model([single_path], batch_size=16)
-    else:
+    elif os.path.exists(centered_path) and os.path.exists(centroid_path):
         predictor = sleap.load_model([centroid_path, centered_path], batch_size=16)
+    else:
+        raise Exception("The path to the models does not exist. Please replace it with a valid path.")
     video = sleap.load_video(vid_path)
     print(f"Video loaded: {video.shape}, {video.dtype}", flush=True)
+    # Turn on INFO logging to reveal SLEAP's internal progress updates
+    logging.getLogger("sleap").setLevel(logging.INFO)
     predictions = predictor.predict(video)
     predictions.export(write_path)
     print(f"Predictions exported to {write_path}", flush=True)
 
-def RunInferenceList(video_paths, single_path, centroid_path, centered_path, analysis_folder):
+def RunInferenceList(video_paths, single_path, centroid_path, centered_path, write_paths):
     """Iterates through a specific list of provided video paths."""
         
-    for file_path in video_paths:
-        filename = os.path.basename(file_path)
-        name_without_ext, ext = os.path.splitext(filename)
-        
-        # 1. Extract animal name (parent folder) and video name
-        animal_name = os.path.basename(os.path.dirname(file_path))
-        video_name = name_without_ext
-        
-        # 2. Get the date (FIX TO BE CURRENT DATE)
-        date_str = get_mp4_creation_date_ffmpeg(file_path)
-        date_part = date_str.split('T')[0] if "Error" not in date_str and "not found" not in date_str else "UnknownDate"
-        
-        # 3. Construct the nested folder structure: analysis_folder / animal_name / video_name
-        target_dir = os.path.join(analysis_folder, animal_name, video_name)
-        os.makedirs(target_dir, exist_ok=True)
-        
-        # 4. Construct the output file name: videoname_date.h5
-        new_labels_name = f"{video_name}_{date_part}.h5"
-        write_path = os.path.join(target_dir, new_labels_name)
-        
+    for i in range(len(video_paths)):
         # 5. Skip inference if this specific analysis file already exists
-        if os.path.exists(write_path):
-            print(f"\nSkipping video: {filename} (Analysis file already exists at {write_path})", flush=True)
+        if os.path.exists(write_paths[i]):
+            print(f"\nSkipping video: {video_paths[i]} (Analysis file already exists at {write_paths[i]})", flush=True)
             continue
             
-        print(f"\nFound video to analyze: {file_path}", flush=True)
-        print(f"  > Output labels will be saved to: {write_path}", flush=True)
+        print(f"\nFound video to analyze: {video_paths[i]}", flush=True)
+        print(f"  > Output labels will be saved to: {write_paths[i]}", flush=True)
 
         try:
-            print(f"  > Running inference...", flush=True)
-            RunInference(file_path, single_path, centroid_path, centered_path, write_path)
+            print("  > Running inference...", flush=True)
+            RunInference(video_paths[i], single_path, centroid_path, centered_path, write_paths[i])
         except Exception as e:
-            print(f"  > FAILED to analyze the video: {filename}. Error: {e}", flush=True)
+            print(f"  > FAILED to analyze the video: {video_paths[i]}. Error: {e}", flush=True)
 
 
 if __name__ == "__main__":
@@ -79,7 +65,9 @@ if __name__ == "__main__":
         sys.exit(1)
 
     config_path = sys.argv[1]
-    video_list = sys.argv[2:] 
+    num_vids = int(sys.argv[2])
+    video_list = sys.argv[2:2+num_vids+1]
+    write_path_list = sys.argv[2+num_vids+1:]
     
     with open(config_path, "r") as file:
         config = json.load(file)
