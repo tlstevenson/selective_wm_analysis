@@ -38,3 +38,20 @@ def get_mirrored_path(parent_folder, child_file, new_folder):
 def get_manual_path(analysis_folder, animal_num, video_file):
     filename = os.path.basename(video_file)
     return os.path.join(analysis_folder, str(animal_num), vid_to_h5_raw(filename)) #Replace _r.mp4 with _raw.h5
+
+def get_conf(conf_name):
+    home = Path.home()
+    config_path = os.path.join(home, "hanks_pose_config.json")
+    config = ics.load_or_create_config(config_path)
+    return os.path.join(config["disk_env_path"], "DISK", "conf", conf_name)
+
+def get_create_dataset_conf()
+    get_conf("conf_create_dataset.yaml")
+def get_proba_missing_files_conf(disk_env_path):
+    get_conf("conf_proba_missing_files.yaml")
+def get_impute_conf(disk_env_path):
+    get_conf("conf_impute.yaml")
+def get_missing_conf(disk_env_path):
+    get_conf("conf_missing.yaml")
+def get_test_conf(disk_env_path):
+    get_conf("conf_test.yaml")

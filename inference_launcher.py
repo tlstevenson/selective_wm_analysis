@@ -39,6 +39,14 @@ def run_inference(config_path, video_list, write_path_list):
     for i in range(len(video_list)):
         command = []
         if os.path.exists(single_model_path):
+            #print(conda_env_path)
+            #print(os.path.exists(conda_env_path))
+            #print(video_list[i])
+            #print(os.path.exists(video_list[i]))
+            #print(single_model_path)
+            #print(os.path.exists(single_model_path))
+            #print(write_path_list[i])
+            #print(os.path.exists(write_path_list[i]))
             command = ["conda", "run", "--no-capture-output", "-p", conda_env_path, "sleap-track", 
                        video_list[i], "-m", single_model_path, "-o", write_path_list[i]]
         elif os.path.exists(centered_model_path) and os.path.exists(centroid_model_path):
@@ -48,8 +56,7 @@ def run_inference(config_path, video_list, write_path_list):
         else:
             raise Exception("The path to the models does not exist. Please replace it with a valid path.")
         try:
-            
-            #Create a text file at the location with each video's name
+            """#Create a text file at the location with each video's name
             write_base_without_ext, ext = os.path.splitext(os.path.basename(write_path_list[i]))
             text_file_path = os.path.join(os.path.dirname(write_path_list[i]), f"{write_base_without_ext}.txt")
             # Ensure the output directory exists before FFmpeg tries to write to it
@@ -57,10 +64,10 @@ def run_inference(config_path, video_list, write_path_list):
             print(text_file_path)
             with open(text_file_path, "a") as f:
                 f.write("Now the file has more content!")
-            """#return True#TEMPORARY STOPGAP
-        
+            #return True#TEMPORARY STOPGAP"""
+            os.makedirs(os.path.dirname(write_path_list[i]), exist_ok=True)
             # Popen streams the output line-by-line
-            with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1) as process:
+            with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, shell=True) as process:
                 # Iterate through the output as it is generated and print to console
                 for line in process.stdout:
                     sys.stdout.write(line)
@@ -76,8 +83,7 @@ def run_inference(config_path, video_list, write_path_list):
             else:
                 print("=" * 50)
                 print(f"Inference failed with exit code {process.returncode}.")
-                return False"""
-                
+                return False
         except Exception as e:
             print(f"Failed to launch subprocess: {e}")
             return False
