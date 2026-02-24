@@ -7,13 +7,12 @@ Created on Mon Feb 23 23:02:26 2026
 
 import os
 import sys
-from ruamel.yaml import YAML
 import subprocess
 
 def create_dataset(config_path, dataset_name, h5_files, conda_env_path):
     #Edit config file
     #Run python script from the conda environment
-    update_disk_config(config_path, dataset_name, h5_files)
+    update_disk_dataset_config(config_path, dataset_name, h5_files)
     programs_folder = os.path.join(conda_env_path, "DISK", )
     command = ["conda", "run", "--no-capture-output", "-p", conda_env_path, 
                "python", "create_dataset.py"]
@@ -40,56 +39,38 @@ def create_dataset(config_path, dataset_name, h5_files, conda_env_path):
         print(f"Failed to launch subprocess: {e}")
         return False
 
-def update_disk_config(config_path, dataset_name, h5_files):
-    """
-    Updates a DISK .yaml template with specific parameters.
-    
-    Args:
-        config_path (str): Path to the existing .yaml file.
-        dataset_name (str): The name for the created dataset.
-        h5_files (list): A list of strings containing paths to .h5 analysis files.
-    """
-    yaml = YAML()
-    yaml.preserve_quotes = True
-    yaml.indent(mapping=2, sequence=4, offset=2)
-
-    # 1. Load the existing template
+def update_disk_dataset_config(config_path, dataset_name, h5_files):
+    """Updates the YAML template using standard string replacement."""
     if not os.path.exists(config_path):
-        raise FileNotFoundError(f"Config file not found at: {config_path}")
+        print(f"Error: {config_path} not found.")
+        return False
 
     with open(config_path, 'r') as f:
-        config_data = yaml.load(f)
+        lines = f.readlines()
 
-    # 2. Update values based on your requirements
-    config_data['dataset_name'] = dataset_name
-    
-    # Frequencies (No downsampling)
-    config_data['original_freq'] = 30
-    config_data['subsampling_freq'] = 30
-    
-    # Length and Stride (Length 120, Stride 60)
-    length = 120
-    config_data['length'] = length
-    config_data['stride'] = length // 2
-    
-    # File settings
-    config_data['file_type'] = 'sleap_h5'
-    
-    # Update input files list
-    # Ensure it's a list even if a single string is passed
-    if isinstance(h5_files, str):
-        h5_files = [h5_files]
-    config_data['input_files'] = h5_files
+    # Format the list of files for YAML: ['path1', 'path2']
+    h5_list_str = str([os.path.abspath(f) for f in h5_files])
 
-    # 3. Write the changes back to the file
+    new_lines = []
+    for line in lines:
+        # Match keys at the start of the line and replace their values
+        if line.strip().startswith('dataset_name:'):
+            line = f'dataset_name: {dataset_name}\n'
+        elif line.strip().startswith('original_freq:'):
+            line = 'original_freq: 30\n'
+        elif line.strip().startswith('subsampling_freq:'):
+            line = 'subsampling_freq: 30\n'
+        elif line.strip().startswith('length:'):
+            line = 'length: 120\n'
+        elif line.strip().startswith('stride:'):
+            line = 'stride: 60\n'
+        elif line.strip().startswith('file_type:'):
+            line = 'file_type: sleap_h5\n'
+        elif line.strip().startswith('input_files:') or line.strip().startswith('#input_files:'):
+            line = f'input_files: {h5_list_str}\n'
+        
+        new_lines.append(line)
+
     with open(config_path, 'w') as f:
-        yaml.dump(config_data, f)
-    
-    print(f"Successfully updated {config_path} for dataset: {dataset_name}")
-
-# --- Example Usage ---
-# analysis_files = [
-#     '/path/to/video1.analysis.h5',
-#     '/path/to/video2.analysis.h5'
-# ]
-# update_disk_config("config.yaml", "my_new_experiment", analysis_files)
+        f.writelines(new_lines)
+    return True
