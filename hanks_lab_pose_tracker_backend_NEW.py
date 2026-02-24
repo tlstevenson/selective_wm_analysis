@@ -14,10 +14,9 @@ import inference_config_setup as ics
 import sleap_vid_reformat as svr
 import inference_launcher as slp_launcher
 import path_manager_NEW as pm
+import disk_dataset_creator_NEW as ddc
 #%% Create a config file if necessary or extract old one
-home = Path.home()
-config_path = os.path.join(home, "hanks_pose_config.json")
-config = ics.load_or_create_config(config_path)
+config = ics.load_or_create_config()
 
 #processed_vids_folder: any folder
 #analysis_folder: any folder
@@ -26,6 +25,9 @@ config = ics.load_or_create_config(config_path)
 #single_model_path: The path to the folder containing the full sleap model
 #centroid_model_path: Same as above (centroid)
 #centered_model_path: Same as above (centered_instance)
+
+#TODO: ADD THESE TO THE INITIATION OF THE JSON
+#disk_env_path: The location of the DISK dataset configuration
 
 #%% Generate the write path function
 print(config)
@@ -59,4 +61,9 @@ write_paths = []
 for i in range(len(curr_format_vids)):
     write_paths.append(pm.get_mirrored_path(config["processed_vids_folder"], curr_format_vids[i], config["analysis_folder"]))
     print(write_paths[i])
-slp_launcher.run_inference(config_path, curr_format_vids, write_paths)
+slp_launcher.run_inference(curr_format_vids, write_paths)
+
+#%% Create dataset with analysis files
+analysis_files = write_paths #temporary until you get to choose
+dataset_name = "Movie1_199"
+ddc.create_dataset(pm.get_create_dataset_conf(), dataset_name, analysis_files, config["disk_env_path"])

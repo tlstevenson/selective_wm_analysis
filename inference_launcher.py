@@ -7,27 +7,18 @@ Created on Thu Feb 19 20:14:44 2026
 """
 
 import subprocess
-import json
 import sys
 import os
+import inference_config_setup as ics
 
-def run_inference(config_path, video_list, write_path_list):
+def run_inference(video_list, write_path_list):
     """Launches the SLEAP inference pipeline, streaming real-time feedback to the console."""
     if not video_list:
         print("No videos provided for inference. Skipping.")
         return False
 
-    with open(config_path, 'r') as file:
-        config = json.load(file)
-        
+    config = ics.load_or_create_config()        
     conda_env_path = config.get("conda_env_path")
-    script_path = config.get("inference_script_path")
-
-    # Command structure: conda run -p <env> python -u <script> <config> <video1> <video2> ...
-    command = [
-        "conda", "run", "-p", conda_env_path, 
-        "python", "-u", script_path, config_path, str(len(video_list))
-    ] + video_list + write_path_list
 
     print(f"\nLaunching SLEAP inference on {len(video_list)} videos...\n")
     print("=" * 50)

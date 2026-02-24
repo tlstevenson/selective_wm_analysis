@@ -6,6 +6,7 @@ Created on Mon Feb 23 19:09:21 2026
 @author: alex
 """
 import os
+import inference_config_setup as ics
 
 def vid_to_h5_raw(path):
     path_without_ext, ext = os.path.splitext(path)
@@ -40,12 +41,10 @@ def get_manual_path(analysis_folder, animal_num, video_file):
     return os.path.join(analysis_folder, str(animal_num), vid_to_h5_raw(filename)) #Replace _r.mp4 with _raw.h5
 
 def get_conf(conf_name):
-    home = Path.home()
-    config_path = os.path.join(home, "hanks_pose_config.json")
-    config = ics.load_or_create_config(config_path)
+    config = ics.load_or_create_config()
     return os.path.join(config["disk_env_path"], "DISK", "conf", conf_name)
 
-def get_create_dataset_conf()
+def get_create_dataset_conf():
     get_conf("conf_create_dataset.yaml")
 def get_proba_missing_files_conf(disk_env_path):
     get_conf("conf_proba_missing_files.yaml")
