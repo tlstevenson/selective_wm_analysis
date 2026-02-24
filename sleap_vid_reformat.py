@@ -50,14 +50,15 @@ def process_video(file_path, processed_vids_folder, animal_num=None):
     else:
         target_file_name = f"{name_without_ext}_r{ext}"
 
-    output_dir = os.path.join(processed_vids_folder, str(animal_num))
-    output_file = os.path.join(output_dir, target_file_name)
+    output_dir = os.path.join(processed_vids_folder, str(animal_num), target_file_name)
+    print(output_dir)
 
     # Call our helper function to see if the video is already processed
-    if check_processed_vid_exists(file_path, animal_num):
+    if check_processed_vid_exists(file_path, processed_vids_folder, animal_num=animal_num):
         print(f"Skipping video: {filename} (processed version already exists)")
-        return output_file # Return the path since it already exists!
-
+        return output_dir # Return the path since it already exists!
+    
+    print(output_dir)
     # Ensure the output directory exists before FFmpeg tries to write to it
     os.makedirs(output_dir, exist_ok=True)
 
@@ -70,15 +71,15 @@ def process_video(file_path, processed_vids_folder, animal_num=None):
         '-pix_fmt', 'yuv420p',
         '-preset', 'superfast',
         '-crf', '23',
-        output_file
+         output_dir
     ]
 
     print(f"Processing video: {filename}")
     try:
         # Run the FFmpeg command
         subprocess.run(command, check=True)
-        print(f"Successfully processed {filename} -> {output_file}")
-        return output_file # Return the path for the newly created video!
+        print(f"Successfully processed {filename} -> {output_dir}")
+        return output_dir # Return the path for the newly created video!
         
     except subprocess.CalledProcessError as e:
         print(f"Error processing {filename}: {e}")

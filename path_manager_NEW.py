@@ -9,6 +9,8 @@ import os
 
 def vid_to_h5_raw(path):
     path_without_ext, ext = os.path.splitext(path)
+    print(f"Mirrored path naked: {path_without_ext}")
+    print(f"Final path h5: {path_without_ext[:-2]}_raw.h5")
     return f"{path_without_ext[:-2]}_raw.h5" #Replace _r.mp4 with _raw.h5
 
 def h5_raw_to_any(path, ending):
@@ -21,10 +23,12 @@ def get_mirrored_path(parent_folder, child_file, new_folder):
     
     try:
         # Extract the relative path (e.g., 'subfolder/file.txt')
-        vid_rel_path_in_dir = os.path.relpath(parent_folder, child_file)
+        vid_rel_path_in_dir = os.path.relpath(child_file, parent_folder)
+        print(f"Relative path: {vid_rel_path_in_dir}")
         
         # Append the relative path to the new destination folder
         mirrored_path = os.path.join(new_folder, vid_rel_path_in_dir)
+        print(f"Mirrored vid path: {mirrored_path}")
         return vid_to_h5_raw(mirrored_path) #Replace _r.mp4 with _raw.h5
         
     except ValueError:
