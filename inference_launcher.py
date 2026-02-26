@@ -38,43 +38,44 @@ def run_inference(video_list, write_path_list):
             #print(os.path.exists(single_model_path))
             #print(write_path_list[i])
             #print(os.path.exists(write_path_list[i]))
-            command = ["conda", "run", "--no-capture-output", "-p", conda_env_path, "sleap-track", 
+            command = ["conda.bat", "run", "--no-capture-output", "-p", conda_env_path, "sleap-track", 
                        video_list[i], "-m", single_model_path, "-o", write_path_list[i]]
         elif os.path.exists(centered_model_path) and os.path.exists(centroid_model_path):
-            command = ["conda", "run", "--no-capture-output", "-p", conda_env_path, "sleap-track", 
+            command = ["conda.bat", "run", "--no-capture-output", "-p", conda_env_path, "sleap-track", 
                        video_list[i], "-m", centroid_model_path, 
                        "-m", centered_model_path, "-o", write_path_list[i]]
         else:
             raise Exception("The path to the models does not exist. Please replace it with a valid path.")
-        try:
-            """#Create a text file at the location with each video's name
-            write_base_without_ext, ext = os.path.splitext(os.path.basename(write_path_list[i]))
-            text_file_path = os.path.join(os.path.dirname(write_path_list[i]), f"{write_base_without_ext}.txt")
-            # Ensure the output directory exists before FFmpeg tries to write to it
-            os.makedirs(os.path.dirname(text_file_path), exist_ok=True)
-            print(text_file_path)
-            with open(text_file_path, "a") as f:
-                f.write("Now the file has more content!")
-            #return True#TEMPORARY STOPGAP"""
-            os.makedirs(os.path.dirname(write_path_list[i]), exist_ok=True)
-            # Popen streams the output line-by-line
-            with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, shell=True) as process:
-                # Iterate through the output as it is generated and print to console
-                for line in process.stdout:
-                    sys.stdout.write(line)
-                    sys.stdout.flush()
-                    
-            # Ensure the process is fully complete before checking the exit code
-            process.wait()
-                    
-            if process.returncode == 0:
-                print("=" * 50)
-                print("Inference completed successfully!")
-                return True
-            else:
-                print("=" * 50)
-                print(f"Inference failed with exit code {process.returncode}.")
+        #TEMPORARY FOR TESTING: only runs it if it doesn't exist
+        if not os.path.exists(write_path_list[i]):
+            try:
+                """#Create a text file at the location with each video's name
+                write_base_without_ext, ext = os.path.splitext(os.path.basename(write_path_list[i]))
+                text_file_path = os.path.join(os.path.dirname(write_path_list[i]), f"{write_base_without_ext}.txt")
+                # Ensure the output directory exists before FFmpeg tries to write to it
+                os.makedirs(os.path.dirname(text_file_path), exist_ok=True)
+                print(text_file_path)
+                with open(text_file_path, "a") as f:
+                    f.write("Now the file has more content!")
+                #return True#TEMPORARY STOPGAP"""
+                os.makedirs(os.path.dirname(write_path_list[i]), exist_ok=True)
+                # Popen streams the output line-by-line
+                process = subprocess.run(command)
+                """with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, shell=True) as process:
+                    # Iterate through the output as it is generated and print to console
+                    for line in process.stdout:
+                        sys.stdout.write(line)
+                        sys.stdout.flush()
+                    # Ensure the process is fully complete before checking the exit code
+                    process.wait()"""
+                if process.returncode == 0:
+                    print("=" * 50)
+                    print("Inference completed successfully!")
+                    return True
+                else:
+                    print("=" * 50)
+                    print(f"Inference failed with exit code {process.returncode}.")
+                    return False
+            except Exception as e:
+                print(f"Failed to launch subprocess: {e}")
                 return False
-        except Exception as e:
-            print(f"Failed to launch subprocess: {e}")
-            return False

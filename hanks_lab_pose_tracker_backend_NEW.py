@@ -33,19 +33,22 @@ config = ics.load_or_create_config()
 #disk_files_path: The location of the DISK repo
 
 #TODO: conda_env_path needs to be renamed to sleap_env_path everywhere
-
-#%% Generate the write path function
-print(config)
-#Script to check that the current places exist and set or create files that don't
-#What if you don't have rat number? Allow it to give it a name
-#What if the rat number/name doesn't exist in processed videos folder (Auto makedir)
-
-#What if you want to override file or parent directory name?
-
-
 #%%Select new videos
+
 curr_vids = [r"C:\\Users\hankslab\SLEAP\AlexSleap\CableVideos\Videos\Original\199\mov_0001.mp4",
-             r"C:\\Users\hankslab\SLEAP\AlexSleap\CableVideos\Videos\Original\199\mov_0002.mp4"]
+             r"C:\\Users\hankslab\SLEAP\AlexSleap\CableVideos\Videos\Original\199\mov_0002.mp4",
+             r"C:\\Users\hankslab\SLEAP\AlexSleap\CableVideos\Videos\Original\199\mov_0003.mp4",
+             r"C:\\Users\hankslab\SLEAP\AlexSleap\CableVideos\Videos\Original\199\mov_0004.mp4",
+             r"C:\\Users\hankslab\SLEAP\AlexSleap\CableVideos\Videos\Original\199\mov_0005.mp4",
+             r"C:\\Users\hankslab\SLEAP\AlexSleap\CableVideos\Videos\Original\199\mov_0006.mp4",
+             r"C:\\Users\hankslab\SLEAP\AlexSleap\CableVideos\Videos\Original\199\mov_0007.mp4",
+             r"C:\\Users\hankslab\SLEAP\AlexSleap\CableVideos\Videos\Original\199\mov_0008.mp4",
+             r"C:\\Users\hankslab\SLEAP\AlexSleap\CableVideos\Videos\Original\199\mov_0009.mp4",
+             r"C:\\Users\hankslab\SLEAP\AlexSleap\CableVideos\Videos\Original\199\mov_0010.mp4",
+             r"C:\\Users\hankslab\SLEAP\AlexSleap\CableVideos\Videos\Original\199\mov_0011.mp4",
+             r"C:\\Users\hankslab\SLEAP\AlexSleap\CableVideos\Videos\Original\199\mov_0012.mp4",
+             r"C:\\Users\hankslab\SLEAP\AlexSleap\CableVideos\Videos\Original\199\mov_0013.mp4",
+             r"C:\\Users\hankslab\SLEAP\AlexSleap\CableVideos\Videos\Original\199\mov_0014.mp4"]
 #Pop up a tkinter window to select all these until satistfied
 
 #Format all videos
@@ -60,40 +63,49 @@ for vid in curr_vids:
                     "/Users/alex/Documents/HanksLab/HanksLabVideos/ReformattedVideos/199/mov_0002_r.mp4"]
 print(curr_format_vids)"""
 #%% Inference Selections
+#Set up the write paths
 #Here a tkinter window would have the option of changing to new one + updating json
 #Here a tkinter button would trigger the start instead of having it start automatically
 write_paths = []
 for i in range(len(curr_format_vids)):
     write_paths.append(pm.get_mirrored_path_slp(config["processed_vids_folder"], curr_format_vids[i], config["analysis_folder"]))
     print(write_paths[i])
+#%% Command to run inference on all files
 slp_launcher.run_inference(curr_format_vids, write_paths)
 
 #%%
-#Convert slp files to h5 files in the same folder (TODO: Consider moving this out of here)
+analysis_files = [] #Store all valid reformatted analysis files
+#Convert slp files to analysis h5 files in the same folder (TODO: Consider moving this out of here)
 for file in write_paths:
-    command = ["conda", "run", "--no-capture-output", "-p", config["conda_env_path"], 
-               "sleap-convert", file, "-o", pm.slp_to_h5(file), "--format", "analysis"]
+    command = ["conda.bat", "run", "--no-capture-output", "-p", config["sleap_io_env_path"], 
+               "python", os.path.join(os.path.dirname(os.path.abspath(__file__)),"assign_track_NEW.py"), file, pm.slp_to_h5(file)]
+    #command = ["conda.bat", "run", "--no-capture-output", "-p", config["sleap_io_env_path"], 
+    #           "conda", "list", "sleap-io"]
     try:
-        # Popen streams the output line-by-line
-        with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, shell=True) as process:
-            # Iterate through the output as it is generated and print to console
-            for line in process.stdout:
-                sys.stdout.write(line)
-                sys.stdout.flush()
-                
-        # Ensure the process is fully complete before checking the exit code
-        process.wait()
-                
+        process = subprocess.run(
+        command,
+        capture_output=True,
+        text=True,
+        check=True)
         if process.returncode == 0:
             print("=" * 50)
             print("Inference completed successfully!")
+            analysis_files.append(pm.slp_to_h5(file))
         else:
             print("=" * 50)
             print(f"Inference failed with exit code {process.returncode}.")
+            print(process.stdout)
+            print(process.stderr)
     except Exception as e:
         print(f"Failed to launch subprocess: {e}")
+        
+#%%temporary: Test if the formatting worked
+import h5py
+with h5py.File('C:/Users/hankslab/Analysis/199/mov_0002_raw.h5', 'r') as f:
+    print("Keys in H5 file:", list(f.keys()))
+
 #%% Create dataset with analysis files
-analysis_files = write_paths[0] #temporary until you get to choose
-dataset_name = "Movie1_199"
+dataset_name = "Movie1_2_199"
+create_skeleton = "y\n" #"n\n"
 print(pm.get_create_dataset_conf())
-ddc.create_dataset(pm.get_create_dataset_conf(), dataset_name, analysis_files, config["disk_env_path"])
+ddc.create_dataset(pm.get_create_dataset_conf(), dataset_name, analysis_files, config["disk_env_path"], "y\n")
