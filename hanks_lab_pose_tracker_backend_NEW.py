@@ -106,6 +106,7 @@ with h5py.File('C:/Users/hankslab/Analysis/199/mov_0002_raw.h5', 'r') as f:
 
 #%% Create dataset with analysis files
 dataset_name = "Movie1_2_199"
-create_skeleton = "y\n" #"n\n"
 print(pm.get_create_dataset_conf())
-ddc.create_dataset(pm.get_create_dataset_conf(), dataset_name, analysis_files, config["disk_env_path"], "y\n")
+ddc.create_dataset(pm.get_create_dataset_conf(), dataset_name, analysis_files, config["disk_env_path"])
+#%%
+ddc.create_skeleton(dataset_name, analysis_files)
