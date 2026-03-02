@@ -240,3 +240,141 @@ def build_skeleton_from_h5(h5_path, outputdir):
         
     print(f"\n--- WRITING PHASE COMPLETE ---")
     print(f"Successfully generated: {skeleton_file_path}")
+    
+def run_proba_missing_files(dataset_name, disk_env_path):
+    programs_folder = pm.get_disk_scripts_parent_dir()
+    command = ["conda.bat", "run", "--no-capture-output", "-p", disk_env_path, 
+               "python", "create_proba_missing_files.py", f"dataset_name={dataset_name}"]
+    try:
+        # Popen streams the output line-by-line
+        with subprocess.Popen(command, stdin=subprocess.PIPE, 
+                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT, 
+                              text=True, bufsize=1, 
+                              shell=True, cwd=programs_folder) as process:
+            """try:
+                process.stdin.write("n\n")
+                process.stdin.flush()
+            except Exception as e:
+                print(f"Could not send input: {e}")"""
+            #stdout, stderr = process.communicate(input=create_skeleton)
+            # Iterate through the output as it is generated and print to console
+            for line in process.stdout:
+                sys.stdout.write(line)
+                sys.stdout.flush()
+            
+            # Ensure the process is fully complete before checking the exit code
+            process.wait()
+            """
+            process = subprocess.run(command, input = "y\n", 
+                                     text=True, capture_output=True,
+                                     check=True, cwd=programs_folder)"""
+            if process.returncode == 0:
+                print("=" * 50)
+                print("Inference completed successfully!")
+                return True
+            else:
+                print("=" * 50)
+                print(f"Inference failed with exit code {process.returncode}.")
+                return False
+    except Exception as e:
+        print(f"Failed to launch subprocess: {e}")
+        return False
+
+def update_training_config(config_path, dataset_name):
+    """
+    Updates the DISK training config file for a new dataset while 
+    preserving all comments and YAML formatting.
+    """
+    with open(config_path, 'r') as f:
+        lines = f.readlines()
+
+    with open(config_path, 'w') as f:
+        in_dataset_block = False
+        
+        for line in lines:
+            stripped = line.strip()
+            
+            # Preserve original indentation
+            indent = line[:len(line) - len(line.lstrip())]
+            
+            # 1. Update the hydra run directory
+            if stripped.startswith("dir:"):
+                # You requested 'disk/disk/models/dataset_name'
+                # If you run into path issues, change this to an absolute path 
+                # e.g., f"{indent}dir: C:/Users/hankslab/repos/DISK/DISK/models/{dataset_name}\n"
+                os.makedirs(os.path.join(pm.get_disk_scripts_parent_dir(), "models"), exist_ok=True)
+                f.write(f"{indent}dir: {os.path.join(pm.get_disk_scripts_parent_dir(), 'models', dataset_name)}\n")
+                continue
+            
+            # 2. Track when we enter the 'dataset:' block to safely change 'name:'
+            if stripped.startswith("dataset:"):
+                in_dataset_block = True
+                f.write(line)
+                continue
+                
+            if in_dataset_block and stripped.startswith("name:"):
+                f.write(f"{indent}name: {dataset_name}\n")
+                in_dataset_block = False  # Reset so we don't overwrite other 'name:' keys later
+                continue
+                
+            # 3. Update the proba missing CSV file paths
+            # DISK looks for these inside the 'datasets' folder automatically, 
+            # so we just prepend the dataset_name folder.
+            if stripped.endswith("proba_missing_set_keypoints.csv"):
+                f.write(f"{indent}- {dataset_name}/proba_missing.csv\n")
+                continue
+                
+            if stripped.endswith("proba_missing_length_set_keypoints.csv"):
+                f.write(f"{indent}- {dataset_name}/proba_missing_length.csv\n")
+                continue
+            
+            # change the config so that the batch size is manageable (32 crashes)
+            if stripped.startswith("batch_size:"):
+                f.write(f"{indent}batch_size: 8\n")
+                continue
+
+            # If it's not one of our target lines, write it exactly as it was
+            f.write(line)
+
+    print(f"Updated training config for dataset: {dataset_name}")
+
+def train_disk_model():
+    # 1. Setup paths
+    disk_dir = pm.get_disk_scripts_parent_dir()
+    disk_env_path = pm.get_disk_conda_path()
+    
+    # 2. Build the exact command you requested
+    command = ["conda.bat", "run", "--no-capture-output", "-p", disk_env_path, 
+               "python", "main_fillmissing.py",
+               "hydra.job.chdir=True"]
+    
+    print("\n--- Starting Neural Network Training ---")
+    print("Reading output directory directly from conf_create_dataset.yaml...")
+    
+    try:
+        # 3. Execute the training
+        # Note: We run from the DISK root (disk_dir) so Python can find main_fillmissing.py
+        # hydra.job.chdir=True will automatically handle putting the results in the right folder.
+        result = subprocess.run(
+            command,
+            cwd=disk_dir, 
+            capture_output=True, 
+            text=True,
+            check=True
+        )
+        
+        print("Success! Training completed.")
+        
+        # If you ever need to debug the training loop, uncomment this:
+        # print(result.stdout[-1000:]) 
+        
+    except subprocess.CalledProcessError as e:
+        print(f"CRITICAL ERROR: Training failed with exit code {e.returncode}")
+        print(f"STDERR:\n{e.stderr}")
+
+# --- Execution ---
+# Replace with the actual path to this config file
+config_file_path = r"C:\Users\hankslab\repos\DISK\DISK\conf\main_fillmissing.yaml" 
+my_dataset = "Movie1_2_199"
+
+#update_training_config(config_file_path, my_dataset)

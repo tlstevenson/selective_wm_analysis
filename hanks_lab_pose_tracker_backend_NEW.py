@@ -108,5 +108,13 @@ with h5py.File('C:/Users/hankslab/Analysis/199/mov_0002_raw.h5', 'r') as f:
 dataset_name = "Movie1_2_199"
 print(pm.get_create_dataset_conf())
 ddc.create_dataset(pm.get_create_dataset_conf(), dataset_name, analysis_files, config["disk_env_path"])
-#%%
+#%% create the skeleton
 ddc.create_skeleton(dataset_name, analysis_files)
+
+#%%create proba missing_files
+ddc.run_proba_missing_files(dataset_name, config["disk_env_path"])
+
+#%%change config and run model training
+ddc.update_training_config(pm.get_missing_conf(), dataset_name)
+#%%
+ddc.train_disk_model()

@@ -56,18 +56,26 @@ def get_conf(conf_name):
 
 def get_create_dataset_conf():
     return get_conf("conf_create_dataset.yaml")
-def get_proba_missing_files_conf(disk_env_path):
+def get_proba_missing_files_conf():
     return get_conf("conf_proba_missing_files.yaml")
-def get_impute_conf(disk_env_path):
+def get_impute_conf():
     return get_conf("conf_impute.yaml")
-def get_missing_conf(disk_env_path):
+def get_missing_conf():
     return get_conf("conf_missing.yaml")
-def get_test_conf(disk_env_path):
+def get_test_conf():
     return get_conf("conf_test.yaml")
 #%%
 def get_disk_scripts_parent_dir():
     config = ics.load_or_create_config()
     path = os.path.join(config["disk_files_path"], "DISK")
+    if os.path.exists(path):
+        return path
+    else:
+        raise Exception(f"Path {path} of the config file does not exist.")
+        
+def get_disk_conda_path():
+    config = ics.load_or_create_config()
+    path = config["disk_env_path"]
     if os.path.exists(path):
         return path
     else:
