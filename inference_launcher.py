@@ -71,11 +71,11 @@ def run_inference(video_list, write_path_list):
                 if process.returncode == 0:
                     print("=" * 50)
                     print("Inference completed successfully!")
-                    return True
                 else:
                     print("=" * 50)
                     print(f"Inference failed with exit code {process.returncode}.")
-                    return False
             except Exception as e:
                 print(f"Failed to launch subprocess: {e}")
                 return False
+    print("\nAll videos processed!")
+    return True
