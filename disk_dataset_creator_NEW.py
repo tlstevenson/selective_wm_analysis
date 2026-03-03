@@ -4,6 +4,7 @@ Created on Mon Feb 23 23:02:26 2026
 
 @author: cns-th-lab
 """
+#%%Import statements
 
 import os
 import sys
@@ -12,6 +13,8 @@ import path_manager_NEW as pm
 import h5py
 import json
 
+
+#%%Dataset creation
 def create_dataset(config_path, dataset_name, h5_files, conda_env_path):
     #Edit config file
     #Run python script from the conda environment
@@ -97,42 +100,6 @@ def update_disk_dataset_config(config_path, dataset_name, h5_files):
     with open(config_path, 'w') as f:
         f.writelines(new_lines)
     return True
-
-"""def generate_disk_skeleton(h5_path, dataset_name):
-    ""
-    Reads node names and edges from a SLEAP H5 file and writes a DISK skeleton YAML.
-    ""
-    
-    output_yaml_path = os.path.join(pm.get_disk_scripts_parent_dir(), 'datasets', dataset_name)
-    
-    if not os.path.exists(h5_path):
-        print(f"Error: File {h5_path} not found.")
-        return
-
-    with h5py.File(h5_path, 'r') as f:
-        # 1. Get Node Names
-        nodes = [n.decode() if isinstance(n, bytes) else n for n in f['node_names'][:]]
-        
-        # 2. Get Edge Indices (the links)
-        if 'edge_inds' not in f:
-            print("Error: No 'edge_inds' found in H5. Did you define a skeleton in SLEAP?")
-            return
-        
-        edges = f['edge_inds'][:]
-        
-    # 3. Format into DISK's expected YAML structure
-    # We will put everything in one group called 'body' for simplicity
-    yaml_content = "skeleton:\n  body:\n"
-    for edge in edges:
-        yaml_content += f"    - [{edge[0]}, {edge[1]}]\n"
-
-    # 4. Write the file
-    with open(output_yaml_path, 'w') as y_file:
-        y_file.write(yaml_content)
-    
-    print(f"Successfully created skeleton file at: {output_yaml_path}")
-    print(f"Total nodes: {len(nodes)}")
-    print(f"Total links: {len(edges)}")"""
     
 def build_skeleton_from_h5(h5_path, outputdir):
     # Setup paths
@@ -240,7 +207,7 @@ def build_skeleton_from_h5(h5_path, outputdir):
         
     print(f"\n--- WRITING PHASE COMPLETE ---")
     print(f"Successfully generated: {skeleton_file_path}")
-    
+
 def run_proba_missing_files(dataset_name, disk_env_path):
     programs_folder = pm.get_disk_scripts_parent_dir()
     command = ["conda.bat", "run", "--no-capture-output", "-p", disk_env_path, 
@@ -279,6 +246,8 @@ def run_proba_missing_files(dataset_name, disk_env_path):
     except Exception as e:
         print(f"Failed to launch subprocess: {e}")
         return False
+
+#%%Training from the dataset
 
 def update_training_config(config_path, dataset_name):
     """
@@ -372,9 +341,256 @@ def train_disk_model():
         print(f"CRITICAL ERROR: Training failed with exit code {e.returncode}")
         print(f"STDERR:\n{e.stderr}")
 
-# --- Execution ---
-# Replace with the actual path to this config file
-config_file_path = r"C:\Users\hankslab\repos\DISK\DISK\conf\main_fillmissing.yaml" 
-my_dataset = "Movie1_2_199"
+#%%Quantify model performance
+def modify_test_config(
+    config_path, 
+    dataset_name, 
+    checkpoints, 
+    output_dir="outputs/test_results",
+    stride=None,
+    n_plots=10,
+    original_coordinates=True,
+    suffix="evaluation",
+    name_items=None,
+    n_repeat=1,
+    batch_size=16
+):
+    """
+    Dynamically updates conf_test.yaml with the specified testing parameters.
+    """
+    with open(config_path, 'r') as f:
+        lines = f.readlines()
 
-#update_training_config(config_file_path, my_dataset)
+    with open(config_path, 'w') as f:
+        in_dataset_block = False
+        skip_list_mode = False
+        
+        for line in lines:
+            stripped = line.strip()
+            indent = line[:len(line) - len(line.lstrip())]
+            
+            # --- Handle List Overwriting ---
+            # If we just wrote a new list, skip the old lines that started with "-"
+            if skip_list_mode:
+                if stripped.startswith("-") or not stripped:
+                    continue
+                else:
+                    skip_list_mode = False # We hit a new standard key, resume normal parsing
+
+            # --- Update Standard Keys ---
+            if stripped.startswith("dir:") and "outputs" in line:
+                f.write(f"{indent}dir: {output_dir}\n")
+                continue
+                
+            if stripped.startswith("dataset:"):
+                in_dataset_block = True
+                f.write(line)
+                continue
+                
+            if in_dataset_block and stripped.startswith("name:"):
+                f.write(f"{indent}name: {dataset_name}\n")
+                in_dataset_block = False 
+                continue
+                
+            if stripped.startswith("stride:") and stride is not None:
+                f.write(f"{indent}stride: {stride}\n")
+                continue
+
+            if stripped.startswith("batch_size:") and batch_size is not None:
+                f.write(f"{indent}batch_size: {batch_size}\n")
+                continue
+
+            if stripped.startswith("n_repeat:") and n_repeat is not None:
+                f.write(f"{indent}n_repeat: {n_repeat}\n")
+                continue
+
+            if stripped.startswith("n_plots:") and n_plots is not None:
+                f.write(f"{indent}n_plots: {n_plots}\n")
+                continue
+
+            if stripped.startswith("original_coordinates:") and original_coordinates is not None:
+                # YAML prefers lowercase true/false
+                f.write(f"{indent}original_coordinates: {str(original_coordinates).lower()}\n")
+                continue
+
+            if stripped.startswith("suffix:") and suffix is not None:
+                f.write(f"{indent}suffix: '{suffix}'\n")
+                continue
+
+            # --- Update CSV paths ---
+            if stripped.startswith("-") and "proba_missing" in stripped:
+                if "length" in stripped:
+                    f.write(f"{indent}- {dataset_name}/proba_missing_length.csv\n")
+                else:
+                    f.write(f"{indent}- {dataset_name}/proba_missing.csv\n")
+                continue
+
+            # --- Update Checkpoints List ---
+            if stripped.startswith("checkpoints:"):
+                f.write(f"{indent}checkpoints:\n")
+                list_indent = indent + "  "
+                for cp in checkpoints:
+                    f.write(f"{list_indent}- {cp}\n")
+                skip_list_mode = True
+                continue
+
+            # --- Update Name Items (Nested List) ---
+            if stripped.startswith("name_items:") and name_items is not None:
+                f.write(f"{indent}name_items:\n")
+                list_indent = indent + "  "
+                for item_group in name_items:
+                    # Write the first item with the double dash: "- - network"
+                    f.write(f"{list_indent}- - {item_group[0]}\n")
+                    # Write subsequent items aligned properly: "  - size_layer"
+                    for item in item_group[1:]:
+                        f.write(f"{list_indent}  - {item}\n")
+                skip_list_mode = True
+                continue
+
+            # Write any unmodified lines exactly as they were
+            f.write(line)
+
+    print(f"Updated test config for dataset: {dataset_name}")
+
+def run_test_fillmissing():
+    """
+    Executes the DISK test_fillmissing.py script.
+    """
+    disk_dir = pm.get_disk_scripts_parent_dir()
+    disk_env_path = pm.get_disk_conda_path()
+    
+    command = ["conda.bat", "run", "--no-capture-output", "-p", disk_env_path, 
+               "python", "test_fillmissing.py", "hydra.job.chdir=True"]
+    
+    print("\n--- Starting Model Evaluation (Testing) ---")
+    
+    try:
+        # Run from the DISK root directory
+        result = subprocess.run(
+            command,
+            cwd=disk_dir, 
+            capture_output=True, 
+            text=True,
+            check=True
+        )
+        
+        print("Success! Testing completed.")
+        print(result.stdout[-1000:]) # Uncomment to see the evaluation metrics in console
+        
+    except subprocess.CalledProcessError as e:
+        print(f"CRITICAL ERROR: Testing failed with exit code {e.returncode}")
+        print(f"STDERR:\n{e.stderr}")
+        
+#%%Imputation functions
+
+def modify_impute_config(
+    config_path, 
+    dataset_name, 
+    checkpoint_path, 
+    output_dir="outputs/impute_results",
+    n_plots=5,
+    save_dataset=True,
+    name_items=None
+):
+    """
+    Dynamically updates conf_impute.yaml with the specified imputation parameters.
+    """
+    with open(config_path, 'r') as f:
+        lines = f.readlines()
+
+    with open(config_path, 'w') as f:
+        in_dataset_block = False
+        in_evaluate_block = False
+        skip_list_mode = False
+        
+        for line in lines:
+            stripped = line.strip()
+            indent = line[:len(line) - len(line.lstrip())]
+            
+            # --- Handle List Overwriting ---
+            if skip_list_mode:
+                if stripped.startswith("-") or not stripped:
+                    continue
+                else:
+                    skip_list_mode = False
+
+            # --- Update Standard Keys ---
+            if stripped.startswith("dir:") and "outputs" in line:
+                f.write(f"{indent}dir: {output_dir}\n")
+                continue
+                
+            if stripped.startswith("dataset:"):
+                in_dataset_block = True
+                f.write(line)
+                continue
+                
+            if in_dataset_block and stripped.startswith("name:"):
+                f.write(f"{indent}name: {dataset_name}\n")
+                in_dataset_block = False 
+                continue
+
+            if stripped.startswith("evaluate:"):
+                in_evaluate_block = True
+                f.write(line)
+                continue
+
+            # Checkpoint for imputation is a single string, not a list
+            if in_evaluate_block and stripped.startswith("checkpoint:"):
+                f.write(f"{indent}checkpoint: {checkpoint_path}\n")
+                continue
+
+            if stripped.startswith("n_plots:") and n_plots is not None:
+                f.write(f"{indent}n_plots: {n_plots}\n")
+                continue
+
+            if stripped.startswith("save_dataset:") and save_dataset is not None:
+                f.write(f"{indent}save_dataset: {str(save_dataset).lower()}\n")
+                continue
+
+            # --- Update Name Items (Nested List) ---
+            if stripped.startswith("name_items:") and name_items is not None:
+                f.write(f"{indent}name_items:\n")
+                list_indent = indent + "  "
+                for item_group in name_items:
+                    f.write(f"{list_indent}- - {item_group[0]}\n")
+                    for item in item_group[1:]:
+                        f.write(f"{list_indent}  - {item}\n")
+                skip_list_mode = True
+                continue
+
+            # Write unmodified lines exactly as they were
+            f.write(line)
+
+    print(f"Updated imputation config for dataset: {dataset_name}")
+    
+def run_impute_dataset():
+    """
+    Executes the DISK impute_dataset.py script to fill the holes in the H5 files.
+    """
+    disk_dir = r"C:\Users\hankslab\repos\DISK\DISK"
+    disk_env_python = r"C:\Users\hankslab\miniconda3\envs\disk\python.exe"
+    
+    command = [
+        disk_env_python,
+        "impute_dataset.py",
+        "hydra.job.chdir=True"
+    ]
+    
+    print("\n--- Starting Final Imputation ---")
+    
+    try:
+        # Run from the DISK root directory so Hydra finds conf/conf_impute.yaml
+        result = subprocess.run(
+            command,
+            cwd=disk_dir, 
+            capture_output=True, 
+            text=True,
+            check=True
+        )
+        
+        print("Success! Dataset imputed successfully.")
+        print("Check your dataset folder for the new imputed .h5 files.")
+        
+    except subprocess.CalledProcessError as e:
+        print(f"CRITICAL ERROR: Imputation failed with exit code {e.returncode}")
+        print(f"STDERR:\n{e.stderr}")
