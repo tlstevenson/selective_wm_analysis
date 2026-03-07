@@ -424,14 +424,21 @@ def modify_test_config(
                 else:
                     f.write(f"{indent}- {dataset_name}/proba_missing.csv\n")
                 continue
+            #Don't need or have optional third file
+            if stripped.startswith("-") and "proba_n_missing_2.txt" in stripped:
+                continue
 
             # --- Update Checkpoints List ---
             if stripped.startswith("checkpoints:"):
                 f.write(f"{indent}checkpoints:\n")
                 list_indent = indent + "  "
-                for cp in checkpoints:
+                checkpoint_list = [checkpoints] if isinstance(checkpoints, str) else checkpoints
+                for cp in checkpoint_list:
                     f.write(f"{list_indent}- {cp}\n")
                 skip_list_mode = True
+                continue
+            # --- Remove the two lines that start with outputs/2023
+            if stripped.startswith("- outputs/2023"):
                 continue
 
             # --- Update Name Items (Nested List) ---

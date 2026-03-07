@@ -33,45 +33,51 @@ config = ics.load_or_create_config()
 #disk_files_path: The location of the DISK repo
 
 #TODO: conda_env_path needs to be renamed to sleap_env_path everywhere
+#%%Define traversal function
+from pathlib import Path
+
+def get_file_paths(directory_path):
+    """Returns a list of strings containing the paths of all files in a directory."""
+    path_obj = Path(directory_path)
+    
+    # .is_file() ensures we don't include subdirectories in the list
+    return [str(file) for file in path_obj.iterdir() if file.is_file()]
+
+# Example usage:
+# files = get_file_paths("./my_folder")
 #%%Select new videos
-
-curr_vids = [r"C:\\Users\hankslab\SLEAP\AlexSleap\CableVideos\Videos\Original\199\mov_0001.mp4",
-             r"C:\\Users\hankslab\SLEAP\AlexSleap\CableVideos\Videos\Original\199\mov_0002.mp4",
-             r"C:\\Users\hankslab\SLEAP\AlexSleap\CableVideos\Videos\Original\199\mov_0003.mp4",
-             r"C:\\Users\hankslab\SLEAP\AlexSleap\CableVideos\Videos\Original\199\mov_0004.mp4",
-             r"C:\\Users\hankslab\SLEAP\AlexSleap\CableVideos\Videos\Original\199\mov_0005.mp4",
-             r"C:\\Users\hankslab\SLEAP\AlexSleap\CableVideos\Videos\Original\199\mov_0006.mp4",
-             r"C:\\Users\hankslab\SLEAP\AlexSleap\CableVideos\Videos\Original\199\mov_0007.mp4",
-             r"C:\\Users\hankslab\SLEAP\AlexSleap\CableVideos\Videos\Original\199\mov_0008.mp4",
-             r"C:\\Users\hankslab\SLEAP\AlexSleap\CableVideos\Videos\Original\199\mov_0009.mp4",
-             r"C:\\Users\hankslab\SLEAP\AlexSleap\CableVideos\Videos\Original\199\mov_0010.mp4",
-             r"C:\\Users\hankslab\SLEAP\AlexSleap\CableVideos\Videos\Original\199\mov_0011.mp4",
-             r"C:\\Users\hankslab\SLEAP\AlexSleap\CableVideos\Videos\Original\199\mov_0012.mp4",
-             r"C:\\Users\hankslab\SLEAP\AlexSleap\CableVideos\Videos\Original\199\mov_0013.mp4",
-             r"C:\\Users\hankslab\SLEAP\AlexSleap\CableVideos\Videos\Original\199\mov_0014.mp4"]
-#Pop up a tkinter window to select all these until satistfied
-
-#Format all videos
+vid_folders = [r"E:/Tanner_Vids/ReformattedVideos/199",
+               r"E:/Tanner_Vids/ReformattedVideos/274",
+               r"E:/Tanner_Vids/ReformattedVideos/400",
+               r"E:/Tanner_Vids/ReformattedVideos/402"]
+curr_vids = []
+for vid_folder in vid_folders:
+    curr_vids = curr_vids + get_file_paths(vid_folder)
+#%%Format all videos
 curr_format_vids = []
 for vid in curr_vids:
     new_format_vid_path = svr.process_video(vid, config["processed_vids_folder"])
     if new_format_vid_path != None:
         curr_format_vids.append(new_format_vid_path)
-        
-#%%Should get to this point if FFmpeg is installed"
-"""curr_format_vids = ["/Users/alex/Documents/HanksLab/HanksLabVideos/ReformattedVideos/199/mov_0001_r.mp4", 
-                    "/Users/alex/Documents/HanksLab/HanksLabVideos/ReformattedVideos/199/mov_0002_r.mp4"]
-print(curr_format_vids)"""
-#%% Inference Selections
+#%% Inference Selections (with reformatting)
 #Set up the write paths
-#Here a tkinter window would have the option of changing to new one + updating json
-#Here a tkinter button would trigger the start instead of having it start automatically
 write_paths = []
 for i in range(len(curr_format_vids)):
     write_paths.append(pm.get_mirrored_path_slp(config["processed_vids_folder"], curr_format_vids[i], config["analysis_folder"]))
-    print(write_paths[i])
+print(write_paths)
+#%% Inference Selections (without reformatting)
+#Set up the write paths
+#TODO: Remove hardcode path
+write_paths = []
+for i in range(len(curr_vids)):
+    if "_r" in curr_vids[i]:
+        write_paths.append(pm.get_mirrored_path_slp(r"E:/Tanner_Vids/ReformattedVideos", curr_vids[i], config["analysis_folder"]))
+    else:
+        write_paths.append(pm.get_mirrored_path_slp_raw(r"E:/Tanner_Vids/ReformattedVideos", curr_vids[i], config["analysis_folder"]))
+    print(write_paths[-1])
 #%% Command to run inference on all files
-slp_launcher.run_inference(curr_format_vids, write_paths)
+#slp_launcher.run_inference(curr_format_vids, write_paths)
+slp_launcher.run_inference(curr_vids, write_paths)
 
 #%%
 analysis_files = [] #Store all valid reformatted analysis files
@@ -118,3 +124,16 @@ ddc.run_proba_missing_files(dataset_name, config["disk_env_path"])
 ddc.update_training_config(pm.get_missing_conf(), dataset_name)
 #%%
 ddc.train_disk_model()
+
+#%%
+dataset_name = "Movie1_2_199"
+checkpoints = "C:/Users/hankslab/repos/DISK/DISK/models/Movie1_2_199" #TODO: Remove hardcode
+ddc.modify_test_config(pm.get_test_conf(), dataset_name, checkpoints)
+#%%
+ddc.run_test_fillmissing()
+
+#%%
+checkpoint = checkpoints
+ddc.modify_impute_config(pm.get_impute_conf(), dataset_name, checkpoint)
+#%%
+ddc.run_impute_dataset()

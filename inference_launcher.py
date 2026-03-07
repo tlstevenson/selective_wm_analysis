@@ -60,14 +60,14 @@ def run_inference(video_list, write_path_list):
                 #return True#TEMPORARY STOPGAP"""
                 os.makedirs(os.path.dirname(write_path_list[i]), exist_ok=True)
                 # Popen streams the output line-by-line
-                process = subprocess.run(command)
-                """with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, shell=True) as process:
+                #process = subprocess.run(command)
+                with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, shell=True) as process:
                     # Iterate through the output as it is generated and print to console
                     for line in process.stdout:
                         sys.stdout.write(line)
                         sys.stdout.flush()
                     # Ensure the process is fully complete before checking the exit code
-                    process.wait()"""
+                    process.wait()
                 if process.returncode == 0:
                     print("=" * 50)
                     print("Inference completed successfully!")

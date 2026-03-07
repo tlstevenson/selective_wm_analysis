@@ -12,17 +12,35 @@ import json
 
 def vid_to_slp_raw(path):
     path_without_ext, ext = os.path.splitext(path)
-    print(f"Mirrored path naked: {path_without_ext}")
-    print(f"Final path slp: {path_without_ext[:-2]}_raw.slp")
     return f"{path_without_ext[:-2]}_raw.slp" #Replace _r.mp4 with _raw.slp
+
+def vid_raw_to_slp_raw(path):
+    path_without_ext, ext = os.path.splitext(path)
+    return f"{path_without_ext}_raw.slp" #Replace _r.mp4 with _raw.slp
 
 def slp_to_h5(path):
     path_without_ext, ext = os.path.splitext(path)
-    print(f"Final path h5: {path[:path.rfind('_')]}_raw.h5")
     return f"{path[:path.rfind('_')]}_raw.h5"
 
 def h5_raw_to_any(path, ending):
     return f"{path[:path.rfind('_')]}_{ending}.h5"
+
+def get_mirrored_path_slp_raw(parent_folder, child_file, new_folder):
+    """
+    Finds the mirrored path of a child file in a new destination folder. (No _r end)
+    """
+    
+    try:
+        # Extract the relative path (e.g., 'subfolder/file.txt')
+        vid_rel_path_in_dir = os.path.relpath(child_file, parent_folder)
+        
+        # Append the relative path to the new destination folder
+        mirrored_path = os.path.join(new_folder, vid_rel_path_in_dir)
+        return vid_raw_to_slp_raw(mirrored_path) #Replace _r.mp4 with _raw.h5
+        
+    except ValueError:
+        # This triggers if the child file isn't actually inside the parent folder
+        raise ValueError(f"The file '{child_file}' is not inside '{parent_folder}'")
 
 def get_mirrored_path_slp(parent_folder, child_file, new_folder):
     """
