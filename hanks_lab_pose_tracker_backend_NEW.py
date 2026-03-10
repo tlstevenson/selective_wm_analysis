@@ -79,7 +79,65 @@ for i in range(len(curr_vids)):
 #slp_launcher.run_inference(curr_format_vids, write_paths)
 slp_launcher.run_inference(curr_vids, write_paths)
 
-#%%
+#%%Temporary MAC only for directly using sleap-io to convert
+analysis_folders = ["/Users/alex/Documents/HanksLab/HanksLabVideos/Analysis_3_10_2026/Analysis/199",
+               "/Users/alex/Documents/HanksLab/HanksLabVideos/Analysis_3_10_2026/Analysis/274",
+               "/Users/alex/Documents/HanksLab/HanksLabVideos/Analysis_3_10_2026/Analysis/400",
+               "/Users/alex/Documents/HanksLab/HanksLabVideos/Analysis_3_10_2026/Analysis/402"]
+write_paths = []
+for folder in analysis_folders:
+    files = get_file_paths(folder)
+    for file in files:
+        write_paths.append(file)
+
+import sleap_io as sio
+def convert_slp_to_analysis_h5(slp_path, output_path=None):
+    """
+    Converts a SLEAP prediction file with no tracks into a 
+    valid Analysis HDF5 file for DISK.
+    """
+    if not os.path.exists(slp_path):
+        raise Warning(f"The file {slp_path} does not exist or could not be found. Track assignment aborted.")
+        return
+    
+    #TEMPORARY: Dont reformat if it already exists as an analysis file
+    if os.path.exists(output_path):
+        return str(output_path)
+    
+    # 1. Load the labels (very fast with sleap-io)
+    labels = sio.load_slp(slp_path)
+    
+    # 2. Create a dummy track if none exist
+    if len(labels.tracks) == 0:
+        single_track = sio.Track(name="track_0")
+        labels.tracks.append(single_track)
+    else:
+        single_track = labels.tracks[0]
+
+    # 3. Force every instance into this track
+    for lf in labels.labeled_frames:
+        for inst in lf.instances:
+            inst.track = single_track
+
+    # 4. Define output path if not provided
+    if output_path is None:
+        output_path = Path(slp_path).with_suffix(".analysis.h5")
+
+    # 5. Save using the analysis-specific function
+    # all_frames=True is vital for DISK to maintain the time-series continuity
+    sio.io.main.save_analysis_h5(
+        labels=labels, 
+        filename=str(output_path), 
+        all_frames=True
+    )
+    
+    print(f"Successfully created: {output_path}")
+    return str(output_path)
+
+for file in write_paths:
+    convert_slp_to_analysis_h5(file, pm.slp_to_h5(file))
+#%%Permanent WINDOWS way to reformat videos
+
 analysis_files = [] #Store all valid reformatted analysis files
 #Convert slp files to analysis h5 files in the same folder (TODO: Consider moving this out of here)
 for file in write_paths:

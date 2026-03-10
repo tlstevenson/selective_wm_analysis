@@ -1,0 +1,305 @@
+Metric,Node,Group,Average,Median,Std,IQR
+NaN Sequence Lengths,backleg_l,199,7.0,2.0,23.87,4.0
+NaN Sequence Lengths,backleg_l,274,5.85,2.0,15.56,4.0
+NaN Sequence Lengths,backleg_l,400,5.77,2.0,21.16,3.0
+NaN Sequence Lengths,backleg_l,402,7.03,2.0,21.43,4.0
+NaN Sequence Lengths,backleg_m,199,6.82,2.0,27.23,4.0
+NaN Sequence Lengths,backleg_m,274,7.81,2.0,23.74,5.0
+NaN Sequence Lengths,backleg_m,400,10.01,3.0,52.92,5.0
+NaN Sequence Lengths,backleg_m,402,12.59,3.0,45.11,5.0
+NaN Sequence Lengths,backleg_r,199,8.26,2.0,31.62,5.0
+NaN Sequence Lengths,backleg_r,274,5.45,2.0,15.93,3.0
+NaN Sequence Lengths,backleg_r,400,6.31,2.0,28.95,3.0
+NaN Sequence Lengths,backleg_r,402,8.19,3.0,22.92,5.0
+NaN Sequence Lengths,body_l,199,4.46,2.0,15.89,3.0
+NaN Sequence Lengths,body_l,274,7.94,3.0,19.95,5.0
+NaN Sequence Lengths,body_l,400,8.6,2.0,44.69,5.0
+NaN Sequence Lengths,body_l,402,8.26,3.0,22.69,5.0
+NaN Sequence Lengths,body_m,199,6.31,2.0,12.36,5.0
+NaN Sequence Lengths,body_m,274,10.37,2.0,37.78,4.0
+NaN Sequence Lengths,body_m,400,8.47,2.0,34.2,4.0
+NaN Sequence Lengths,body_m,402,15.27,3.0,48.46,6.0
+NaN Sequence Lengths,body_r,199,5.86,2.0,14.35,4.0
+NaN Sequence Lengths,body_r,274,6.55,2.0,19.83,4.0
+NaN Sequence Lengths,body_r,400,8.91,2.0,44.45,5.0
+NaN Sequence Lengths,body_r,402,10.75,3.0,30.69,6.0
+NaN Sequence Lengths,cheek_l,199,9.91,3.0,39.96,6.0
+NaN Sequence Lengths,cheek_l,274,6.55,3.0,15.71,5.0
+NaN Sequence Lengths,cheek_l,400,5.84,2.0,27.3,4.0
+NaN Sequence Lengths,cheek_l,402,5.2,2.0,10.98,4.0
+NaN Sequence Lengths,cheek_r,199,11.44,3.0,35.71,8.0
+NaN Sequence Lengths,cheek_r,274,5.33,2.0,12.77,4.0
+NaN Sequence Lengths,cheek_r,400,5.87,2.0,18.79,4.0
+NaN Sequence Lengths,cheek_r,402,4.27,2.0,9.08,3.0
+NaN Sequence Lengths,ear_l,199,12.99,2.0,38.92,4.0
+NaN Sequence Lengths,ear_l,274,3.08,1.0,8.09,2.0
+NaN Sequence Lengths,ear_l,400,3.61,2.0,7.47,3.0
+NaN Sequence Lengths,ear_l,402,3.01,2.0,5.55,2.0
+NaN Sequence Lengths,ear_r,199,4.13,2.0,9.85,2.0
+NaN Sequence Lengths,ear_r,274,3.66,2.0,9.58,2.0
+NaN Sequence Lengths,ear_r,400,3.38,1.0,14.98,2.0
+NaN Sequence Lengths,ear_r,402,2.83,1.0,4.95,2.0
+NaN Sequence Lengths,implant,199,4.9,2.0,12.7,3.0
+NaN Sequence Lengths,implant,274,4.99,2.0,17.66,3.0
+NaN Sequence Lengths,implant,400,4.38,2.0,9.67,3.0
+NaN Sequence Lengths,implant,402,4.09,2.0,8.19,3.0
+NaN Sequence Lengths,neck,199,10.83,2.0,36.1,4.0
+NaN Sequence Lengths,neck,274,4.53,2.0,11.1,3.0
+NaN Sequence Lengths,neck,400,6.1,2.0,16.42,3.0
+NaN Sequence Lengths,neck,402,8.31,2.0,24.53,5.0
+NaN Sequence Lengths,neck_l,199,5.44,2.0,15.38,3.0
+NaN Sequence Lengths,neck_l,274,4.78,2.0,10.05,3.0
+NaN Sequence Lengths,neck_l,400,11.96,3.0,45.96,6.0
+NaN Sequence Lengths,neck_l,402,5.84,2.0,14.27,4.0
+NaN Sequence Lengths,neck_r,199,5.6,2.0,15.6,4.0
+NaN Sequence Lengths,neck_r,274,5.88,2.0,14.96,4.0
+NaN Sequence Lengths,neck_r,400,7.63,3.0,34.45,5.0
+NaN Sequence Lengths,neck_r,402,8.98,3.0,20.3,6.0
+NaN Sequence Lengths,nose,199,10.09,3.0,39.82,5.0
+NaN Sequence Lengths,nose,274,5.59,2.0,13.19,4.0
+NaN Sequence Lengths,nose,400,4.8,2.0,12.38,3.0
+NaN Sequence Lengths,nose,402,4.42,2.0,9.1,3.0
+NaN Sequence Lengths,rear_m,199,5.04,2.0,18.12,3.0
+NaN Sequence Lengths,rear_m,274,6.16,2.0,17.74,4.0
+NaN Sequence Lengths,rear_m,400,7.88,2.0,37.04,4.0
+NaN Sequence Lengths,rear_m,402,7.41,2.0,19.93,4.0
+NaN Sequence Lengths,tail_base,199,5.87,2.0,23.77,3.0
+NaN Sequence Lengths,tail_base,274,5.37,2.0,16.49,3.0
+NaN Sequence Lengths,tail_base,400,8.43,2.0,34.59,4.0
+NaN Sequence Lengths,tail_base,402,5.39,2.0,17.17,3.0
+NaN Sequence Lengths,tail_end,199,6.55,2.0,27.91,3.0
+NaN Sequence Lengths,tail_end,274,6.25,2.0,26.7,3.0
+NaN Sequence Lengths,tail_end,400,7.08,2.0,25.26,4.0
+NaN Sequence Lengths,tail_end,402,3.69,1.0,10.18,2.0
+NaN Sequence Lengths,tail_mid,199,5.57,2.0,18.97,3.0
+NaN Sequence Lengths,tail_mid,274,3.56,1.0,12.71,2.0
+NaN Sequence Lengths,tail_mid,400,4.12,2.0,16.23,2.0
+NaN Sequence Lengths,tail_mid,402,4.4,2.0,12.76,3.0
+Num NaN Sequences,backleg_l,199,888.14,784.0,415.49,510.5
+Num NaN Sequences,backleg_l,274,4593.5,4656.0,619.55,591.5
+Num NaN Sequences,backleg_l,400,2739.5,2579.5,1165.72,1150.5
+Num NaN Sequences,backleg_l,402,5253.5,5088.0,1104.37,1133.0
+Num NaN Sequences,backleg_m,199,445.21,442.5,217.59,328.0
+Num NaN Sequences,backleg_m,274,3547.83,3490.5,655.66,363.75
+Num NaN Sequences,backleg_m,400,6229.75,6200.0,1565.66,2146.75
+Num NaN Sequences,backleg_m,402,4334.5,4320.0,505.45,454.75
+Num NaN Sequences,backleg_r,199,1120.64,1150.5,378.5,364.75
+Num NaN Sequences,backleg_r,274,1422.83,1409.0,372.88,260.75
+Num NaN Sequences,backleg_r,400,2498.88,2494.5,525.41,622.25
+Num NaN Sequences,backleg_r,402,4003.0,3921.0,950.69,1458.75
+Num NaN Sequences,body_l,199,1413.64,1384.5,504.23,670.0
+Num NaN Sequences,body_l,274,4987.33,4955.0,663.05,1019.5
+Num NaN Sequences,body_l,400,4237.0,4125.0,1304.55,1445.0
+Num NaN Sequences,body_l,402,5490.9,5636.0,527.56,954.25
+Num NaN Sequences,body_m,199,232.43,198.5,108.86,136.75
+Num NaN Sequences,body_m,274,2495.17,2476.0,476.62,797.25
+Num NaN Sequences,body_m,400,3586.62,3507.5,793.7,1339.25
+Num NaN Sequences,body_m,402,4915.2,4869.0,802.73,613.5
+Num NaN Sequences,body_r,199,715.57,787.0,275.36,454.25
+Num NaN Sequences,body_r,274,1301.33,1299.0,342.27,292.75
+Num NaN Sequences,body_r,400,2728.0,2824.0,602.16,604.25
+Num NaN Sequences,body_r,402,5327.4,4777.0,1205.15,2051.25
+Num NaN Sequences,cheek_l,199,3196.0,3127.0,956.32,1057.5
+Num NaN Sequences,cheek_l,274,4414.5,4529.5,375.76,223.75
+Num NaN Sequences,cheek_l,400,4374.5,4379.5,1236.73,1849.0
+Num NaN Sequences,cheek_l,402,5000.8,4943.0,428.27,484.0
+Num NaN Sequences,cheek_r,199,2169.57,2233.5,601.83,811.25
+Num NaN Sequences,cheek_r,274,1948.17,1967.5,325.45,417.5
+Num NaN Sequences,cheek_r,400,3818.62,3900.5,647.01,696.75
+Num NaN Sequences,cheek_r,402,2401.0,2071.5,626.82,821.25
+Num NaN Sequences,ear_l,199,956.93,883.0,431.9,169.75
+Num NaN Sequences,ear_l,274,1946.33,1851.5,554.42,441.25
+Num NaN Sequences,ear_l,400,3618.5,3224.0,1131.97,1501.75
+Num NaN Sequences,ear_l,402,2512.5,2558.0,239.51,402.25
+Num NaN Sequences,ear_r,199,558.93,633.5,235.97,299.25
+Num NaN Sequences,ear_r,274,1226.67,1175.0,341.04,396.25
+Num NaN Sequences,ear_r,400,1647.38,1594.0,463.8,323.75
+Num NaN Sequences,ear_r,402,1261.7,1116.5,343.5,381.25
+Num NaN Sequences,implant,199,630.0,600.0,270.07,417.5
+Num NaN Sequences,implant,274,1170.83,1156.5,460.68,671.25
+Num NaN Sequences,implant,400,1035.88,943.0,382.03,345.0
+Num NaN Sequences,implant,402,1386.1,1433.0,298.48,475.0
+Num NaN Sequences,neck,199,649.93,567.5,249.01,181.5
+Num NaN Sequences,neck,274,2044.33,1911.0,438.96,446.5
+Num NaN Sequences,neck,400,2736.75,2702.5,855.55,892.75
+Num NaN Sequences,neck,402,4299.8,4181.5,634.42,583.75
+Num NaN Sequences,neck_l,199,946.14,910.5,324.46,392.5
+Num NaN Sequences,neck_l,274,3282.5,3164.5,659.83,1094.75
+Num NaN Sequences,neck_l,400,4043.38,3813.5,1159.38,1894.25
+Num NaN Sequences,neck_l,402,4755.9,4631.5,554.27,880.25
+Num NaN Sequences,neck_r,199,942.14,982.0,331.13,464.0
+Num NaN Sequences,neck_r,274,2241.33,2819.0,1843.51,2304.0
+Num NaN Sequences,neck_r,400,4834.12,5469.0,2334.1,2207.25
+Num NaN Sequences,neck_r,402,6058.9,6213.0,1089.86,1708.0
+Num NaN Sequences,nose,199,1955.0,1865.5,437.26,420.25
+Num NaN Sequences,nose,274,2377.17,2475.5,279.57,268.5
+Num NaN Sequences,nose,400,3241.12,3505.0,1008.89,1544.5
+Num NaN Sequences,nose,402,1861.0,1860.5,237.36,392.0
+Num NaN Sequences,rear_m,199,978.36,951.5,338.15,325.5
+Num NaN Sequences,rear_m,274,2781.17,2835.0,415.32,620.25
+Num NaN Sequences,rear_m,400,3211.38,3299.0,1174.64,1491.25
+Num NaN Sequences,rear_m,402,4259.5,4274.0,692.75,845.25
+Num NaN Sequences,tail_base,199,901.43,822.0,419.45,310.0
+Num NaN Sequences,tail_base,274,1602.0,1632.5,221.82,242.5
+Num NaN Sequences,tail_base,400,1676.88,1631.5,631.39,732.25
+Num NaN Sequences,tail_base,402,2448.6,2372.5,336.77,263.0
+Num NaN Sequences,tail_end,199,958.14,835.5,392.27,472.75
+Num NaN Sequences,tail_end,274,1930.0,1835.0,415.65,583.25
+Num NaN Sequences,tail_end,400,2577.62,2532.0,618.71,835.5
+Num NaN Sequences,tail_end,402,1512.6,1452.0,315.91,382.5
+Num NaN Sequences,tail_mid,199,1861.36,1800.0,666.11,920.25
+Num NaN Sequences,tail_mid,274,1502.83,1515.0,154.21,260.25
+Num NaN Sequences,tail_mid,400,1603.88,1658.5,288.97,253.0
+Num NaN Sequences,tail_mid,402,3527.4,3484.0,447.65,622.5
+Total NaNs,backleg_l,199,6220.07,5289.0,4046.31,3434.0
+Total NaNs,backleg_l,274,26878.5,26437.0,5690.15,5101.25
+Total NaNs,backleg_l,400,15817.75,15522.5,4808.47,4704.75
+Total NaNs,backleg_l,402,36910.8,34319.5,11743.41,13369.25
+Total NaNs,backleg_m,199,3035.79,2016.5,2657.68,1987.75
+Total NaNs,backleg_m,274,27695.67,25105.0,8486.29,7531.0
+Total NaNs,backleg_m,400,62389.75,62771.5,16254.97,13517.5
+Total NaNs,backleg_m,402,54569.4,53188.5,6022.48,8572.75
+Total NaNs,backleg_r,199,9257.57,8042.5,4877.8,3307.0
+Total NaNs,backleg_r,274,7748.17,6927.5,3570.5,1113.25
+Total NaNs,backleg_r,400,15759.38,16361.0,5809.58,6660.0
+Total NaNs,backleg_r,402,32795.4,31795.0,5185.02,7841.0
+Total NaNs,body_l,199,6302.57,5143.0,3548.24,3369.5
+Total NaNs,body_l,274,39581.0,38464.0,7900.98,10982.25
+Total NaNs,body_l,400,36459.25,35978.0,8986.36,14758.25
+Total NaNs,body_l,402,45341.4,44986.0,3946.98,2372.25
+Total NaNs,body_m,199,1467.36,1108.0,1316.77,473.0
+Total NaNs,body_m,274,25875.17,25546.0,10614.53,8172.25
+Total NaNs,body_m,400,30380.75,32332.5,8563.85,12992.75
+Total NaNs,body_m,402,75046.7,75091.5,7338.64,11043.75
+Total NaNs,body_r,199,4196.14,4000.0,2309.44,2046.0
+Total NaNs,body_r,274,8528.33,6559.5,4542.76,2941.0
+Total NaNs,body_r,400,24316.12,22083.5,7490.18,12473.25
+Total NaNs,body_r,402,57257.5,58336.0,6018.43,7618.75
+Total NaNs,cheek_l,199,31675.79,29434.0,15203.29,9228.75
+Total NaNs,cheek_l,274,28924.33,25730.5,8484.97,11933.25
+Total NaNs,cheek_l,400,25565.5,27496.0,8547.0,12128.75
+Total NaNs,cheek_l,402,25990.1,27116.0,3239.92,5057.25
+Total NaNs,cheek_r,199,24811.93,24939.0,10247.19,9402.0
+Total NaNs,cheek_r,274,10379.67,8582.5,4398.78,2313.0
+Total NaNs,cheek_r,400,22432.25,21781.0,4154.94,2154.75
+Total NaNs,cheek_r,402,10254.4,10290.0,2030.54,2456.25
+Total NaNs,ear_l,199,12431.29,11480.0,6602.42,5754.5
+Total NaNs,ear_l,274,5990.0,5576.0,1615.3,1026.25
+Total NaNs,ear_l,400,13045.12,12205.0,4981.56,4828.0
+Total NaNs,ear_l,402,7552.0,7021.0,1462.21,1353.75
+Total NaNs,ear_r,199,2305.86,2124.0,1845.18,1878.0
+Total NaNs,ear_r,274,4494.83,3711.0,1924.34,2330.0
+Total NaNs,ear_r,400,5562.25,5358.5,1004.07,1141.75
+Total NaNs,ear_r,402,3571.1,3390.5,1157.9,1193.0
+Total NaNs,implant,199,3087.93,3161.0,2121.24,1995.5
+Total NaNs,implant,274,5846.5,4952.0,3760.02,4538.25
+Total NaNs,implant,400,4541.62,4455.5,1468.67,1964.5
+Total NaNs,implant,402,5669.0,5571.5,1612.23,2256.75
+Total NaNs,neck,199,7036.79,5291.5,5738.2,6297.5
+Total NaNs,neck,274,9268.67,8849.5,2360.66,3035.0
+Total NaNs,neck,400,16701.25,16650.5,5984.89,10582.0
+Total NaNs,neck,402,35726.9,37665.5,9646.48,11947.0
+Total NaNs,neck_l,199,5149.5,4968.0,2132.14,3554.5
+Total NaNs,neck_l,274,15701.17,14782.5,5082.93,5267.75
+Total NaNs,neck_l,400,48345.5,49203.0,8072.01,9410.75
+Total NaNs,neck_l,402,27796.1,26590.5,4805.29,6248.5
+Total NaNs,neck_r,199,5274.86,4793.5,2673.61,2341.25
+Total NaNs,neck_r,274,13177.5,13698.5,13264.38,11339.75
+Total NaNs,neck_r,400,36895.12,41011.5,17482.71,16832.5
+Total NaNs,neck_r,402,54426.2,54526.5,6922.41,6731.25
+Total NaNs,nose,199,19726.07,17164.5,11680.68,7610.25
+Total NaNs,nose,274,13289.67,11706.5,4649.73,4017.25
+Total NaNs,nose,400,15554.75,17262.0,5572.73,7835.75
+Total NaNs,nose,402,8221.2,8343.0,1456.98,2140.25
+Total NaNs,rear_m,199,4934.43,4116.0,2852.39,1829.0
+Total NaNs,rear_m,274,17130.67,16875.0,4716.4,7265.25
+Total NaNs,rear_m,400,25305.12,21911.0,12341.28,19334.25
+Total NaNs,rear_m,402,31575.4,31642.0,5009.45,3661.25
+Total NaNs,tail_base,199,5287.5,4377.5,3191.39,1527.5
+Total NaNs,tail_base,274,8597.17,8315.5,1729.11,2309.25
+Total NaNs,tail_base,400,14129.88,14054.5,7273.26,8335.75
+Total NaNs,tail_base,402,13197.7,14002.0,2261.41,3495.75
+Total NaNs,tail_end,199,6279.71,5617.0,3350.77,4726.25
+Total NaNs,tail_end,274,12064.67,11646.5,3780.64,6220.0
+Total NaNs,tail_end,400,18247.62,18756.5,4510.78,7273.75
+Total NaNs,tail_end,402,5588.9,5780.0,1273.96,1871.5
+Total NaNs,tail_mid,199,10366.79,9649.5,4796.72,2178.5
+Total NaNs,tail_mid,274,5345.33,5155.0,1364.35,836.0
+Total NaNs,tail_mid,400,6615.0,6666.5,1458.51,655.25
+Total NaNs,tail_mid,402,15515.8,15047.5,1827.12,2730.5
+Velocity,backleg_l,199,6.36,3.67,24.19,5.32
+Velocity,backleg_l,274,8.49,3.75,30.87,5.43
+Velocity,backleg_l,400,7.76,0.15,34.45,4.0
+Velocity,backleg_l,402,7.95,3.67,26.68,5.46
+Velocity,backleg_m,199,3.89,0.37,11.4,3.97
+Velocity,backleg_m,274,7.88,3.65,26.11,5.22
+Velocity,backleg_m,400,8.74,3.63,23.86,5.48
+Velocity,backleg_m,402,10.81,3.87,26.12,7.74
+Velocity,backleg_r,199,4.15,0.09,18.96,3.86
+Velocity,backleg_r,274,6.64,3.7,23.39,5.34
+Velocity,backleg_r,400,7.2,3.66,25.0,5.38
+Velocity,backleg_r,402,8.5,3.75,29.03,5.5
+Velocity,body_l,199,7.24,3.71,26.58,5.38
+Velocity,body_l,274,10.95,3.71,42.89,5.37
+Velocity,body_l,400,11.63,0.2,47.3,4.02
+Velocity,body_l,402,12.04,3.6,43.23,5.38
+Velocity,body_m,199,3.84,3.74,8.8,4.05
+Velocity,body_m,274,9.48,3.92,22.11,7.86
+Velocity,body_m,400,7.41,3.8,18.47,5.59
+Velocity,body_m,402,9.32,3.92,22.24,8.44
+Velocity,body_r,199,5.22,0.11,25.11,3.88
+Velocity,body_r,274,8.36,3.72,31.79,5.31
+Velocity,body_r,400,11.56,3.72,39.55,5.5
+Velocity,body_r,402,11.64,3.7,39.86,5.46
+Velocity,cheek_l,199,5.03,0.18,19.51,3.94
+Velocity,cheek_l,274,13.23,3.86,50.85,5.57
+Velocity,cheek_l,400,12.87,3.71,45.35,5.52
+Velocity,cheek_l,402,14.91,3.82,51.7,7.66
+Velocity,cheek_r,199,4.47,0.19,15.88,3.95
+Velocity,cheek_r,274,11.3,3.83,38.13,5.53
+Velocity,cheek_r,400,15.99,3.84,52.68,7.67
+Velocity,cheek_r,402,14.35,3.84,45.76,5.55
+Velocity,ear_l,199,5.05,3.76,16.73,5.31
+Velocity,ear_l,274,25.31,3.91,85.52,7.67
+Velocity,ear_l,400,20.55,3.78,69.46,5.62
+Velocity,ear_l,402,22.1,3.87,76.5,7.6
+Velocity,ear_r,199,4.32,3.72,14.16,3.99
+Velocity,ear_r,274,11.78,3.93,40.72,5.52
+Velocity,ear_r,400,14.71,3.83,43.86,7.46
+Velocity,ear_r,402,18.56,3.88,50.21,7.68
+Velocity,implant,199,3.68,3.75,8.67,4.0
+Velocity,implant,274,9.32,3.97,22.68,7.8
+Velocity,implant,400,14.43,3.94,34.49,8.75
+Velocity,implant,402,11.23,3.95,27.22,7.93
+Velocity,neck,199,5.05,3.8,15.81,5.35
+Velocity,neck,274,12.49,3.94,41.52,7.71
+Velocity,neck,400,17.62,3.9,54.17,7.95
+Velocity,neck,402,19.36,3.96,53.86,8.71
+Velocity,neck_l,199,5.18,3.72,19.86,5.2
+Velocity,neck_l,274,9.95,3.83,39.97,5.47
+Velocity,neck_l,400,14.28,3.68,54.29,5.48
+Velocity,neck_l,402,16.45,3.79,60.34,5.69
+Velocity,neck_r,199,3.54,0.15,16.21,3.87
+Velocity,neck_r,274,28.74,3.69,123.07,5.37
+Velocity,neck_r,400,20.65,3.48,96.3,5.34
+Velocity,neck_r,402,16.49,3.61,56.22,5.34
+Velocity,nose,199,4.56,0.14,22.85,3.9
+Velocity,nose,274,10.21,3.75,45.14,5.36
+Velocity,nose,400,13.54,3.73,60.08,5.51
+Velocity,nose,402,11.68,3.76,48.66,5.42
+Velocity,rear_m,199,5.4,0.12,23.83,3.91
+Velocity,rear_m,274,7.89,3.49,31.13,5.2
+Velocity,rear_m,400,7.33,0.2,29.69,4.04
+Velocity,rear_m,402,9.58,3.73,33.36,5.43
+Velocity,tail_base,199,3.22,0.06,15.79,3.81
+Velocity,tail_base,274,4.87,0.11,22.75,3.89
+Velocity,tail_base,400,4.3,0.07,24.3,3.83
+Velocity,tail_base,402,8.96,0.15,39.82,3.94
+Velocity,tail_end,199,4.97,0.02,31.54,3.63
+Velocity,tail_end,274,14.65,0.03,79.75,3.77
+Velocity,tail_end,400,10.26,0.03,58.34,3.84
+Velocity,tail_end,402,16.74,0.05,83.75,3.92
+Velocity,tail_mid,199,8.12,0.04,32.54,3.81
+Velocity,tail_mid,274,15.5,0.06,59.9,3.92
+Velocity,tail_mid,400,10.97,0.04,43.08,3.82
+Velocity,tail_mid,402,15.28,0.13,53.39,5.31
