@@ -133,3 +133,47 @@ def get_conda_env_path(conda_path, env_name):
     except json.JSONDecodeError:
         print("Failed to parse conda output.")
         return None
+    
+def convert_old_path_to_new(old_path):
+    """
+    Converts a path string from old format (e.g., file_raw.slp)
+    to new format (e.g., file.raw.slp).
+    """
+    dir_name, file_name = os.path.split(old_path)
+    name_no_ext, ext = os.path.splitext(file_name)
+
+    # Find the last underscore in the filename 
+    last_underscore_idx = name_no_ext.rfind('_')
+
+    if last_underscore_idx != -1:
+        # Replace ONLY the last underscore with a dot
+        new_name_no_ext = name_no_ext[:last_underscore_idx] + '.' + name_no_ext[last_underscore_idx+1:]
+        new_file_name = new_name_no_ext + ext
+        return os.path.join(dir_name, new_file_name)
+    
+    return old_path # Returns the path as-is if no underscore is found
+
+def migrate_directory_to_new_format(target_directory, dry_run=True):
+    """
+    Walks through a directory and renames all files matching the 
+    old _suffix.ext format to the new .suffix.ext format.
+    
+    Set dry_run=False to actually execute the file renaming.
+    """
+    print(f"Starting migration in: {target_directory} (Dry Run: {dry_run})")
+    
+    for root, dirs, files in os.walk(target_directory):
+        for file in files:
+            old_filepath = os.path.join(root, file)
+            new_filepath = convert_old_path_to_new(old_filepath)
+            
+            # If the converter changed the name, we have a match
+            if old_filepath != new_filepath:
+                if dry_run:
+                    print(f"[DRY RUN] Would rename:\n  {old_filepath}\n  -> {new_filepath}\n")
+                else:
+                    try:
+                        os.rename(old_filepath, new_filepath)
+                        print(f"Renamed: {file} -> {os.path.basename(new_filepath)}")
+                    except Exception as e:
+                        print(f"Error renaming {old_filepath}: {e}")

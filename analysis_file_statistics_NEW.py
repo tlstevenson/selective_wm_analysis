@@ -17,21 +17,6 @@ def get_file_paths(directory_path):
     # .suffix == '.h5' ensures we don't accidentally try to load hidden files like .DS_Store
     return [str(file) for file in path_obj.iterdir() if file.is_file() and file.suffix == '.h5']
 
-# Define your groups by folder
-h5_folder_paths = [
-    ("/Users/alex/Documents/HanksLab/HanksLabVideos/Analysis_3_10_2026/Analysis/199/h5", "199"), 
-    ("/Users/alex/Documents/HanksLab/HanksLabVideos/Analysis_3_10_2026/Analysis/274/h5", "274"), 
-    ("/Users/alex/Documents/HanksLab/HanksLabVideos/Analysis_3_10_2026/Analysis/400/h5", "400"),
-    ("/Users/alex/Documents/HanksLab/HanksLabVideos/Analysis_3_10_2026/Analysis/402/h5", "402")
-]
-
-# Dynamically build the configuration list
-VIDEO_CONFIG = []
-for folder in h5_folder_paths:
-    for file in get_file_paths(folder[0]):
-        # Note: mapped to "filepath" to match downstream variables
-        VIDEO_CONFIG.append({"filepath": file, "group": folder[1]})
-
 # ---------------------------------------------------------
 # 2. HDF5 Loading Logic
 # ---------------------------------------------------------
@@ -264,24 +249,72 @@ def plot_violinplots_separate_figures(df):
         plt.tight_layout()
         plt.show()
 
-# ---------------------------------------------------------
-# 6. Execution
-# ---------------------------------------------------------
-#%%Processing steps
-if __name__ == "__main__":
+def calculate_outlier_counts(df):
+    """
+    Calculates the number of outliers for each metric/node/group combination
+    using the standard 1.5 * IQR rule to perfectly match the box plots.
+    """
+    outlier_data = []
     
-    print("Extracting data and building DataFrame...")
-    df, extracted_node_names = process_all_videos(VIDEO_CONFIG)
-    
-    print("Calculating statistics...")
-    stats_df = calculate_stats(df)
-    
-    # Save the stats table
-    csv_filename = "node_statistics_summary.csv"
-    stats_df.round(2).to_csv(csv_filename, index=False)
-    print(f"\nSaved detailed statistical table to: {csv_filename}")
-#%%Plotting steps
-if __name__ == "__main__":
+    # Group the dataframe to look at one specific distribution at a time
+    for (metric, node, group), group_df in df.groupby(['Metric', 'Node', 'Group']):
+        print(metric)
+        values = group_df['Value'].dropna()
+        
+        if len(values) > 1:
+            q1 = values.quantile(0.25)
+            q3 = values.quantile(0.75)
+            iqr_val = q3 - q1
+            
+            lower_bound = q1 - 1.5 * iqr_val
+            upper_bound = q3 + 1.5 * iqr_val
+            
+            # Count how many values fall outside the bounds
+            num_outliers = ((values < lower_bound) | (values > upper_bound)).sum()
+        else:
+            num_outliers = 0
+            
+        outlier_data.append({
+            'Metric': metric,
+            'Node': node,
+            'Group': group,
+            'Outlier Count': num_outliers
+        })
+            
+    return pd.DataFrame(outlier_data)
 
-    print("Generating separate plots for each metric...")
-    plot_boxplots_separate_figures(df)
+def plot_outlier_bar_graphs(outlier_df):
+    """
+    Generates a separate, full-sized Bar Graph showing the count of outliers.
+    """
+    # We only plot metrics that have arrays of data (the scalars don't have standard outliers)
+    metrics_with_outliers = ["NaN Sequence Lengths", "Velocity"]
+    
+    groups = outlier_df["Group"].unique()
+    palette = sns.color_palette("viridis", n_colors=len(groups))
+    color_dict = dict(zip(groups, palette))
+
+    for metric in metrics_with_outliers:
+        print(metric)
+        metric_outliers = outlier_df[outlier_df["Metric"] == metric]
+        
+        if metric_outliers.empty:
+            continue
+
+        fig, ax = plt.subplots(figsize=(16, 6)) 
+        fig.suptitle(f'{metric} - Number of Outliers Across All Nodes', fontsize=20, fontweight='bold')
+
+        # Use Seaborn's barplot to draw the groupings
+        sns.barplot(
+            data=metric_outliers, x="Node", y="Outlier Count", hue="Group", 
+            palette=color_dict, ax=ax
+        )
+        
+        ax.set_xlabel("Node", fontsize=14)
+        ax.set_ylabel("Total Outlier Count", fontsize=14)
+        ax.tick_params(axis='x', rotation=45) 
+        
+        sns.move_legend(ax, "upper right", title="Group", fontsize=12, title_fontsize=14)
+
+        plt.tight_layout()
+        plt.show()

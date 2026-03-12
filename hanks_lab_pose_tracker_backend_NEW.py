@@ -15,6 +15,8 @@ import sleap_vid_reformat as svr
 import inference_launcher as slp_launcher
 import path_manager_NEW as pm
 import disk_dataset_creator_NEW as ddc
+import basic_preprocessing_NEW as bpre
+import analysis_file_statistics_NEW as afs
 
 #Imports that should be moved out
 import subprocess
@@ -32,10 +34,8 @@ config = ics.load_or_create_config()
 #disk_env_path: The location of the DISK conda environment
 #disk_files_path: The location of the DISK repo
 
-#TODO: conda_env_path needs to be renamed to sleap_env_path everywhere
+#FIXME: conda_env_path needs to be renamed to sleap_env_path everywhere
 #%%Define traversal function
-from pathlib import Path
-
 def get_file_paths(directory_path):
     """Returns a list of strings containing the paths of all files in a directory."""
     path_obj = Path(directory_path)
@@ -167,6 +167,50 @@ for file in write_paths:
 import h5py
 with h5py.File('C:/Users/hankslab/Analysis/199/mov_0002_raw.h5', 'r') as f:
     print("Keys in H5 file:", list(f.keys()))
+    
+#%%View raw data
+# Define your groups by folder
+h5_folder_paths = [
+    ("/Users/alex/Documents/HanksLab/HanksLabVideos/Analysis_3_10_2026/Analysis/199/h5", "199"), 
+    ("/Users/alex/Documents/HanksLab/HanksLabVideos/Analysis_3_10_2026/Analysis/274/h5", "274"), 
+    ("/Users/alex/Documents/HanksLab/HanksLabVideos/Analysis_3_10_2026/Analysis/400/h5", "400"),
+    ("/Users/alex/Documents/HanksLab/HanksLabVideos/Analysis_3_10_2026/Analysis/402/h5", "402")
+]
+
+# Dynamically build the configuration list
+VIDEO_CONFIG = []
+for folder in h5_folder_paths:
+    for file in get_file_paths(folder[0]):
+        # Note: mapped to "filepath" to match downstream variables
+        VIDEO_CONFIG.append({"filepath": file, "group": folder[1]})
+    
+print("Extracting data and building DataFrame...")
+df, extracted_node_names = afs.process_all_videos(VIDEO_CONFIG)
+
+print("Calculating standard statistics...")
+stats_df = afs.calculate_stats(df)
+
+csv_filename = "node_statistics_summary.csv"
+stats_df.round(2).to_csv(csv_filename, index=False)
+print(f"\nSaved detailed statistical table to: {csv_filename}")
+
+print("Calculating outlier counts...")
+outlier_df = afs.calculate_outlier_counts(df)
+
+print("Generating Box Plots...")
+afs.plot_boxplots_separate_figures(df)
+
+#print("Generating Violin Plots...")
+#afs.plot_violinplots_separate_figures(df)
+
+print("Generating Outlier Bar Graphs...")
+afs.plot_outlier_bar_graphs(outlier_df)
+#%%Basic preprocessing steps
+basic_pre_files = []
+for file in analysis_files:
+    #Add new path to basic files
+    basic_pre_files.append(bpre.interpolate_and_save_h5(file, max_gap_length=15)[-1]) 
+#%%View preprocessed data
 
 #%% Create dataset with analysis files
 dataset_name = "Movie1_2_199"
