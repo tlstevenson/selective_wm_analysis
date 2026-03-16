@@ -67,10 +67,15 @@ def get_model_training_data(sess_data, basic_model, limit_mask=False, n_limit_hi
     trial_mask_train = torch.zeros(n_sess, max_trials-1, 1)
     trial_mask_eval = torch.zeros(n_sess, max_trials-1, 1)
     
+    n_trials_per_sess= np.zeros(n_sess, dtype=int) #track num trial per session
+    
     # populate tensors from behavioral data
     for i, sess_id in enumerate(sess_ids):
         trial_data = sess_data[sess_data['sessid'] == sess_id]
         n_trials = len(trial_data) - 1 # one less because we predict the next choice based on the prior choice
+        
+        n_trials_per_sess[i]= n_trials #store num trials per session
+        
         
         basic_inputs[i, :n_trials, :] = torch.from_numpy(np.array([trial_data['choice_inputs'][:-1], trial_data['outcome_inputs'][:-1]]).T)
         two_side_inputs[i, :n_trials, :] = torch.from_numpy(np.array([trial_data['chose_left_int'][:-1], trial_data['chose_right_int'][:-1], trial_data['rewarded_int'][:-1]]).T)
@@ -99,10 +104,12 @@ def get_model_training_data(sess_data, basic_model, limit_mask=False, n_limit_hi
         
     if basic_model:
         return {'inputs': basic_inputs, 'labels': left_choice_labels,
-                'trial_mask_train': trial_mask_train, 'trial_mask_eval': trial_mask_eval}
+            'trial_mask_train': trial_mask_train, 'trial_mask_eval': trial_mask_eval,
+            'n_trials_per_sess': n_trials_per_sess}
     else:
         return {'inputs': two_side_inputs, 'labels': choice_class_labels,
-                'trial_mask_train': trial_mask_train, 'trial_mask_eval': trial_mask_eval}
+            'trial_mask_train': trial_mask_train, 'trial_mask_eval': trial_mask_eval,
+            'n_trials_per_sess': n_trials_per_sess}
 
 def get_loss_output_transforms(basic_model):
     if basic_model:
@@ -214,28 +221,57 @@ def fit_model(model, model_name, inputs, labels, trial_mask_train, trial_mask_ev
             
             
 #%%
-def eval_trial_number(trial_mask_eval, sess_idx):
-    # sum the mask to get real trial count for this session
-    # mirrors n_trials = len(trial_data) - 1 in get_model_training_data
-    # trial_mask_eval is 1 for real trials and 0 for padding
-    n_real = int(trial_mask_eval[sess_idx, :, 0].sum().item())
+def get_cv_fold_masks(trial_mask_train, trial_mask_eval, n_trials, n_folds=3):
     
-    # dynamically compute third size based on real trial count
-    third = n_real // 3
     
-    if third == 0:
-        print('Warning: session {} has too few trials ({}) to split into thirds, skipping.'.format(sess_idx, n_real))
-        return None, None
+    n_sess = trial_mask_train.shape[0]
     
-    print('Session {}: {} real trials, third size = {}'.format(sess_idx, n_real, third))
+    fold_masks=[]
     
-    return n_real, third
+    for fold_idx in range(n_folds - 1):
+        # initialize full-size train and test masks as all False
+        # same shape as original masks [n_sess, max_trials, 1]
+        fold_train_mask = torch.zeros_like(trial_mask_train, dtype=torch.bool) #unique train mask
+        fold_test_mask  = torch.zeros_like(trial_mask_eval,  dtype=torch.bool) #unique test mask
+        
+        for sess_idx in range(n_sess):
+            # use n_trials from get_model_training_data directly
+            n_real = n_trials[sess_idx]
+            
+            # compute fold size dynamically per session using n_folds
+            fold_size = n_real // n_folds
+            
+            if fold_size == 0:
+                print('Warning: session {} has too few trials to split into {} folds, skipping.'.format(
+                    sess_idx, n_folds))
+                continue
+            
+            # compute split boundaries using fold_idx
+            train_end = fold_size * (fold_idx + 1)
+            test_end  = fold_size * (fold_idx + 2)
+            
+            # for the last fold extend test_end to n_real to capture remainder trials
+            if fold_idx == n_folds - 2:
+                test_end = n_real
+            
+            # select trials from the original masks 
+            # set train window trials to match original trial_mask_train
+            fold_train_mask[sess_idx, :train_end, :] = trial_mask_train[sess_idx, :train_end, :]
+            # set test window trials to match original trial_mask_eval
+            fold_test_mask[sess_idx, train_end:test_end, :] = trial_mask_eval[sess_idx, train_end:test_end, :]
+            
+            print('  Session {} | Fold {}/{}: train trials 0-{}, test trials {}-{}'.format(
+                sess_idx, fold_idx + 1, n_folds - 1, train_end - 1, train_end, test_end - 1))
+        
+        fold_masks.append((fold_train_mask, fold_test_mask))
+    
+    return fold_masks
             
 #%%
-def fit_model_cv(model, model_name, inputs, labels, trial_mask_eval, loss, subj_name, save_path, n_fits=def_n_fits,
+def fit_model_cv(model, model_name, inputs, labels, trial_mask_train, trial_mask_eval, n_trials, loss, subj_name, save_path, n_fits=def_n_fits,
                  n_steps=def_n_steps, end_tol=def_end_tol, optim_generator=None, train_output_formatter=None,
                  eval_output_transform=None, skip_existing_fits=True, refit_existing=False, print_train_params=False,
-                 equal_sess_weight=False):
+                 equal_sess_weight=False, n_folds=3):
     
     lock = FileLock('fitting.lock')
     
@@ -273,6 +309,8 @@ def fit_model_cv(model, model_name, inputs, labels, trial_mask_eval, loss, subj_
     
     # number of sessions from the first dimension of inputs
     n_sess = inputs.shape[0]
+    
+    fold_masks = get_cv_fold_masks(trial_mask_train, trial_mask_eval, n_trials, n_folds) #each fold covers all sessions
 
     print('Forward chaining CV for {} | {} sessions | model: {}\n'.format(subj_name, n_sess, model_name))
 
@@ -285,71 +323,53 @@ def fit_model_cv(model, model_name, inputs, labels, trial_mask_eval, loss, subj_
 
         fold_results = []
         total_nll = 0.0  # accumulates NLL across all folds from all sessions
-        total_folds = 0  # track total number of folds across all sessions
+
 
         try:
-            for sess_idx in range(n_sess):
-                # dynamically get real trial count and third size for this session
-                n_real, third = eval_trial_number(trial_mask_eval, sess_idx)
-                
-                # skip session if too few trials to split into thirds
-                if n_real is None:
-                    continue
+            # iterate through fold masks, all sessions fit simultaneously in each fold
+            for fold_idx, (fold_train_mask, fold_test_mask) in enumerate(fold_masks):
+                print('\n  Fold {}/{}:'.format(fold_idx + 1, len(fold_masks)))
 
-                # iterate over 2 folds per session
-                for fold_num, (train_end, test_end) in enumerate([
-                    (third,     third * 2),  # fold 1: train on first third, test on second third
-                    (third * 2, n_real)       # fold 2: train on first+second third, test on last third
-                ]):
-                    total_folds += 1
-                    print('  Session {} | Fold {}/2: train trials 0-{}, test trials {}-{}'.format(
-                        sess_idx, fold_num + 1, train_end - 1, train_end, test_end - 1))
+                # reset model and optimizer fresh for each fold so no parameter
+                # state leaks from one fold to the next
+                model.reset_params()
+                optimizer = optim_generator(model.parameters(recurse=True))
 
-                    # slice only the trials needed for this fold
-                    # keeps session dimension intact with sess_idx:sess_idx+1
-                    inputs_train = inputs[sess_idx:sess_idx+1, :train_end, :]
-                    labels_train = labels[sess_idx:sess_idx+1, :train_end, :]
-                    inputs_test  = inputs[sess_idx:sess_idx+1, train_end:test_end, :]
-                    labels_test  = labels[sess_idx:sess_idx+1, train_end:test_end, :]
+                # train on all sessions simultaneously using the fold train mask
+                # mask selects the appropriate training window per session
+                _ = train_model(model, optimizer, loss, inputs, labels, n_steps,
+                                trial_mask=fold_train_mask,
+                                output_formatter=train_output_formatter,
+                                loss_diff_exit_thresh=end_tol,
+                                print_params=print_train_params,
+                                equal_sess_weight=equal_sess_weight)
 
-                    # reset model and optimizer fresh for each fold so no parameter
-                    # state leaks from one fold to the next
-                    model.reset_params()
-                    optimizer = optim_generator(model.parameters(recurse=True))
+                # evaluate on all sessions simultaneously using the fold test mask
+                # mask selects the appropriate test window per session
+                _, _, fold_perf = eval_model(model, inputs, labels,
+                                             trial_mask=fold_test_mask,
+                                             output_transform=eval_output_transform)
 
-                    # train on the first third (or first+second third) of this session
-                    _ = train_model(model, optimizer, loss, inputs_train, labels_train, n_steps,
-                                    output_formatter=train_output_formatter,
-                                    loss_diff_exit_thresh=end_tol,
-                                    print_params=print_train_params,
-                                    equal_sess_weight=equal_sess_weight)
+                # convert LL to NLL and accumulate across all folds
+                fold_nll = -fold_perf['ll_total']
+                total_nll += fold_nll
 
-                    # evaluate on the held-out test window - genuine out-of-sample test
-                    _, _, fold_perf = eval_model(model, inputs_test, labels_test,
-                                                 output_transform=eval_output_transform)
+                fold_results.append({
+                    'fold_idx':  fold_idx,   # fold number
+                    'perf':      fold_perf,  # full performance dict from eval_model
+                    'nll':       fold_nll,   # NLL on this fold's test set
+                })
 
-                    # convert LL to NLL and accumulate across all folds and sessions
-                    fold_nll = -fold_perf['ll_total']
-                    total_nll += fold_nll
+                print('    Fold NLL: {:.3f} | Acc: {:.2f}%'.format(fold_nll, fold_perf['acc'] * 100))
 
-                    fold_results.append({
-                        'sess_idx':  sess_idx,   # which session this fold belongs to
-                        'train_end': train_end,  # exclusive upper bound of training window
-                        'test_end':  test_end,   # exclusive upper bound of test window
-                        'perf':      fold_perf,  # full performance dict from eval_model
-                        'nll':       fold_nll,   # NLL on this fold's test set
-                    })
-
-                    print('    Fold NLL: {:.3f} | Acc: {:.2f}%'.format(fold_nll, fold_perf['acc'] * 100))
-
-            print('\n{} CV Total NLL: {:.3f} | Total folds: {}'.format(model_name, total_nll, total_folds))
+            print('\n{} CV Total NLL: {:.3f} | Total folds: {}'.format(model_name, total_nll, len(fold_masks)))
 
             cv_result = {
-                'model':      model,        # model parameters from the last fold
-                'folds':      fold_results, # per-fold breakdown of performance
-                'total_nll':  total_nll,    # primary metric for model comparison
-                'n_folds':    total_folds,
-                'n_sess':     n_sess,
+                'model':     model,        # model parameters from the last fold
+                'folds':     fold_results, # per-fold breakdown of performance
+                'total_nll': total_nll,    # primary metric for model comparison
+                'n_folds':   len(fold_masks),
+                'n_sess':    n_sess,
             }
 
             with lock:
