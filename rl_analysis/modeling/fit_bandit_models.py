@@ -60,11 +60,28 @@ def perform_fit(config, fit_group_idx):
     training_data = th.get_model_training_data(sess_data, basic_model)
     loss_output_transforms = th.get_loss_output_transforms(basic_model)
 
-    th.fit_model(model, config['model_name'], training_data['inputs'], training_data['labels'], training_data['trial_mask_train'], training_data['trial_mask_eval'], 
-                 loss_output_transforms['loss'], group_name, ph.get_fit_save_path(save_file_name), train_output_formatter=loss_output_transforms['train_output_formatter'], 
-                 eval_output_transform=loss_output_transforms['eval_output_transform'], n_fits=config['n_fits'], n_steps=config['n_steps'], 
-                 equal_sess_weight=config['equal_sess_weight'], skip_existing_fits=config['skip_existing_fits'], 
-                 refit_existing=config['refit_existing'], print_train_params=config['print_train_params'])
+    if config["cv_model"]:
+        th.fit_model_cv(model, config['model_name'], training_data['inputs'], training_data['labels'],
+                    training_data['trial_mask_eval'],
+                    loss_output_transforms['loss'], group_name, ph.get_fit_save_path(save_file_name),
+                    train_output_formatter=loss_output_transforms['train_output_formatter'],
+                    eval_output_transform=loss_output_transforms['eval_output_transform'],
+                    n_fits=config['n_fits'], n_steps=config['n_steps'],
+                    equal_sess_weight=config['equal_sess_weight'],
+                    skip_existing_fits=config['skip_existing_fits'],
+                    refit_existing=config['refit_existing'],
+                    print_train_params=config['print_train_params'])
+    else:
+        th.fit_model(model, config['model_name'], training_data['inputs'], training_data['labels'], 
+                 training_data['trial_mask_train'], training_data['trial_mask_eval'], 
+                 loss_output_transforms['loss'], group_name, ph.get_fit_save_path(save_file_name), 
+                 train_output_formatter=loss_output_transforms['train_output_formatter'], 
+                 eval_output_transform=loss_output_transforms['eval_output_transform'], 
+                 n_fits=config['n_fits'], n_steps=config['n_steps'], 
+                 equal_sess_weight=config['equal_sess_weight'], 
+                 skip_existing_fits=config['skip_existing_fits'], 
+                 refit_existing=config['refit_existing'], 
+                 print_train_params=config['print_train_params'])
         
 # %% main entry point for script called on cluster
 

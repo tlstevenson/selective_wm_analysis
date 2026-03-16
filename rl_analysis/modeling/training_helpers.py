@@ -211,8 +211,170 @@ def fit_model(model, model_name, inputs, labels, trial_mask_train, trial_mask_ev
             
         except RuntimeError as e:
             print('Error: {}. \nTrying Again...'.format(e))
+            
+            
+#%%
+def eval_trial_number(trial_mask_eval, sess_idx):
+    # sum the mask to get real trial count for this session
+    # mirrors n_trials = len(trial_data) - 1 in get_model_training_data
+    # trial_mask_eval is 1 for real trials and 0 for padding
+    n_real = int(trial_mask_eval[sess_idx, :, 0].sum().item())
+    
+    # dynamically compute third size based on real trial count
+    third = n_real // 3
+    
+    if third == 0:
+        print('Warning: session {} has too few trials ({}) to split into thirds, skipping.'.format(sess_idx, n_real))
+        return None, None
+    
+    print('Session {}: {} real trials, third size = {}'.format(sess_idx, n_real, third))
+    
+    return n_real, third
+            
+#%%
+def fit_model_cv(model, model_name, inputs, labels, trial_mask_eval, loss, subj_name, save_path, n_fits=def_n_fits,
+                 n_steps=def_n_steps, end_tol=def_end_tol, optim_generator=None, train_output_formatter=None,
+                 eval_output_transform=None, skip_existing_fits=True, refit_existing=False, print_train_params=False,
+                 equal_sess_weight=False):
+    
+    lock = FileLock('fitting.lock')
+    
+    if optim_generator is None:
+        optim_generator = lambda p: optim.Adam(p, lr=0.01)
+        
+    if path.exists(save_path):
+        with lock:
+            model_dict = agents.load_model(save_path)
+    else:
+        model_dict = {}
+        
+    if not str(subj_name) in model_dict:
+        model_dict[str(subj_name)] = {}
+        
+    cv_model_name = model_name + '_cv'
 
+    # determine the number of fit repeats
+    if cv_model_name not in model_dict[str(subj_name)]:
+        model_dict[str(subj_name)][cv_model_name] = []
+        n_exist_fits = 0
+    else:
+        n_exist_fits = len(model_dict[str(subj_name)][cv_model_name])
+    
+    # only do 1 fit at a time on the cluster
+    n_model_fits = 1 if on_cluster else n_fits
+    
+    if skip_existing_fits:
+        if n_exist_fits >= n_fits:
+            n_model_fits = 0
+        else:
+            n_model_fits = 1 if on_cluster else (n_fits - n_exist_fits)
+    elif refit_existing:
+        n_model_fits = n_exist_fits
+    
+    # number of sessions from the first dimension of inputs
+    n_sess = inputs.shape[0]
 
+    print('Forward chaining CV for {} | {} sessions | model: {}\n'.format(subj_name, n_sess, model_name))
+
+    fit_idx = 0
+    while fit_idx < n_model_fits:
+        print('\n{} CV, fit {}\n'.format(model_name, fit_idx))
+
+        if refit_existing:
+            model = model_dict[str(subj_name)][cv_model_name][fit_idx]['model'].model.clone()
+
+        fold_results = []
+        total_nll = 0.0  # accumulates NLL across all folds from all sessions
+        total_folds = 0  # track total number of folds across all sessions
+
+        try:
+            for sess_idx in range(n_sess):
+                # dynamically get real trial count and third size for this session
+                n_real, third = eval_trial_number(trial_mask_eval, sess_idx)
+                
+                # skip session if too few trials to split into thirds
+                if n_real is None:
+                    continue
+
+                # iterate over 2 folds per session
+                for fold_num, (train_end, test_end) in enumerate([
+                    (third,     third * 2),  # fold 1: train on first third, test on second third
+                    (third * 2, n_real)       # fold 2: train on first+second third, test on last third
+                ]):
+                    total_folds += 1
+                    print('  Session {} | Fold {}/2: train trials 0-{}, test trials {}-{}'.format(
+                        sess_idx, fold_num + 1, train_end - 1, train_end, test_end - 1))
+
+                    # slice only the trials needed for this fold
+                    # keeps session dimension intact with sess_idx:sess_idx+1
+                    inputs_train = inputs[sess_idx:sess_idx+1, :train_end, :]
+                    labels_train = labels[sess_idx:sess_idx+1, :train_end, :]
+                    inputs_test  = inputs[sess_idx:sess_idx+1, train_end:test_end, :]
+                    labels_test  = labels[sess_idx:sess_idx+1, train_end:test_end, :]
+
+                    # reset model and optimizer fresh for each fold so no parameter
+                    # state leaks from one fold to the next
+                    model.reset_params()
+                    optimizer = optim_generator(model.parameters(recurse=True))
+
+                    # train on the first third (or first+second third) of this session
+                    _ = train_model(model, optimizer, loss, inputs_train, labels_train, n_steps,
+                                    output_formatter=train_output_formatter,
+                                    loss_diff_exit_thresh=end_tol,
+                                    print_params=print_train_params,
+                                    equal_sess_weight=equal_sess_weight)
+
+                    # evaluate on the held-out test window - genuine out-of-sample test
+                    _, _, fold_perf = eval_model(model, inputs_test, labels_test,
+                                                 output_transform=eval_output_transform)
+
+                    # convert LL to NLL and accumulate across all folds and sessions
+                    fold_nll = -fold_perf['ll_total']
+                    total_nll += fold_nll
+
+                    fold_results.append({
+                        'sess_idx':  sess_idx,   # which session this fold belongs to
+                        'train_end': train_end,  # exclusive upper bound of training window
+                        'test_end':  test_end,   # exclusive upper bound of test window
+                        'perf':      fold_perf,  # full performance dict from eval_model
+                        'nll':       fold_nll,   # NLL on this fold's test set
+                    })
+
+                    print('    Fold NLL: {:.3f} | Acc: {:.2f}%'.format(fold_nll, fold_perf['acc'] * 100))
+
+            print('\n{} CV Total NLL: {:.3f} | Total folds: {}'.format(model_name, total_nll, total_folds))
+
+            cv_result = {
+                'model':      model,        # model parameters from the last fold
+                'folds':      fold_results, # per-fold breakdown of performance
+                'total_nll':  total_nll,    # primary metric for model comparison
+                'n_folds':    total_folds,
+                'n_sess':     n_sess,
+            }
+
+            with lock:
+                # on the cluster reload before writing to pick up results from
+                # other parallel processes
+                if on_cluster and path.exists(save_path):
+                    model_dict = agents.load_model(save_path)
+                    if not str(subj_name) in model_dict:
+                        model_dict[str(subj_name)] = {}
+                    if cv_model_name not in model_dict[str(subj_name)]:
+                        model_dict[str(subj_name)][cv_model_name] = []
+
+                if refit_existing:
+                    model_dict[str(subj_name)][cv_model_name][fit_idx] = cv_result
+                else:
+                    model_dict[str(subj_name)][cv_model_name].append(cv_result)
+
+                agents.save_model(model_dict, save_path)
+
+            fit_idx += 1
+
+        except RuntimeError as e:
+            print('Error: {}. \nTrying Again...'.format(e))
+
+#%%
 def train_model(model, optimizer, loss, inputs, labels, n_cycles, trial_mask=None, batch_size=None, output_formatter=None, 
                 print_time=True, eval_interval=100, loss_diff_exit_thresh=1e-6, print_params=False, equal_sess_weight=False):
     ''' A general-purpose method for training a network
