@@ -33,14 +33,23 @@ import os
 with open('param_range_comb.json', 'rb') as f:
     param_range_comb = json.load(f)
 
+# a_range = [0.1, 10]
+# a_sd = 5 # was 2
+# b_range = [1e2, 1e5] # was [1, 1e5]
+# b_sd = 10 # was 100
+# c_range = [-3e-6, 4e-6]
+# c_sd = 5e-7
+# d_range = [1, 10]
+# d_sd = 10 # was 5
+
 a_range = [0.1, 10]
-a_sd = 2
-b_range = [1, 1e5]
-b_sd = 100
+a_sd = 5
+b_range = [1e3, 1e5]
+b_sd = 10
 c_range = [-3e-6, 4e-6]
-c_sd = 5e-7
-d_range = [1, 10]
-d_sd = 5
+c_sd = 5e-8
+d_range = [2, 10]
+d_sd = 2
 
 param_vals = lambda rng, sd: {'max_value': max(rng), 'min_value': min(rng),
                               'mean_plus_SD4': max(rng), 'mean_minus_SD4': min(rng), 'SD': sd}
@@ -69,13 +78,14 @@ def make_signal(time, n_terms=10, amp_range=[0.1, 1], f_range=[0.01, 10]):
             
     return signal
 
-def generate_gaussian_noise(time, fs, snr, smooth_sigma=5):
+def generate_gaussian_noise(time, fs, snr, smooth_sigma=5): 
+
+    smooth_sigma *= fs
 
     rng = np.random.default_rng()
     noise = rng.standard_normal(len(time))
     noise = gaussian_filter1d(noise, sigma=smooth_sigma)
     noise /= np.std(noise)
-    noise /= snr
     return noise
     
 #%% generate artifact
@@ -202,7 +212,7 @@ def get_baseline_form (form_type):
                       [ np.inf, np.inf,  np.inf, 1,  np.inf])
           
         case 'exp_linear':  #combination of the exponential decay term and a linear term 
-            baseline_form = lambda x, a, b, c, d: a*np.exp(-x/b) - c*x +d 
+            baseline_form = lambda x, a, b, c, d: a*(np.exp(-x/b) - c*x + d)     # changed to multiplying exponential + linear term and offset by a)
                         
             #               a       b      c     d     
             bounds = ([0      ,      0, -np.inf,  -np.inf],
@@ -246,110 +256,182 @@ def generate_baseline (form_type, SD_frac, time):
                     'baseline_iso': baseline_iso
                     }
 
+#%% computing effective SNR and SAR values
+
+def compute_true_snr(signal, noise):
+    rms_signal = np.sqrt(np.mean(signal**2))
+    rms_noise = np.sqrt(np.mean(noise**2))
+    if rms_noise == 0:
+        return np.inf
+    return rms_signal / rms_noise
+
+def compute_true_sar(signal, artifact):
+    rms_signal = np.sqrt(np.mean(signal**2))
+    rms_art = np.sqrt(np.mean(artifact**2))
+    if rms_art == 0:
+        return np.inf
+    return rms_signal / rms_art
+
 
 #%% combine baseline, signal, artifact and noise
 
-def simulate_signal (time, true_sig, art, noise, sim_type, form_type, current_SD_frac, alpha=0, SNR=1, SAR=10, scale=0.1, rms_scale=False):
-    
-    baselines = generate_baseline (form_type, current_SD_frac, time)
+def simulate_signal(time, true_sig, art, noise, sim_type, form_type, current_SD_frac,
+                    alpha=0, SNR=1, SAR=10, scale=0.1, rms_scale=False):
+    """
+    Combine baseline, true signal, artifact, and noise to simulate fiber photometry signals.
+    Supports RMS or linear scaling to achieve desired SNR and SAR.
+
+    Returns:
+        dict : {'raw_lig', 'raw_iso', 'scaled_true_sig', 'artifact', 'noise', 'baseline_lig', 'baseline_iso'}
+    """
+
+    # --- generate baselines ---
+    baselines = generate_baseline(form_type, current_SD_frac, time)
     baseline_lig = baselines['baseline_lig']
     baseline_iso = baselines['baseline_iso']
-    
-    # rescale signal amplitudes (signal to noise ratio, signal to artifact ratio)
-    
-    # rescale true_sig to desired scale (define the signal RMS scale)
+
+    # --- rescale true_sig to desired scale ---
     scaled_true_sig = true_sig * scale
-    
+
     if rms_scale:
+        # --- RMS of true signal ---
         true_rms = np.sqrt(np.mean(scaled_true_sig ** 2))
-    
-        # rescale noise and art to get exact RMS ratios
+
+        # --- scale noise to target SNR ---
         noise_rms = np.sqrt(np.mean(noise ** 2))
-        
         if noise_rms < 1e-12 or np.isnan(noise_rms):
-            noise_rms = 1
-        
+            noise_rms = 1  # avoid division by zero
         noise = noise / noise_rms * (true_rms / SNR)
-    
+
+        # --- scale artifact to target SAR ---
         art_rms = np.sqrt(np.mean(art ** 2))
-        
         if art_rms < 1e-12 or np.isnan(art_rms):
             art_rms = 1
-            
         art = art / art_rms * (true_rms / SAR)
-    else:
-        noise = noise * scale / SNR
-    
-        art_rms = np.sqrt(np.mean(art ** 2))
+
+        # --- optional cap to prevent unrealistic amplitude blow-up ---
+        max_factor = 10 * true_rms
+        noise = np.clip(noise, -max_factor, max_factor)
+        art = np.clip(art, -max_factor, max_factor)
         
+        # --- print effective SNR using separate helper function ---
+        print("Achieved SNR (RMS):", compute_true_snr(scaled_true_sig, noise))
+        print("Achieved SAR (RMS):", compute_true_sar(scaled_true_sig, art))
+
+    else: # I stopped using this because for this to give an accurate SNR/SAR, requires RMSnoise/artifact = RMSsignal 
+        # --- old linear scaling ---  
+        noise = noise * scale / SNR
+
+        art_rms = np.sqrt(np.mean(art ** 2))
         if art_rms < 1e-12 or np.isnan(art_rms):
             art_rms = 1
-            
         art = art * scale / SAR
-    
-    # debug to check for NaNs or 0
+        
+        # --- print effective SNR using separate helper function ---
+        print("Achieved SNR (linear):", compute_true_snr(scaled_true_sig, noise))
+        print("Achieved SAR (linear):", compute_true_sar(scaled_true_sig, art))
+
+    # --- debug stats ---
     #print('scaled_true_sig stats: min =', np.min(scaled_true_sig), ', max =', np.max(scaled_true_sig))
     #print('artifact stats: min =', np.min(art), ', max =', np.max(art))
     #print('baseline_iso stats: min =', np.min(baseline_iso), ', max =', np.max(baseline_iso))
     #print('baseline_lig stats: min =', np.min(baseline_lig), ', max =', np.max(baseline_lig))
-
     #print('Number of points where scaled_true_sig < -1:', np.sum(scaled_true_sig < -1))
     #print('Number of points where art < -1:', np.sum(art < -1))
-    
+
+    # --- combine signal, baseline, artifact, and noise according to sim_type ---
     match sim_type:
         case 1:
             raw_lig = baseline_lig * (((scaled_true_sig + art) + 1) + noise)
             raw_iso = baseline_iso * (((scaled_true_sig * alpha + art) + 1) + noise)
-        
+
         case 2:
             raw_lig = baseline_lig * ((scaled_true_sig + 1) * (art + 1) + noise)
             raw_iso = baseline_iso * ((scaled_true_sig * alpha + 1) * (art + 1) + noise)
 
-    return {'raw_lig': raw_lig, 'raw_iso': raw_iso, 'scaled_true_sig': scaled_true_sig, 'artifact': art, 'noise': noise, **baselines}
+    return {'raw_lig': raw_lig, 'raw_iso': raw_iso,
+            'scaled_true_sig': scaled_true_sig,
+            'artifact': art, 'noise': noise,
+            **baselines}
+
+# add uncorrelated noise term to both
 
 
-def simulate_n_signals(n, time,
-                       param_name, param_range, param_step,
-                       f_range_sig, 
-                       f_range_noise,
-                       max_art_count, art_duration_range, f_range_art,
-                       form_type, sim_type,
-                       SD_frac_default,
-                       alpha_default,
-                       SNR_default,
-                       SAR_default,
-                       scale,
-                       fs,
-                       smooth_sigma):
+def simulate_n_signals(
+    n, time,
+    param_name, param_range, param_step=None,
+    f_range_sig=None, 
+    f_range_noise=None,
+    max_art_count=10, art_duration_range=[1,50], f_range_art=None,
+    form_type='exp_linear', sim_type=1,
+    SD_frac_default=0.1,
+    alpha_default=0,
+    SNR_default=1,
+    SAR_default=10,
+    scale=0.1,
+    fs=200,
+    smooth_sigma=5,
+    step_type='linear',  # 'linear', 'log', or 'custom'
+    custom_values=None   # used if step_type == 'custom'
+):
+    """
+    Simulate multiple signals over a range of parameter values.
+    
+    step_type:
+        - 'linear': use np.arange with param_step
+        - 'log': use np.logspace with num = len(param_range) (or param_step ignored)
+        - 'custom': use custom_values list
+    
+    Returns: dict[param_value] -> list of simulated signal dicts
+    """
     
     simulated_signals = {}
     
-    for param_value in np.arange(param_range[0], param_range[1]+param_step, param_step):
-       simulated_signals[param_value] = []
+    # --- Determine parameter values to loop over ---
+    if step_type == 'linear':
+        if param_step is None:
+            raise ValueError("param_step must be provided for linear stepping")
+        param_values = np.arange(param_range[0], param_range[1] + param_step, param_step)
+        
+    elif step_type == 'log':
+        num_vals = param_step if param_step is not None else 3  # default to 3 if not provided
+        param_values = np.logspace(np.log10(param_range[0]), np.log10(param_range[1]), num=num_vals)
+        
+    elif step_type == 'custom':
+        if custom_values is None:
+            raise ValueError("custom_values must be provided for step_type='custom'")
+        param_values = custom_values
+        
+    else:
+        raise ValueError(f"Unknown step_type: {step_type}")
+    
+    # --- Main loop ---
+    for param_value in param_values:
+        simulated_signals[param_value] = []
 
-       for _ in range(n):
-           
-           # Override parameter depending on param_name
-           current_SD_frac = param_value if param_name == 'SD_frac' else SD_frac_default
-           current_alpha = param_value if param_name == 'alpha' else alpha_default
-           current_SNR = param_value if param_name == 'SNR' else SNR_default
-           current_SAR = param_value if param_name == 'SAR' else SAR_default
-           
-           # Generate signal, noise, artifacts
-           true_sig = make_signal(time, f_range = f_range_sig)
-           # noise = make_signal(time, f_range = f_range_noise)      # this was used for noise composed of sinusoids
-           noise = generate_gaussian_noise(time, fs, snr=current_SNR, smooth_sigma=smooth_sigma)
-           art = make_art(time, max_art_count, art_duration_range, f_range = f_range_art)
+        for _ in range(n):
+            # Override parameter depending on param_name
+            current_SD_frac = param_value if param_name == 'SD_frac' else SD_frac_default
+            current_alpha = param_value if param_name == 'alpha' else alpha_default
+            current_SNR = param_value if param_name == 'SNR' else SNR_default
+            current_SAR = param_value if param_name == 'SAR' else SAR_default
 
-           signal_data = simulate_signal(time, true_sig, art, noise, 
-                                              sim_type, form_type, current_SD_frac,
-                                              current_alpha,
-                                              current_SNR, current_SAR,
-                                              scale=scale)
+            # Generate signal, noise, artifacts
+            true_sig = make_signal(time, f_range=f_range_sig)
+            noise = generate_gaussian_noise(time, fs, snr=current_SNR, smooth_sigma=smooth_sigma)
+            art = make_art(time, max_art_count, art_duration_range, f_range=f_range_art)
 
-           simulated_signals[param_value].append(signal_data)
+            signal_data = simulate_signal(
+                time, true_sig, art, noise,
+                sim_type, form_type, current_SD_frac,
+                current_alpha, current_SNR, current_SAR,
+                scale=scale, rms_scale=True
+            )
+
+            simulated_signals[param_value].append(signal_data)
 
     return simulated_signals
+
 
 
 #%% process_signals 
@@ -379,7 +461,7 @@ def process_signals(raw_lig, raw_iso, baseline_iso, time, fs, lpf_general = 10, 
     filtered_lig = fp_utils.filter_signal(raw_lig, cutoff_f=lpf_general, sr=fs)
     filtered_iso = fp_utils.filter_signal(raw_iso, cutoff_f=lpf_general, sr=fs)
 
-    # --- OLS (standard) ---
+    # --- OLS (Ordinary Least Squares) ---
     fitted_ols, fit_info_ols = fp_utils.fit_signal(filtered_iso, filtered_lig, time, vary_t=False)
     fitted_ols_baseline = fit_info_ols['formula'](baseline_iso, *fit_info_ols['params'])
 
@@ -393,12 +475,14 @@ def process_signals(raw_lig, raw_iso, baseline_iso, time, fs, lpf_general = 10, 
         'raw_lig': raw_lig,
         'fitted_iso': fitted_ols,
         'fitted_iso_baseline': fitted_ols_baseline,
+        'filtered_lig': filtered_lig,
+        'filtered_iso': filtered_iso,
         'dff': dff_ols,
         'fit_params': fit_info_ols['params'],
         'filt_t': np.arange(len(time)),
     }
 
-    # --- IRLS ---
+    # --- IRLS (Iteratively Reweighted Least Squares) ---
     not_nans = ~np.isnan(filtered_lig) & ~np.isnan(filtered_iso)
     fitted_irls = np.full_like(filtered_lig, np.nan)
 
@@ -422,6 +506,8 @@ def process_signals(raw_lig, raw_iso, baseline_iso, time, fs, lpf_general = 10, 
         'raw_lig': raw_lig,
         'fitted_iso': fitted_irls,
         'fitted_iso_baseline': irls_baseline,
+        'filtered_lig': filtered_lig,
+        'filtered_iso': filtered_iso,
         'dff': dff_irls,
         'fit_params': irls_params,
         'filt_t': np.arange(len(time)),
@@ -458,6 +544,8 @@ def process_signals(raw_lig, raw_iso, baseline_iso, time, fs, lpf_general = 10, 
         'corr_lig': baseline_corr_lig,
         'corr_iso': baseline_corr_iso,
         'fitted_iso': fitted_baseline_iso,
+        'filtered_lig': filtered_lig,
+        'filtered_iso': filtered_iso,
         'dff': dff_lpf,
         'fit_params': fit_info_lpf['params'],
         'filt_t': np.arange(len(time)),
@@ -479,6 +567,8 @@ def process_signals(raw_lig, raw_iso, baseline_iso, time, fs, lpf_general = 10, 
         'raw_lig': raw_lig,
         'raw_iso': raw_iso,
         'fitted_iso': fitted_fband_iso,
+        'filtered_lig': filtered_lig,
+        'filtered_iso': filtered_iso,
         'dff': dff_fband,
         'fit_params': fit_info_fband['params'],
         'filt_t': np.arange(len(time)),
@@ -506,6 +596,8 @@ def process_signals(raw_lig, raw_iso, baseline_iso, time, fs, lpf_general = 10, 
         'corr_lig': baseline_corr_lig,
         'corr_iso': baseline_corr_iso,
         'fitted_iso': fitted_fband_lpf_iso,
+        'filtered_lig': filtered_lig,
+        'filtered_iso': filtered_iso,
         'dff': dff_fband_lpf,
         'fit_params': fit_info_fband_lpf['params'],
         'filt_t': np.arange(len(time)),
@@ -534,7 +626,7 @@ def remove_outliers (data, threshold=2):
 
 #%% plot ev - line plot 
 
-def plot_ev_results(ev_results, DV_name, exclude_outliers=False, alpha_default=None, SD_frac_default=None, SNR_default=None, SAR_default=None, method_labels=None):
+def plot_ev_results(ev_results, DV_name, exclude_outliers=False, alpha_default=None, SD_frac_default=None, SNR_default=None, SAR_default=None, smooth_sigma=None, method_labels=None):
     plt.figure(figsize=(6, 5))
     
     DVs = sorted([float(k) for k in ev_results.keys()])
@@ -572,13 +664,13 @@ def plot_ev_results(ev_results, DV_name, exclude_outliers=False, alpha_default=N
        
     match DV_name:
         case 'alpha':
-            title += f'SD_frac = {SD_frac_default}, SNR = {SNR_default}, SAR = {SAR_default}'
+            title += f'SD_frac = {SD_frac_default}, SNR = {SNR_default}, SAR = {SAR_default}, smooth_sigma = {smooth_sigma}'
         case 'SD_frac':
-            title += f'alpha = {alpha_default}, SNR = {SNR_default}, SAR = {SAR_default}'
+            title += f'alpha = {alpha_default}, SNR = {SNR_default}, SAR = {SAR_default}, smooth_sigma = {smooth_sigma}'
         case 'SNR':
-            title += f'alpha = {alpha_default}, SD_frac = {SD_frac_default}, SAR = {SAR_default}'
+            title += f'alpha = {alpha_default}, SD_frac = {SD_frac_default}, SAR = {SAR_default}, smooth_sigma = {smooth_sigma}'
         case 'SAR':
-            title += f'alpha = {alpha_default}, SD_frac = {SD_frac_default}, SNR = {SNR_default}'
+            title += f'alpha = {alpha_default}, SD_frac = {SD_frac_default}, SNR = {SNR_default}, smooth_sigma = {smooth_sigma}'
             
     plt.title(title)
     
@@ -591,8 +683,8 @@ def plot_ev_results(ev_results, DV_name, exclude_outliers=False, alpha_default=N
 
 def get_plot_fitted_iso(entry, method_key):
     """
-    Return a fluorescence-like fitted iso for plotting.
-    LPF-based methods store residuals and need baseline added back.
+    Return a ligand-space fitted signal for plotting.
+    LPF-based methods store residuals and need ligand baseline added back.
     """
     if entry is None or not isinstance(entry, dict):
         return None
@@ -602,16 +694,17 @@ def get_plot_fitted_iso(entry, method_key):
         return None
 
     if method_key in ['LPF_only', 'FreqBand_LPF']:
-        baseline_iso = entry.get('baseline_iso', None)
-        if baseline_iso is None:
+        baseline_lig = entry.get('baseline_lig', None)
+        if baseline_lig is None:
             return None
-        return baseline_iso + fitted_iso
+        return baseline_lig + fitted_iso
 
     return fitted_iso
 
+
 #%% plot the signals processed with all current methods
 def plot_comparative_figures(
-    raw_lig, raw_iso, baseline_iso, time, true_sig, fs=200,
+    raw_lig, raw_iso, baseline_lig, time, true_sig, fs=200,
     suptitle_text=None, ev=None, dv=None, param_name=None, extra_title=None):
     """
     Plot raw signals, fitted isos, and dF/F across all processing methods returned by process_signals.
@@ -620,7 +713,7 @@ def plot_comparative_figures(
     import matplotlib.pyplot as plt
 
     # --- Run processing ---
-    results = process_signals(raw_lig, raw_iso, baseline_iso, time, fs)
+    results = process_signals(raw_lig, raw_iso, baseline_lig, time, fs)
 
     # --- Methods to plot ---
     method_labels = ['OLS', 'IRLS', 'LPF_only', 'FreqBand', 'FreqBand_LPF']
@@ -662,7 +755,7 @@ def plot_comparative_figures(
             if 'fitted_iso' in entry and entry['fitted_iso'] is not None:
                 plot_iso = entry['fitted_iso']
                 if method_key in ['LPF_only', 'FreqBand_LPF']:
-                    plot_iso = plot_iso + baseline_iso
+                    plot_iso = plot_iso + baseline_lig
                 ax_left.plot(time, plot_iso, label=f'{method_key}', color='orange', alpha=0.7)
             if 'dff' in entry and entry['dff'] is not None:
                 ax_right.plot(time, entry['dff'], label=f'{method_key}', color='skyblue', alpha=0.7)
@@ -725,6 +818,58 @@ def plot_signals(processed_signals, true_sig, t, ev, fs=200, title='Signal Overv
     axs[3].legend()
 
     return fig
+
+#%% plotting intermediates of the df/f calculation for debugging
+
+def plot_stagewise_debug(ols_entry, lpf_entry, fband_lpf_entry, true_sig, time, title_prefix=""):
+    
+    # ---------- FIGURE 1: RAW + BASELINE ----------
+    plt.figure(figsize=(10,6))
+    plt.plot(time, lpf_entry['raw_lig'], label='Raw Lig', alpha=0.3)
+    plt.plot(time, lpf_entry['raw_iso'], label='Raw Iso', alpha=0.3)
+    plt.plot(time, lpf_entry['baseline_lig'], label='Baseline Lig', linewidth=2, alpha=0.9, linestyle='--')
+    plt.plot(time, lpf_entry['baseline_iso'], label='Baseline Iso', linewidth=2, alpha=0.9, linestyle='--')
+    plt.title(f"{title_prefix} Raw & Baselines")
+    plt.xlabel("Time (s)")
+    plt.ylabel("Fluorescence")
+    plt.legend()
+    plt.tight_layout()
+
+    # ---------- FIGURE 2: FILTERED ----------
+    plt.figure(figsize=(10,6))
+    plt.plot(time, lpf_entry['filtered_lig'], label='Filtered Lig', alpha=0.3)
+    plt.plot(time, lpf_entry['filtered_iso'], label='Filtered Iso', alpha=0.3)
+    plt.title(f"{title_prefix} Filtered Signals")
+    plt.xlabel("Time (s)")
+    plt.ylabel("Fluorescence")
+    plt.legend()
+    plt.tight_layout()
+
+    # ---------- FIGURE 3: BASELINE CORRECTED ----------
+    plt.figure(figsize=(10,6))
+    plt.plot(time, lpf_entry['corr_lig'], label='Baseline Corrected Lig', alpha=0.3)
+    plt.plot(time, lpf_entry['corr_iso'], label='Baseline Corrected Iso', alpha=0.3)
+    plt.plot(time, lpf_entry['fitted_iso'], label='LPF Fitted Iso', linewidth=2, alpha=0.3)
+    plt.plot(time, fband_lpf_entry['fitted_iso'], label='LPF + FreqBand Fitted Iso', linewidth=2, alpha=0.3)
+    plt.title(f"{title_prefix} Baseline Corrected + Fits")
+    plt.xlabel("Time (s)")
+    plt.ylabel("Fluorescence")
+    plt.legend()
+    plt.tight_layout()
+    
+    # -------- Figure 4: dF/F Comparison --------
+    plt.figure(figsize=(10,6))
+    plt.plot(time, ols_entry['dff'], label='OLS dF/F', alpha=0.3)
+    plt.plot(time, lpf_entry['dff'], label='LPF-only dF/F', alpha=0.3)
+    plt.plot(time, fband_lpf_entry['dff'], label='LPF + FreqBand dF/F', alpha=0.3)
+    
+    plt.xlabel("Time (s)")
+    plt.ylabel("dF/F")
+    plt.title(f"{title_prefix} dF/F Comparison")
+    plt.legend()
+    plt.tight_layout()
+
+
 
 #%% saving signals in a table with each row corresponding to a signal
 

@@ -16,11 +16,12 @@ import statsmodels.api as sm
 import pandas as pd
 import os
 from tqdm import tqdm
+import fp_utils as fp_utils
 
 #%% define recording length
 
 fs = 30  # sampling freq. (Hz)
-duration = 500 # session length (s)
+duration = 4000 # session length (s)
 total_t = np.linspace(0, duration, num=fs*duration, endpoint=False)   # for the entire duration 
 
 #%% define save file path
@@ -29,8 +30,10 @@ total_t = np.linspace(0, duration, num=fs*duration, endpoint=False)   # for the 
 
 #%% simulate signals
 
-n = 100 # was 200
+n = 30 # was 200
 time = total_t
+
+# Typical parameter ranges; choose which param_name
 
 # param_name = 'alpha'
 # param_range = [0, 1]
@@ -41,22 +44,42 @@ time = total_t
 # param_step = 0.05
 
 param_name = 'SNR'
-param_range = [1, 15]  # was 0 to 5
-param_step = 1
+# param_range = [1, 15]
+# param_step = 1
 
 # param_name = 'SAR'
 # param_range = [0.5, 5]
 # param_step = 0.5
 
+# choose which kind of stepping
 
-f_range_sig = [0.1, 10]
-f_range_noise = [0.5, 10]
+# --- Linear stepping ---
+# param_range = [1, 5]
+# param_step = 1
+# custom_values = None
+# step_type = 'linear'
+
+# --- Logarithmic stepping ---
+# param_range = [0.1, 10]   # min and max
+# param_step = 3            # number of points in logspace
+# custom_values = None
+# step_type = 'log'
+
+# --- Custom discrete values ---
+param_range = None
+param_step = None
+custom_values = [0.1, 0.5, 1, 3, 5, 10]
+step_type = 'custom'
+
+
+f_range_sig = [0.01, 10]
+f_range_noise = [0.5, 10] # not using anymore b/c of gaussian noise
 max_art_count = 5
 art_duration_range = [1, 50]
 f_range_art = [0.05, 2]   # was 0.05 to 10, but changed to keep artifacts lower frequency
 form_type = 'exp_linear'
 sim_type = 2
-SD_frac_default = 0.05
+SD_frac_default = 0.05 # was 0.01
 alpha_default = 0 # was 0.05
 SNR_default = 10
 SAR_default = 1
@@ -64,21 +87,31 @@ scale = 0.1
 lpf_general = 10.0    # Hz, general smoothing for all regression fits
 lpf_baseline = 0.0005 # Hz, for slow baseline estimation (LPF methods)
 my_iso_bands = [[0, 0.01], [0.01, 0.1], [0.1, 1], [1, 10]]
-smooth_sigma = 0.25
+smooth_sigma = 0.5  # this is in seconds not samples 
+# max 1 sec
 
-simulated_signals = sl.simulate_n_signals(n, time,
-    param_name, param_range, param_step,
-    f_range_sig,
-    f_range_noise,
-    max_art_count, art_duration_range, f_range_art,
-    form_type, sim_type,
-    SD_frac_default,
-    alpha_default,
-    SNR_default,
-    SAR_default, 
-    scale,
-    fs,
-    smooth_sigma
+simulated_signals = sl.simulate_n_signals(
+    n=n,
+    time=time,
+    param_name=param_name,
+    param_range=param_range,
+    param_step=param_step,
+    f_range_sig=f_range_sig,
+    f_range_noise=f_range_noise,
+    max_art_count=max_art_count,
+    art_duration_range=art_duration_range,
+    f_range_art=f_range_art,
+    form_type=form_type,
+    sim_type=sim_type,
+    SD_frac_default=SD_frac_default,
+    alpha_default=alpha_default,
+    SNR_default=SNR_default,
+    SAR_default=SAR_default,
+    scale=scale,
+    fs=fs,
+    smooth_sigma=smooth_sigma,
+    step_type=step_type,
+    custom_values=custom_values
 )
 
 # save the simulated signals after generation
@@ -279,12 +312,12 @@ method_labels = {
 sl.plot_ev_results(
     ev_results, param_name, exclude_outliers=False, method_labels=method_labels,
     alpha_default=alpha_default, SD_frac_default=SD_frac_default,
-    SNR_default=SNR_default, SAR_default=SAR_default
+    SNR_default=SNR_default, SAR_default=SAR_default, smooth_sigma=smooth_sigma
 )
 sl.plot_ev_results(
     ev_results, param_name, exclude_outliers=True, method_labels=method_labels,
     alpha_default=alpha_default, SD_frac_default=SD_frac_default,
-    SNR_default=SNR_default, SAR_default=SAR_default
+    SNR_default=SNR_default, SAR_default=SAR_default, smooth_sigma=smooth_sigma
 )
 
 # Find signal with the absolute minimum EV across all DVs and methods
@@ -333,7 +366,7 @@ print("DEBUG: time length =", len(total_t))
 sl.plot_comparative_figures(
     raw_lig=sim_list[i]['raw_lig'],
     raw_iso=sim_list[i]['raw_iso'],
-    baseline_iso=sim_list[i]['baseline_iso'],
+    baseline_lig=sim_list[i]['baseline_lig'],
     time=total_t,
     true_sig=sim_list[i]['scaled_true_sig'],
     fs=fs,
@@ -555,7 +588,7 @@ print(f'Other EV = {other_ev:.4f} from DV group: {min_DV:.4f}, method: {other_me
 sl.plot_comparative_figures(
     raw_lig=sim_list[other_idx]['raw_lig'],
     raw_iso=sim_list[other_idx]['raw_iso'],
-    baseline_iso=sim_list[other_idx]['baseline_iso'],
+    baseline_lig=sim_list[other_idx]['baseline_lig'],
     time=total_t,
     true_sig=sim_list[other_idx]['scaled_true_sig'],
     fs=fs,
@@ -663,8 +696,6 @@ ax.legend(fontsize=8, loc='upper right')
 plt.show()
 
 
-
-
 #%% plotting the signal for the largest delta EV between any two methods
 
 all_methods = list(next(iter(ev_results.values())).keys())  # get all methods
@@ -716,7 +747,7 @@ title = (f"Largest ΔEV ({max_delta_info['method1']} vs {max_delta_info['method2
 sl.plot_comparative_figures(
     raw_lig=sim_list[index_target]['raw_lig'],
     raw_iso=sim_list[index_target]['raw_iso'],
-    baseline_iso=sim_list[index_target]['baseline_iso'],
+    baseline_lig=sim_list[index_target]['baseline_lig'],
     time=total_t,
     true_sig=sim_list[index_target]['scaled_true_sig'],
     fs=fs,
@@ -726,4 +757,106 @@ sl.plot_comparative_figures(
     suptitle_text=None,
     extra_title=title
 )
+
+#%% debugging by graphing intermediates in df/f calculation
+
+ols_entry = processed_signals[min_DV]['OLS'][min_idx]
+lpf_entry = processed_signals[min_DV]['LPF_only'][min_idx]
+fband_lpf_entry = processed_signals[min_DV]['FreqBand_LPF'][min_idx]
+
+true_sig = simulated_signals[min_DV][min_idx]['scaled_true_sig']
+
+sl.plot_stagewise_debug(
+    ols_entry,
+    lpf_entry,
+    fband_lpf_entry,
+    true_sig,
+    total_t,
+    title_prefix="Bad EV Example"
+)
+
+
+#%% plot components and power spectra for a single simulated signal
+
+# --- pick one DV and one simulation index ---
+dv_to_plot = list(simulated_signals.keys())[0]
+signal_idx = 0  # first simulation
+signal_data = simulated_signals[dv_to_plot][signal_idx]
+
+# unpack components
+raw_lig = signal_data['raw_lig']
+raw_iso = signal_data['raw_iso']
+scaled_true_sig = signal_data['scaled_true_sig']
+artifact = signal_data['artifact']
+noise = signal_data['noise']
+baseline_lig = signal_data['baseline_lig']
+baseline_iso = signal_data['baseline_iso']
+
+# --- time vector ---
+time_vector = np.arange(len(scaled_true_sig)) / fs
+
+# --- plot individual components and raw signals ---
+plt.figure(figsize=(14, 6))
+plt.plot(time_vector, scaled_true_sig, label='True Signal', alpha=0.8)
+plt.plot(time_vector, artifact, label='Artifact', alpha=0.8)
+plt.plot(time_vector, noise, label='Noise', alpha=0.8)
+plt.plot(time_vector, raw_lig, label='Raw Ligand', alpha=0.6, linestyle='--')
+plt.plot(time_vector, raw_iso, label='Raw Iso', alpha=0.6, linestyle='--')
+plt.xlabel('Time (s)')
+plt.ylabel('Signal amplitude')
+plt.title(f'Simulated Signal Components | DV = {dv_to_plot}, idx = {signal_idx}')
+plt.legend()
+plt.tight_layout()
+plt.show()
+
+# --- compute and plot power spectra ---
+components = {
+    'True Signal': scaled_true_sig,
+    'Artifact': artifact,
+    'Noise': noise,
+    'Raw Lig': raw_lig,
+    'Raw Iso': raw_iso
+}
+
+plt.figure(figsize=(12, 6))
+for name, sig in components.items():
+    freqs, ps = fp_utils.calc_power_spectra(sig, dt=1/fs, f_min=0.005)
+    plt.plot(freqs, ps, label=name, alpha=0.8)
+
+plt.xscale('log')
+plt.yscale('log')
+plt.xlabel('Frequency (Hz)')
+plt.ylabel('Power spectral density')
+plt.title(f'Power Spectra of Components | DV = {dv_to_plot}, idx = {signal_idx}')
+plt.legend()
+plt.tight_layout()
+plt.show()
+
+#%% Checking SNR values comparing between RMS T/F for simulate_signals
+
+true_rms = np.sqrt(np.mean(scaled_true_sig ** 2))
+noise_rms = np.sqrt(np.mean(noise ** 2))
+art_rms = np.sqrt(np.mean(artifact ** 2))
+
+print(f"True signal RMS:   {true_rms:.4f}")
+print(f"Noise RMS:         {noise_rms:.4f}")
+print(f"Artifact RMS:      {art_rms:.4f}")
+
+# RMS after scaling (rms_scale=True)
+scaled_noise = noise / noise_rms * (true_rms / 0.1) # SNR = 0.1
+scaled_art = artifact / art_rms * (true_rms / 10)   # SAR = 10
+print(f"Scaled noise RMS:  {np.sqrt(np.mean(scaled_noise ** 2)):.4f}")
+print(f"Scaled art RMS:    {np.sqrt(np.mean(scaled_art ** 2)):.4f}")
+    
+# --- compute SNRs ---
+
+# SNR without RMS scaling (using raw noise)
+snr_without_rms = np.sqrt(np.mean(scaled_true_sig**2)) / np.sqrt(np.mean(noise**2))
+
+# SNR with RMS scaling (using scaled noise)
+scaled_noise = noise / np.sqrt(np.mean(noise**2)) * (np.sqrt(np.mean(scaled_true_sig**2)) / 0.1)  # matches your simulate_signal scaling
+snr_with_rms = np.sqrt(np.mean(scaled_true_sig**2)) / np.sqrt(np.mean(scaled_noise**2))
+
+print(f"SNR without RMS scaling: {snr_without_rms:.4f}")
+print(f"SNR with RMS scaling:    {snr_with_rms:.4f}")
 
