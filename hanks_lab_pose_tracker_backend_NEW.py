@@ -17,6 +17,7 @@ import path_manager_NEW as pm
 import disk_dataset_creator_NEW as ddc
 import basic_preprocessing_NEW as bpre
 import analysis_file_statistics_NEW as afs
+import file_select_ui as fsui
 
 #Imports that should be moved out
 import subprocess
@@ -45,7 +46,7 @@ def get_file_paths(directory_path):
 
 # Example usage:
 # files = get_file_paths("./my_folder")
-#%%Select new videos
+#%%Select new videos by directory
 vid_folders = [r"E:/Tanner_Vids/ReformattedVideos/199",
                r"E:/Tanner_Vids/ReformattedVideos/274",
                r"E:/Tanner_Vids/ReformattedVideos/400",
@@ -53,24 +54,43 @@ vid_folders = [r"E:/Tanner_Vids/ReformattedVideos/199",
 curr_vids = []
 for vid_folder in vid_folders:
     curr_vids = curr_vids + get_file_paths(vid_folder)
+#%%Select new videos by hand
+curr_vids = fsui.GetFile("Select inference files.")
+
 #%%Format all videos
 curr_format_vids = []
-for vid in curr_vids:
-    new_format_vid_path = svr.process_video(vid, config["processed_vids_folder"])
-    if new_format_vid_path != None:
-        curr_format_vids.append(new_format_vid_path)
-#%% Inference Selections (without reformatting)
-#Set up the write paths
-#TODO: Remove hardcode path
+use_reformatted = True
+try:
+    for vid in curr_vids:
+        new_format_vid_path = svr.process_video(vid, config["processed_vids_folder"])
+        print(new_format_vid_path)
+        if new_format_vid_path != None:
+            curr_format_vids.append(new_format_vid_path)
+except:
+    use_reformatted = False
+    raise Warning("Failed to reformat videos. Using original videos.")
+#%% Set up inference write paths
+#write_paths = []
+#for i in range(len(curr_vids)):
+#    write_paths.append(pm.get_mirrored_path_slp(r"E:/Tanner_Vids/ReformattedVideos", curr_vids[i], config["analysis_folder"], config["single_model_path"]))
+#    print(write_paths[-1])
 write_paths = []
-for i in range(len(curr_vids)):
-    write_paths.append(pm.get_mirrored_path_slp(r"E:/Tanner_Vids/ReformattedVideos", curr_vids[i], config["analysis_folder"], config["single_model_path"])) #TODO: Fix only works for single
-    print(write_paths[-1])
+if use_reformatted:
+    print(curr_format_vids)
+    for i in range(len(curr_format_vids)):
+        write_paths.append(pm.get_mirrored_path_slp(r"E:/Tanner_Vids/ReformattedVideos", curr_format_vids[i], config["analysis_folder"], config["single_model_path"]))
+else:
+    for i in range(len(curr_vids)):
+        write_paths.append(pm.get_mirrored_path_slp(r"E:/Tanner_Vids/ReformattedVideos", curr_vids[i], config["analysis_folder"], config["single_model_path"]))
+    
 #%% Command to run inference on all files
 #slp_launcher.run_inference(curr_format_vids, write_paths)
-slp_launcher.run_inference(curr_vids, write_paths)
+if use_reformatted:
+    slp_launcher.run_inference(curr_format_vids, write_paths)
+else:
+    slp_launcher.run_inference(curr_vids, write_paths)
 
-#%%Temporary MAC only for directly using sleap-io to convert
+#%%Set up analysis folders (Starting point after inference if not continuous)
 analysis_folders = ["/Users/alex/Documents/HanksLab/HanksLabVideos/Analysis_3_10_2026/Analysis/199",
                "/Users/alex/Documents/HanksLab/HanksLabVideos/Analysis_3_10_2026/Analysis/274",
                "/Users/alex/Documents/HanksLab/HanksLabVideos/Analysis_3_10_2026/Analysis/400",
@@ -81,6 +101,7 @@ for folder in analysis_folders:
     for file in files:
         write_paths.append(file)
 
+#%%Convert slp to analysis h5 (Starting point after inference)
 import sleap_io as sio
 def convert_slp_to_analysis_h5(slp_path):
     """
