@@ -59,8 +59,8 @@ def extract_node_metrics(locations):
         y_coords = locations[:, node_idx, 1]
         is_nan_mask = np.isnan(x_coords)
         
-        # 1. Number of missing frames
-        num_nans = int(np.sum(is_nan_mask))
+        # 1.Proportion of missing frames
+        prop_nans = float(np.sum(is_nan_mask)) / num_frames
         
         # 2 & 3. Number and lengths of NaN sequences
         seq_lengths = [
@@ -76,7 +76,7 @@ def extract_node_metrics(locations):
         valid_velocities = velocities[~np.isnan(velocities)]
         
         node_metrics[node_idx] = {
-            "num_nans": num_nans,            
+            "prop_nans": prop_nans,            
             "num_seqs": num_seqs,            
             "seq_lengths": seq_lengths,      
             "velocities": valid_velocities   
