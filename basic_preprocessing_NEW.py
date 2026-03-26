@@ -10,7 +10,7 @@ import h5py
 import numpy as np
 import pandas as pd
 import shutil
-from pathlib import Path
+import pm
 
 def interpolate_and_save_h5(filepath, max_gap_length=None):
     """
@@ -27,8 +27,7 @@ def interpolate_and_save_h5(filepath, max_gap_length=None):
     - new_filepath (str): The path to the newly saved file.
     """
     # 1. Generate the new filename (e.g., video1.h5 -> video1_basic.h5)
-    path_obj = Path(filepath)
-    new_filepath = path_obj.with_name(f"{path_obj.stem}_basic{path_obj.suffix}")
+    new_filepath = pm.h5_raw_to_interpol(filepath, str(max_gap_length), "quad")
     
     # 2. Copy the original file to preserve all SLEAP metadata/structure
     shutil.copy(filepath, new_filepath)

@@ -143,9 +143,10 @@ def convert_slp_to_analysis_h5(slp_path):
     print(f"Successfully created: {output_path}")
     return str(output_path)
 
-for file in write_paths:
-    convert_slp_to_analysis_h5(file, pm.slp_to_h5(file))
-#%%Permanent WINDOWS way to reformat videos
+for i in range(len(write_paths)):
+    write_paths[i] = convert_slp_to_analysis_h5(file, pm.slp_to_h5(file))
+#%%
+"""#%%Permanent WINDOWS way to reformat videos
 
 analysis_files = [] #Store all valid reformatted analysis files
 #Convert slp files to analysis h5 files in the same folder (TODO: Consider moving this out of here)
@@ -170,9 +171,9 @@ for file in write_paths:
             print(process.stdout)
             print(process.stderr)
     except Exception as e:
-        print(f"Failed to launch subprocess: {e}")
-        
-#%%temporary: Test if the formatting worked
+        print(f"Failed to launch subprocess: {e}")"""
+       
+#%% View h5 structure
 import h5py
 with h5py.File('C:/Users/hankslab/Analysis/199/mov_0002_raw.h5', 'r') as f:
     print("Keys in H5 file:", list(f.keys()))
@@ -216,7 +217,7 @@ print("Generating Outlier Bar Graphs...")
 afs.plot_outlier_bar_graphs(outlier_df)
 #%%Basic preprocessing steps
 basic_pre_files = []
-for file in analysis_files:
+for file in write_paths:
     #Add new path to basic files
     basic_pre_files.append(bpre.interpolate_and_save_h5(file, max_gap_length=15)[-1]) 
 #%%View preprocessed data
