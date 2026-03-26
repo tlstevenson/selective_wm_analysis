@@ -10,7 +10,7 @@ import h5py
 import numpy as np
 import pandas as pd
 import shutil
-import pm
+import path_manager_NEW as pm
 
 def interpolate_and_save_h5(filepath, max_gap_length=None):
     """

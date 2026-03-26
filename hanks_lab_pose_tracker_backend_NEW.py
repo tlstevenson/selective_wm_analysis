@@ -55,7 +55,13 @@ curr_vids = []
 for vid_folder in vid_folders:
     curr_vids = curr_vids + get_file_paths(vid_folder)
 #%%Select new videos by hand
-curr_vids = fsui.GetFile("Select inference files.")
+curr_vids = []
+go = "yes"
+while go == "yes":
+    new_curr_vids = fsui.GetFile("Select videos to run inference.")
+    for vid in new_curr_vids:
+        curr_vids.append(vid)
+    go = input("Would you like to select videos from another folder (yes/no): ")
 
 #%%Format all videos
 curr_format_vids = []
@@ -75,6 +81,7 @@ except:
 #    write_paths.append(pm.get_mirrored_path_slp(r"E:/Tanner_Vids/ReformattedVideos", curr_vids[i], config["analysis_folder"], config["single_model_path"]))
 #    print(write_paths[-1])
 write_paths = []
+use_reformatted = False
 if use_reformatted:
     print(curr_format_vids)
     for i in range(len(curr_format_vids)):
