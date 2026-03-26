@@ -10,37 +10,27 @@ import inference_config_setup as ics
 import subprocess
 import json
 
-def vid_to_slp_raw(path):
+def vid_to_slp(path):
+    #.mp4 -> .proj.slp
     path_without_ext, ext = os.path.splitext(path)
-    return f"{path_without_ext[:-2]}_raw.slp" #Replace _r.mp4 with _raw.slp
-
-def vid_raw_to_slp_raw(path):
-    path_without_ext, ext = os.path.splitext(path)
-    return f"{path_without_ext}_raw.slp" #Replace _r.mp4 with _raw.slp
+    return f"{path_without_ext}.proj.slp"
 
 def slp_to_h5(path):
+    #.proj.slp -> .raw.h5
     path_without_ext, ext = os.path.splitext(path)
-    return f"{path[:path.rfind('_')]}_raw.h5"
+    path_without_type, my_type = os.path.splitext(path_without_ext)
+    return f"{path_without_type}.raw.h5"
 
-def h5_raw_to_any(path, ending):
-    return f"{path[:path.rfind('_')]}_{ending}.h5"
+def h5_raw_to_interpol(path, interpol_info="15", interpol_type="quad"):
+    #.raw.h5 -> e.g. .15.quad.h5
+    path_without_ext, ext = os.path.splitext(path)
+    path_without_type, my_type = os.path.splitext(path_without_ext)
+    return f"{path_without_type}.{str(interpol_info)}.{interpol_type}.h5"
 
-def get_mirrored_path_slp_raw(parent_folder, child_file, new_folder):
-    """
-    Finds the mirrored path of a child file in a new destination folder. (No _r end)
-    """
-    
-    try:
-        # Extract the relative path (e.g., 'subfolder/file.txt')
-        vid_rel_path_in_dir = os.path.relpath(child_file, parent_folder)
-        
-        # Append the relative path to the new destination folder
-        mirrored_path = os.path.join(new_folder, vid_rel_path_in_dir)
-        return vid_raw_to_slp_raw(mirrored_path) #Replace _r.mp4 with _raw.h5
-        
-    except ValueError:
-        # This triggers if the child file isn't actually inside the parent folder
-        raise ValueError(f"The file '{child_file}' is not inside '{parent_folder}'")
+def h5_to_disk(path):
+    #.raw.h5 -> .raw.disk.h5
+    path_without_ext, ext = os.path.splitext(path)
+    return f"{path_without_ext}.disk.h5"
 
 def get_mirrored_path_slp(parent_folder, child_file, new_folder):
     """
@@ -53,7 +43,7 @@ def get_mirrored_path_slp(parent_folder, child_file, new_folder):
         
         # Append the relative path to the new destination folder
         mirrored_path = os.path.join(new_folder, vid_rel_path_in_dir)
-        return vid_to_slp_raw(mirrored_path) #Replace _r.mp4 with _raw.h5
+        return vid_to_slp(mirrored_path)
         
     except ValueError:
         # This triggers if the child file isn't actually inside the parent folder
@@ -61,7 +51,7 @@ def get_mirrored_path_slp(parent_folder, child_file, new_folder):
 
 def get_manual_path(analysis_folder, animal_num, video_file):
     filename = os.path.basename(video_file)
-    return os.path.join(analysis_folder, str(animal_num), vid_to_slp_raw(filename)) #Replace _r.mp4 with _raw.h5
+    return os.path.join(analysis_folder, str(animal_num), vid_to_slp(filename)) 
 
 #%% DISK Configuration Getters
 def get_conf(conf_name):

@@ -59,21 +59,12 @@ for vid in curr_vids:
     new_format_vid_path = svr.process_video(vid, config["processed_vids_folder"])
     if new_format_vid_path != None:
         curr_format_vids.append(new_format_vid_path)
-#%% Inference Selections (with reformatting)
-#Set up the write paths
-write_paths = []
-for i in range(len(curr_format_vids)):
-    write_paths.append(pm.get_mirrored_path_slp(config["processed_vids_folder"], curr_format_vids[i], config["analysis_folder"]))
-print(write_paths)
 #%% Inference Selections (without reformatting)
 #Set up the write paths
 #TODO: Remove hardcode path
 write_paths = []
 for i in range(len(curr_vids)):
-    if "_r" in curr_vids[i]:
-        write_paths.append(pm.get_mirrored_path_slp(r"E:/Tanner_Vids/ReformattedVideos", curr_vids[i], config["analysis_folder"]))
-    else:
-        write_paths.append(pm.get_mirrored_path_slp_raw(r"E:/Tanner_Vids/ReformattedVideos", curr_vids[i], config["analysis_folder"]))
+    write_paths.append(pm.get_mirrored_path_slp(r"E:/Tanner_Vids/ReformattedVideos", curr_vids[i], config["analysis_folder"]))
     print(write_paths[-1])
 #%% Command to run inference on all files
 #slp_launcher.run_inference(curr_format_vids, write_paths)
