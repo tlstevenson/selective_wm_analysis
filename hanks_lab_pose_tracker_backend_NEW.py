@@ -64,7 +64,7 @@ for vid in curr_vids:
 #TODO: Remove hardcode path
 write_paths = []
 for i in range(len(curr_vids)):
-    write_paths.append(pm.get_mirrored_path_slp(r"E:/Tanner_Vids/ReformattedVideos", curr_vids[i], config["analysis_folder"]))
+    write_paths.append(pm.get_mirrored_path_slp(r"E:/Tanner_Vids/ReformattedVideos", curr_vids[i], config["analysis_folder"], config["single_model_path"])) #TODO: Fix only works for single
     print(write_paths[-1])
 #%% Command to run inference on all files
 #slp_launcher.run_inference(curr_format_vids, write_paths)
@@ -82,7 +82,7 @@ for folder in analysis_folders:
         write_paths.append(file)
 
 import sleap_io as sio
-def convert_slp_to_analysis_h5(slp_path, output_path=None):
+def convert_slp_to_analysis_h5(slp_path):
     """
     Converts a SLEAP prediction file with no tracks into a 
     valid Analysis HDF5 file for DISK.
@@ -92,6 +92,7 @@ def convert_slp_to_analysis_h5(slp_path, output_path=None):
         return
     
     #TEMPORARY: Dont reformat if it already exists as an analysis file
+    output_path = pm.slp_to_h5(slp_path)
     if os.path.exists(output_path):
         return str(output_path)
     
@@ -109,10 +110,6 @@ def convert_slp_to_analysis_h5(slp_path, output_path=None):
     for lf in labels.labeled_frames:
         for inst in lf.instances:
             inst.track = single_track
-
-    # 4. Define output path if not provided
-    if output_path is None:
-        output_path = Path(slp_path).with_suffix(".analysis.h5")
 
     # 5. Save using the analysis-specific function
     # all_frames=True is vital for DISK to maintain the time-series continuity

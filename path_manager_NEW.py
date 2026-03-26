@@ -32,7 +32,7 @@ def h5_to_disk(path):
     path_without_ext, ext = os.path.splitext(path)
     return f"{path_without_ext}.disk.h5"
 
-def get_mirrored_path_slp(parent_folder, child_file, new_folder):
+def get_mirrored_path_slp(parent_folder, child_file, new_folder, model_path):
     """
     Finds the mirrored path of a child file in a new destination folder.
     """
@@ -42,16 +42,18 @@ def get_mirrored_path_slp(parent_folder, child_file, new_folder):
         vid_rel_path_in_dir = os.path.relpath(child_file, parent_folder)
         
         # Append the relative path to the new destination folder
-        mirrored_path = os.path.join(new_folder, vid_rel_path_in_dir)
+        model_name = os.path.split(model_path)[-1]
+        mirrored_path = os.path.join(new_folder, model_name, vid_rel_path_in_dir)
         return vid_to_slp(mirrored_path)
         
     except ValueError:
         # This triggers if the child file isn't actually inside the parent folder
         raise ValueError(f"The file '{child_file}' is not inside '{parent_folder}'")
 
-def get_manual_path(analysis_folder, animal_num, video_file):
+def get_manual_path(analysis_folder, animal_num, video_file, model_path):
     filename = os.path.basename(video_file)
-    return os.path.join(analysis_folder, str(animal_num), vid_to_slp(filename)) 
+    model_name = os.path.split(model_path)[-1]
+    return os.path.join(analysis_folder, model_name, str(animal_num), vid_to_slp(filename)) 
 
 #%% DISK Configuration Getters
 def get_conf(conf_name):
