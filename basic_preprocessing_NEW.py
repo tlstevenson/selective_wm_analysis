@@ -52,7 +52,7 @@ def interpolate_and_save_h5(filepath, max_gap_length=None):
                     series = pd.Series(interpolated_locations[:, node_idx, coord_idx, track_idx])
                     
                     interpolated_series = series.interpolate(
-                        method='linear', 
+                        method='quadratic', 
                         limit=max_gap_length, 
                         limit_area='inside'
                     )
@@ -77,4 +77,4 @@ def interpolate_and_save_h5(filepath, max_gap_length=None):
 
 # --- Example Usage ---
 # locs, names, saved_path = interpolate_and_save_h5("my_video.h5", max_gap_length=5)
-# print(f"Successfully saved to: {saved_path}")
+# print(f"Successfully saved to: {saved_path}")ß

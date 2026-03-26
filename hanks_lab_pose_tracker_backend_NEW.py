@@ -211,7 +211,34 @@ for file in analysis_files:
     #Add new path to basic files
     basic_pre_files.append(bpre.interpolate_and_save_h5(file, max_gap_length=15)[-1]) 
 #%%View preprocessed data
+# Dynamically build the configuration list
+VIDEO_CONFIG = []
+for folder in h5_folder_paths:
+    for file in get_file_paths(folder[0]):
+        # Note: mapped to "filepath" to match downstream variables
+        VIDEO_CONFIG.append({"filepath": file, "group": folder[1]})
+    
+print("Extracting data and building DataFrame...")
+df, extracted_node_names = afs.process_all_videos(VIDEO_CONFIG)
 
+print("Calculating standard statistics...")
+stats_df = afs.calculate_stats(df)
+
+csv_filename = "node_statistics_summary.csv"
+stats_df.round(2).to_csv(csv_filename, index=False)
+print(f"\nSaved detailed statistical table to: {csv_filename}")
+
+print("Calculating outlier counts...")
+outlier_df = afs.calculate_outlier_counts(df)
+
+print("Generating Box Plots...")
+afs.plot_boxplots_separate_figures(df)
+
+#print("Generating Violin Plots...")
+#afs.plot_violinplots_separate_figures(df)
+
+print("Generating Outlier Bar Graphs...")
+afs.plot_outlier_bar_graphs(outlier_df)
 #%% Create dataset with analysis files
 dataset_name = "Movie1_2_199"
 print(pm.get_create_dataset_conf())
