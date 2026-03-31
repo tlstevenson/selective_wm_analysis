@@ -33,11 +33,11 @@ from pathlib import Path
 script_dir = Path(__file__).parent.resolve()
 
 
-# %% Load data
+
 
 subj_ids = [198, 199, 274, 400, 402]#[179, 188, 191, 207] # 182
 
-cluster_path = path.join(script_dir, 'fit_models_sep_rates.json')
+cluster_path = path.join(script_dir, 'fit_models_sep_rates_tszma.json')
 save_path = path.join(script_dir, 'fit_models_new.json')
 all_models={}
 print(f"Cluster file at: {cluster_path}")
@@ -75,7 +75,7 @@ all_sess = loc_db.get_behavior_data(utils.flatten(sess_ids), reload=reload)
 all_sess = th.define_choice_outcome(all_sess)
     
 
-# %% Investigate Fit Results
+
 ignore_subj = ['182']
 # plot accuracy and total LL
 subjids = list(all_models.keys())
@@ -106,7 +106,17 @@ for subj in subjids:
                 fit_mets.append({'subjid': subj, 'model': '{} ({})'.format(model_name, th.count_params(model)), 'n_params': th.count_params(model), **perf})
             
 fit_mets = pd.DataFrame(fit_mets)
-fit_mets['n_trials'] = (fit_mets['ll_total']/fit_mets['ll_avg']).astype(int)
+
+#added for debugging purposes
+print("NaN check:")
+print(f"ll_total NaNs: {fit_mets['ll_total'].isna().sum()}")
+print(f"ll_avg NaNs: {fit_mets['ll_avg'].isna().sum()}")
+if fit_mets[['ll_total', 'll_avg']].isna().any().any():
+    print("\nRows with NaN values:")
+    print(fit_mets[fit_mets[['ll_total', 'll_avg']].isna().any(axis=1)])
+
+
+fit_mets['n_trials'] = (fit_mets['ll_total']/fit_mets['ll_avg']).fillna(0).astype(int)
 fit_mets['norm_llh'] = np.exp(fit_mets['ll_avg'])
 fit_mets['bic'] = th.calc_bic(fit_mets['ll_total'], fit_mets['n_params'], fit_mets['n_trials'])
 fit_mets['ll_total'] = -fit_mets['ll_total']

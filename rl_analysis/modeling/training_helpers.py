@@ -125,7 +125,7 @@ def get_loss_output_transforms(basic_model):
 
 # %% Fitting methods
 
-def_n_fits = 2
+def_n_fits = 3
 def_n_steps = 10000
 def_end_tol = 1e-6
         
@@ -265,6 +265,7 @@ def get_cv_fold_masks(trial_mask_train, trial_mask_eval, n_trials, n_folds=3):
         
         fold_masks.append((fold_train_mask, fold_test_mask))
     
+    
     return fold_masks
             
 #%%
@@ -326,7 +327,7 @@ def fit_model_cv(model, model_name, inputs, labels, trial_mask_train, trial_mask
 
 
         try:
-            # iterate through fold masks, all sessions fit simultaneously in each fold
+            # iterate through fold masks all sessions fit simultaneously in each fold
             for fold_idx, (fold_train_mask, fold_test_mask) in enumerate(fold_masks):
                 print('\n  Fold {}/{}:'.format(fold_idx + 1, len(fold_masks)))
 

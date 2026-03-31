@@ -298,7 +298,7 @@ all_main_agent_settings['Bayes'] = {
 
 # %% Run Fitting
 
-run_on_cluster = False 
+run_on_cluster = True
 
 subj_ids = [198, 199, 274, 400, 402]
 separate_rew_rates = True
@@ -314,8 +314,8 @@ print_train_params = False
 # n_limit_hist = 2
 
 #limitations
-n_fits = 1
-n_steps = 100
+n_fits = 3
+n_steps = 10000
 end_tol = 1e-6
 cv_model = True 
 meta_subj_name = 'meta'
@@ -407,7 +407,7 @@ for agent_name in all_main_agent_gens.keys():
                 cluster_utils.push_to_cluster(config_path, cluster_ph.config_path)
 
                 # submit slurm job
-                slurm_path = path.join(cluster_ph.cluster_home, 'code/selective_wm_analysis/rl_analysis/modeling/fit_bandit_models.slurm')
+                slurm_path = path.join(cluster_ph.cluster_home, 'code/selective_m_analysis/rl_analysis/modeling/fit_bandit_models.slurm')
                 options = '--array=1-{}'.format(len(group_sess_ids.keys())*n_fits)
                 args = 'CONFIGPATH=\'{}\''.format(cluster_utils.clean_cluster_path(path.join(cluster_ph.config_path, config_name)))
 
