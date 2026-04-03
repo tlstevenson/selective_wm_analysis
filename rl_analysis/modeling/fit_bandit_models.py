@@ -71,7 +71,6 @@ def perform_fit(config, fit_group_idx):
                 n_fits=config['n_fits'], n_steps=config['n_steps'],
                 equal_sess_weight=config['equal_sess_weight'],
                 skip_existing_fits=config['skip_existing_fits'],
-                refit_existing=config['refit_existing'],
                 print_train_params=config['print_train_params'])
     else:
            th.fit_model(model, config['model_name'], training_data['inputs'], training_data['labels'], 

@@ -271,7 +271,7 @@ def get_cv_fold_masks(trial_mask_train, trial_mask_eval, n_trials, n_folds=3):
 #%%
 def fit_model_cv(model, model_name, inputs, labels, trial_mask_train, trial_mask_eval, n_trials, loss, subj_name, save_path, n_fits=def_n_fits,
                  n_steps=def_n_steps, end_tol=def_end_tol, optim_generator=None, train_output_formatter=None,
-                 eval_output_transform=None, skip_existing_fits=True, refit_existing=False, print_train_params=False,
+                 eval_output_transform=None, skip_existing_fits=True, print_train_params=False,
                  equal_sess_weight=False, n_folds=3):
     
     lock = FileLock('fitting.lock')
@@ -305,8 +305,6 @@ def fit_model_cv(model, model_name, inputs, labels, trial_mask_train, trial_mask
             n_model_fits = 0
         else:
             n_model_fits = 1 if on_cluster else (n_fits - n_exist_fits)
-    elif refit_existing:
-        n_model_fits = n_exist_fits
     
     # number of sessions from the first dimension of inputs
     n_sess = inputs.shape[0]
@@ -319,23 +317,23 @@ def fit_model_cv(model, model_name, inputs, labels, trial_mask_train, trial_mask
     while fit_idx < n_model_fits:
         print('\n{} CV, fit {}\n'.format(model_name, fit_idx))
 
-        if refit_existing:
-            model = model_dict[str(subj_name)][cv_model_name][fit_idx]['model'].model.clone()
-
         fold_results = []
         total_nll = 0.0  # accumulates NLL across all folds from all sessions
 
+        fold_idx = 0
+        # iterate through fold masks all sessions fit simultaneously in each fold
+        while fold_idx < len(fold_masks):
+            
+            print('\n  Fold {}/{}:'.format(fold_idx + 1, len(fold_masks)))
 
-        try:
-            # iterate through fold masks all sessions fit simultaneously in each fold
-            for fold_idx, (fold_train_mask, fold_test_mask) in enumerate(fold_masks):
-                print('\n  Fold {}/{}:'.format(fold_idx + 1, len(fold_masks)))
-
-                # reset model and optimizer fresh for each fold so no parameter
-                # state leaks from one fold to the next
-                model.reset_params()
-                optimizer = optim_generator(model.parameters(recurse=True))
-
+            (fold_train_mask, fold_test_mask) = fold_masks[fold_idx]
+            
+            # reset model and optimizer fresh for each fold so no parameter
+            # state leaks from one fold to the next
+            model.reset_params()
+            optimizer = optim_generator(model.parameters(recurse=True))
+            
+            try:
                 # train on all sessions simultaneously using the fold train mask
                 # mask selects the appropriate training window per session
                 _ = train_model(model, optimizer, loss, inputs, labels, n_steps,
@@ -344,56 +342,56 @@ def fit_model_cv(model, model_name, inputs, labels, trial_mask_train, trial_mask
                                 loss_diff_exit_thresh=end_tol,
                                 print_params=print_train_params,
                                 equal_sess_weight=equal_sess_weight)
-
+    
                 # evaluate on all sessions simultaneously using the fold test mask
                 # mask selects the appropriate test window per session
                 _, _, fold_perf = eval_model(model, inputs, labels,
                                              trial_mask=fold_test_mask,
                                              output_transform=eval_output_transform)
-
+    
                 # convert LL to NLL and accumulate across all folds
                 fold_nll = -fold_perf['ll_total']
                 total_nll += fold_nll
-
+    
                 fold_results.append({
                     'fold_idx':  fold_idx,   # fold number
                     'perf':      fold_perf,  # full performance dict from eval_model
                     'nll':       fold_nll,   # NLL on this fold's test set
                 })
-
+    
                 print('    Fold NLL: {:.3f} | Acc: {:.2f}%'.format(fold_nll, fold_perf['acc'] * 100))
+                
+                fold_idx += 1
+                
+            except RuntimeError as e:
+                print('Error: {}. \nTrying Again...'.format(e))
 
-            print('\n{} CV Total NLL: {:.3f} | Total folds: {}'.format(model_name, total_nll, len(fold_masks)))
+        print('\n{} CV Total NLL: {:.3f} | Total folds: {}'.format(model_name, total_nll, len(fold_masks)))
 
-            cv_result = {
-                'model':     model,        # model parameters from the last fold
-                'folds':     fold_results, # per-fold breakdown of performance
-                'total_nll': total_nll,    # primary metric for model comparison
-                'n_folds':   len(fold_masks),
-                'n_sess':    n_sess,
-            }
+        cv_result = {
+            'model':     model,        # model parameters from the last fold
+            'folds':     fold_results, # per-fold breakdown of performance
+            'total_nll': total_nll,    # primary metric for model comparison
+            'n_folds':   len(fold_masks),
+            'n_sess':    n_sess,
+        }
 
-            with lock:
-                # on the cluster reload before writing to pick up results from
-                # other parallel processes
-                if on_cluster and path.exists(save_path):
-                    model_dict = agents.load_model(save_path)
-                    if not str(subj_name) in model_dict:
-                        model_dict[str(subj_name)] = {}
-                    if cv_model_name not in model_dict[str(subj_name)]:
-                        model_dict[str(subj_name)][cv_model_name] = []
+        with lock:
+            # on the cluster reload before writing to pick up results from
+            # other parallel processes
+            if on_cluster and path.exists(save_path):
+                model_dict = agents.load_model(save_path)
+                if not str(subj_name) in model_dict:
+                    model_dict[str(subj_name)] = {}
+                if cv_model_name not in model_dict[str(subj_name)]:
+                    model_dict[str(subj_name)][cv_model_name] = []
 
-                if refit_existing:
-                    model_dict[str(subj_name)][cv_model_name][fit_idx] = cv_result
-                else:
-                    model_dict[str(subj_name)][cv_model_name].append(cv_result)
+            model_dict[str(subj_name)][cv_model_name].append(cv_result)
 
-                agents.save_model(model_dict, save_path)
+            agents.save_model(model_dict, save_path)
 
-            fit_idx += 1
+        fit_idx += 1
 
-        except RuntimeError as e:
-            print('Error: {}. \nTrying Again...'.format(e))
 
 #%%
 def train_model(model, optimizer, loss, inputs, labels, n_cycles, trial_mask=None, batch_size=None, output_formatter=None, 
