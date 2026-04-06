@@ -17,16 +17,19 @@ import os
 import os.path as path
 import numpy as np
 
-rec_date = date(2025,8,23)
+rec_date = date(2026,4,3)
 
 # subj_ids = [198]
 # subj_region_dict = {s: {'PL': 2, 'DLS': 1, 'DMS': 3 } for s in subj_ids}#,'TS': 4} #'PL': 1, 'DMS': 2  }#
 # wavelength_dict = {490: 2, 420: 1, 465: 4, 405: 3} #420: 1, 465: 4, 490: 2, , 405: 3
 
-subj_region_dict = {274: {'DLS-L': 1, 'DMS_L': 2, 'DMS-R': 3, 'DLS-R': 4},
-                    400: {'DLS': 1, 'NAc': 2, 'PL': 3, 'DMS': 4},
-                    402: {'DLS': 1, 'PL': 2, 'DMS': 3, 'TS': 4}}
-wavelength_channel_dict = {1: 420, 2: 490, 3: 420, 4: 490}
+subj_region_dict = {483: {'NAc-L': 1, 'NAc-R': 4, 'TS-L': 2, 'TS-R': 3},
+                    238: {'NAc': 3, 'DMS': 4, 'DLS': 2, 'TS': 1},
+                    237: {'PL': 2, 'NAc': 4, 'DMS': 3, 'TS': 1},
+                    424: {'PL': 2, 'NAc': 4, 'DMS': 3, 'DLS': 1}}
+
+wavelength_channel_dict = {1: 420, 2: 490, 3: 415, 4: 490}
+io_channel_map = {1: [1,2], 2: [1,2], 3: [3,4], 4: [3,4]} # input channels to output channels
 
 subj_ids = list(subj_region_dict.keys())
 
@@ -72,7 +75,7 @@ for subj_id in subj_ids:
 
         pkg.package_doric_data(subj_id, sess_id, region_dict, wavelength_channel_dict, comments_dict = comments[subj_id],
                                data_path = data_file, target_dt = target_dt, new_format = new_format,
-                               print_file_struct = print_struct, print_attr = print_attr)
+                               print_file_struct = print_struct, print_attr = print_attr, io_channel_map=io_channel_map)
         
         # rename file with session id
         new_name = path.join(root_dir, 'session_{}'.format(sess_id))
