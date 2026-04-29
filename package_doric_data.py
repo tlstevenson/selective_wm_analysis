@@ -89,25 +89,6 @@ for subj_id in subj_ids:
 
 # subj_ids = [198,199,274,400,402,237,238,424,483]
 # data_dir = 'D:/Tanner'
-
-# for subj_id in subj_ids:
-#     root_dir = path.join(data_dir, str(subj_id))
-#     subj_data_files = [path.join(root_dir, f) for f in glob.glob('*.doric', root_dir=root_dir)]
-#     file_times = [datetime.fromtimestamp(pathlib.Path(f).stat().st_ctime, tz = timezone.utc) for f in subj_data_files]
-    
-#     for data_file, file_time in zip(subj_data_files, file_times):
-#         if sum([f_time.date() == file_time.date() for f_time in file_times]) > 1:
-#             print('Found multiple sessions on the same day for subject {} on date {}. Please rename them individually. Continuing...'.format(subj_id, file_time.date().isoformat()))
-#             continue
-        
-#         subj_sess_ids = db_access.get_subj_sess_ids_by_date([subj_id], file_time.date().isoformat())
-        
-#         if len(subj_sess_ids[subj_id]) > 1:
-#             print('Found multiple sessions on the same day for subject {} on date {}. Please rename them individually. Continuing...'.format(subj_id, file_time.date().isoformat()))
-#             continue
-        
-#         # rename file with session id
-#         new_name = path.join(root_dir, 'Session_{}.doric'.format(subj_sess_ids[subj_id][0]))
 #         os.rename(data_file, new_name)
 
 
@@ -172,3 +153,22 @@ for subj_id in subj_ids:
 
 
 
+#         new_name = path.join(root_dir, 'Session_{}.doric'.format(subj_sess_ids[subj_id][0]))
+#         # rename file with session id
+        
+#             continue
+#             print('Found multiple sessions on the same day for subject {} on date {}. Please rename them individually. Continuing...'.format(subj_id, file_time.date().isoformat()))
+#         if len(subj_sess_ids[subj_id]) > 1:
+        
+#         subj_sess_ids = db_access.get_subj_sess_ids_by_date([subj_id], file_time.date().isoformat())
+
+# for subj_id in subj_ids:
+#     root_dir = path.join(data_dir, str(subj_id))
+#     subj_data_files = [path.join(root_dir, f) for f in glob.glob('*.doric', root_dir=root_dir)]
+#     file_times = [datetime.fromtimestamp(pathlib.Path(f).stat().st_ctime, tz = timezone.utc) for f in subj_data_files]
+    
+#     for data_file, file_time in zip(subj_data_files, file_times):
+#         if sum([f_time.date() == file_time.date() for f_time in file_times]) > 1:
+#             print('Found multiple sessions on the same day for subject {} on date {}. Please rename them individually. Continuing...'.format(subj_id, file_time.date().isoformat()))
+#             continue
+        
