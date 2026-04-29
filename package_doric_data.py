@@ -17,16 +17,15 @@ import os
 import os.path as path
 import numpy as np
 
-rec_date = date(2025,8,23)
+rec_date = date(2026,4,6)
 
-# subj_ids = [198]
-# subj_region_dict = {s: {'PL': 2, 'DLS': 1, 'DMS': 3 } for s in subj_ids}#,'TS': 4} #'PL': 1, 'DMS': 2  }#
-# wavelength_dict = {490: 2, 420: 1, 465: 4, 405: 3} #420: 1, 465: 4, 490: 2, , 405: 3
+subj_region_dict = {483: {'NAc-L': 2, 'NAc-R': 1, 'TS-L': 4, 'TS-R': 3},
+                    238: {'NAc': 1, 'DMS': 3, 'DLS': 4, 'TS': 2},
+                    237: {'PL': 1, 'NAc': 3, 'DMS': 4, 'TS': 2},
+                    424: {'PL': 1, 'NAc': 3, 'DMS': 4, 'DLS': 2}}
 
-subj_region_dict = {274: {'DLS-L': 1, 'DMS-L': 2, 'DMS-R': 3, 'DLS-R': 4},
-                    400: {'DLS': 1, 'NAc': 2, 'PL': 3, 'DMS': 4},
-                    402: {'DLS': 1, 'PL': 2, 'DMS': 3, 'TS': 4}}
-wavelength_channel_dict = {1: 420, 2: 490, 3: 420, 4: 490}
+wavelength_channel_dict = {1: 420, 2: 490, 3: 415, 4: 490}
+io_channel_map = {1: [1,2], 2: [1,2], 3: [3,4], 4: [3,4]} # input channels to output channels
 
 subj_ids = list(subj_region_dict.keys())
 
@@ -72,10 +71,10 @@ for subj_id in subj_ids:
 
         pkg.package_doric_data(subj_id, sess_id, region_dict, wavelength_channel_dict, comments_dict = comments[subj_id],
                                data_path = data_file, target_dt = target_dt, new_format = new_format,
-                               print_file_struct = print_struct, print_attr = print_attr)
+                               print_file_struct = print_struct, print_attr = print_attr, io_channel_map=io_channel_map)
         
         # rename file with session id
-        new_name = path.join(root_dir, 'session_{}'.format(sess_id))
+        new_name = path.join(root_dir, 'Session_{}.doric'.format(sess_id))
         os.rename(data_file, new_name)
 
 # %% Add Manually
@@ -98,16 +97,20 @@ for subj_id in subj_ids:
     
 #     for data_file, file_time in zip(subj_data_files, file_times):
 #         if sum([f_time.date() == file_time.date() for f_time in file_times]) > 1:
-#             print('Found multiple sessions on the same day for subject {} on date {}. Please add them individually. Continuing...'.format(subj_id, file_time.date().isoformat()))
+#             print('Found multiple sessions on the same day for subject {} on date {}. Please rename them individually. Continuing...'.format(subj_id, file_time.date().isoformat()))
 #             continue
         
-#         subj_sess_ids = db_access.get_subj_sess_ids_by_date(subj_id, file_time.date().isoformat())
+#         subj_sess_ids = db_access.get_subj_sess_ids_by_date([subj_id], file_time.date().isoformat())
+        
+#         if len(subj_sess_ids[subj_id]) > 1:
+#             print('Found multiple sessions on the same day for subject {} on date {}. Please rename them individually. Continuing...'.format(subj_id, file_time.date().isoformat()))
+#             continue
         
 #         # rename file with session id
-#         new_name = path.join(root_dir, 'session_{}'.format(subj_sess_ids[subj_id][0]))
+#         new_name = path.join(root_dir, 'Session_{}.doric'.format(subj_sess_ids[subj_id][0]))
 #         os.rename(data_file, new_name)
-        
-        
+
+
 # %% Update time data
 
 from sys_neuro_tools import doric_utils as dor
@@ -124,7 +127,8 @@ subj_region_dict = {198: {'PL': 1, 'DMS': 2, 'DLS': 3},
                     483: {'NAc-L': 1, 'NAc-R': 2, 'TS-L': 3, 'TS-R': 4},
                     400: {'DLS': 1, 'NAc': 2, 'PL': 3, 'DMS': 4},
                     402: {'DLS': 1, 'PL': 2, 'DMS': 3, 'TS': 4}}
-wavelength_channel_dict = {1: 420, 2: 490, 3: 420, 4: 490}
+wavelength_dict = {1: 420, 2: 490, 3: 420, 4: 490}
+io_channel_map = {1: [1,2], 2: [1,2], 3: [3,4], 4: [3,4]} # input channels to output channels
 
 subj_ids = list(subj_region_dict.keys())
 
@@ -147,10 +151,10 @@ for subj_id in subj_ids:
 
         signal_name_dict = {ttl_name: {'time': 'DigitalIO/Time', 'values': 'DigitalIO/DIO01'}}
 
-        signal_name_dict.update({'{}_{}'.format(r, wavelength_channel_dict[c]):
+        signal_name_dict.update({'{}_{}'.format(r, wavelength_dict[c]):
                                  {'time': 'LockInAOUT0{}/Time'.format(c),
                                   'values': 'LockInAOUT0{}/AIN0{}'.format(c, region_dict[r])}
-                                 for r in region_dict.keys() for c in wavelength_channel_dict.keys()})
+                                 for r in region_dict.keys() for c in wavelength_dict.keys() if c in io_channel_map[region_dict[r]]})
 
         data = dor.get_specific_data(data_path, dor_signal_path, signal_name_dict)
 
@@ -165,5 +169,6 @@ for subj_id in subj_ids:
 
         for region in region_dict.keys():
             db_access.update_fp_time_data(subj_id, sess_id, region, time_data)
+
 
 
