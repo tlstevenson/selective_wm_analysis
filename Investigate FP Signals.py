@@ -28,13 +28,15 @@ from scipy.stats import pearsonr
 from os import path
 import pickle
 
-
-# %% View preprocessing
 wm_loc_db = wm_db.LocalDB_ToneCatDelayResp()
 rl_loc_db = rl_db.LocalDB_BasicRLTasks('twoArmBandit')
 
-reload = False
+
+# %% View preprocessing
+
+reload = True
 baseline_lpf = 0.0005
+allow_neg_coeffs = False
 
 #sess_ids = {180: [101447]}
 #sess_ids = {191: [101617]}
@@ -46,12 +48,13 @@ baseline_lpf = 0.0005
 # fp_data, implant_info = fpah.load_fp_data(rl_loc_db, sess_ids)
 # sess_data = rl_loc_db.get_behavior_data(utils.flatten(sess_ids))
 
-#sess_ids = {402: [119793]}
-
-subj_ids = [400, 402]
-n_back = 2
+subj_ids = [198, 199, 274, 400, 402, 237, 238, 424, 483]
 sess_ids = db_access.get_fp_data_sess_ids(subj_ids=subj_ids)
-sess_ids = bah.limit_sess_ids(sess_ids, n_back)
+
+# n_back = 4
+# sess_ids = bah.limit_sess_ids(sess_ids, n_back)
+
+# sess_ids = {483: [125164]}
 
 gen_title = 'Subject {}, Session {}'
 sub_t = [0, np.inf] # [1100, 1120] #
@@ -60,13 +63,46 @@ dec = 2
 for subj_id in sess_ids.keys():
     for sess_id in sess_ids[subj_id]:
         fp_data, implant_info = fpah.load_fp_data(wm_loc_db, {subj_id: [sess_id]}, baseline_correction=True, tilt_t=False, filter_dropout_outliers=False, band_iso_fit=False, 
-                                                  baseline_band_iso_fit=True, irls_fit=False, reload=reload, baseline_lpf=baseline_lpf)
+                                                  baseline_band_iso_fit=True, irls_fit=False, reload=reload, baseline_lpf=baseline_lpf, allow_neg_coeffs=allow_neg_coeffs)
         t = fp_data[subj_id][sess_id]['time']
 
         fpah.view_processed_signals(fp_data[subj_id][sess_id]['processed_signals'], t, t_min=sub_t[0], t_max=sub_t[1], dec=dec,
                                     title=gen_title.format(subj_id, sess_id), plot_baseline_corr=True, plot_fband=False, plot_baseline_fband=True, plot_irls=False)
         
         plt.show()
+        
+# %% update timestamps
+reload = False
+subj_ids = [400, 402, 424, 483]
+sess_ids = db_access.get_fp_data_sess_ids(subj_ids=subj_ids)
+
+skip_sess = [119000,119194,119233,119247,119285,119429,
+             119479,119713,119741,119785,119830,119974]
+skip_subj = []
+
+completed_sess = []
+
+for subj_id in sess_ids.keys():
+    if subj_id in skip_subj:
+        continue
+    
+    for sess_id in sess_ids[subj_id]:
+        
+        if sess_id in skip_sess:
+            continue
+        
+        fp_data = wm_loc_db.get_sess_fp_data(sess_id, reload=reload)
+        fp_data = fp_data['fp_data'][subj_id][sess_id]
+        t = fp_data['time']
+        dec_info = fp_data['dec_info']
+        fix_t = t - dec_info['initial_dt']
+
+        time_data = {'start': fix_t[0], 'end': fix_t[-1], 'dt': dec_info['decimated_dt'], 'length': len(t), 'dec_info': dec_info}
+
+        for region in fp_data['raw_signals'].keys():
+            db_access.update_fp_time_data(subj_id, sess_id, region, time_data)
+            
+        completed_sess.append(sess_id)
 
 # %% define plotting routine
 
@@ -92,11 +128,8 @@ def plot_signal_details(processed_signals, t, title, lines_dict={}, dec=10, sign
             ax = axs[i]
             ax.plot(t, processed_signals[region][signal_type][::dec], label='_')
 
-            prop_cycle = plt.rcParams['axes.prop_cycle']
-            colors = prop_cycle.by_key()['color']
-
             for j, (name, lines) in enumerate(lines_dict.items()):
-                ax.vlines(lines, 0, 1, label=name, color=colors[j], linestyles='dashed', transform=ax.get_xaxis_transform())
+                ax.vlines(lines, 0, 1, label=name, color='C{}'.format(j+1), linestyles='dashed', transform=ax.get_xaxis_transform())
 
             ax.set_title(region)
             _, y_label = fpah.get_signal_type_labels(signal_type)
@@ -107,15 +140,20 @@ def plot_signal_details(processed_signals, t, title, lines_dict={}, dec=10, sign
 
 
 # %% create plots
+
+sess_ids = {274: [119418]}
+
 subj_ids = list(sess_ids.keys())
 dec=2
-signal_types = ['z_dff_iso']
+signal_types = ['dff_iso_baseline_fband']
 
 for subj_id in subj_ids:
     for sess_id in sess_ids[subj_id]:
 
+        fp_data, implant_info = fpah.load_fp_data(wm_loc_db, {subj_id: [sess_id]}, baseline_correction=True, tilt_t=False, filter_dropout_outliers=False, band_iso_fit=False, 
+                                                  baseline_band_iso_fit=True, irls_fit=False, reload=reload, baseline_lpf=baseline_lpf, allow_neg_coeffs=allow_neg_coeffs)
         sess_fp = fp_data[subj_id][sess_id]
-        trial_data = sess_data[sess_data['sessid'] == sess_id]
+        trial_data = wm_loc_db.get_behavior_data(sess_id)
 
         ts = sess_fp['time']
         trial_start_ts = sess_fp['trial_start_ts'][:-1]
@@ -130,42 +168,48 @@ for subj_id in subj_ids:
         reward_ts = trial_start_ts + trial_data['reward_time']
         reward_ts = reward_ts[trial_data['reward'] > 0]
 
-        lines_dict = {'Cport On': cport_on_ts, 'Cpoke In': cpoke_in_ts, 'Tone': tone_ts,
-                      'Resp Cue': cue_ts, 'Cpoke Out': cpoke_out_ts, 'Response': response_ts,
-                      'Reward': reward_ts}
+        lines_dict = {#'Cport On': cport_on_ts, 'Cpoke In': cpoke_in_ts, 'Tone': tone_ts,
+                      'Resp Cue': cue_ts, 'Cpoke Out': cpoke_out_ts, 
+                      #'Response': response_ts, 'Reward': reward_ts
+                     }
 
         plot_signal_details(sess_fp['processed_signals'], sess_fp['time'], 'Subject {}, Session {}'.format(subj_id, sess_id), lines_dict, dec=dec, signal_types=signal_types)
 
 
 # %% Create cleaned up example data plot
 
-subj_id = 207
-sess_id = 100752
-# subj_id = 180
-# sess_id = 101447
+subj_id = 400
+sess_id = 120001
 sess_ids = {subj_id: [sess_id]}
-sess_fp = fp_data[subj_id][sess_id]
-trial_data = sess_data[sess_data['sessid'] == sess_id]
-t_range = [1420, 1470] #[0, np.inf] #[2730, 2780] #[1155, 1195] # [1150, 1250] # 
-regions = ['DMS', 'PL']
-signal_type = 'dff_iso'
-dec = 2
-filt_f = {'DMS': 8, 'PL': 4}
+fp_data, implant_info = fpah.load_fp_data(rl_loc_db, sess_ids, baseline_correction=True, tilt_t=False, filter_dropout_outliers=False, band_iso_fit=False, 
+                                          baseline_band_iso_fit=True, irls_fit=False, reload=False)
+trial_data = rl_loc_db.get_behavior_data(sess_id)
 
-region_colors = {'DMS': '#53C43B', 'PL': '#BB6ED8'}
+sess_fp = fp_data[subj_id][sess_id]
+
+# %%
+t_range = [651, 681] #[0, np.inf] #[2730, 2780] #[1155, 1195] # [1150, 1250] # 
+regions = ['PL', 'NAc', 'DMS', 'DLS']
+signal_type = 'dff_iso_baseline_fband'
+dec = 2
+filt_f = {'DMS': 10, 'DLS': 10, 'NAc': 10, 'PL': 5}
+
+region_colors = {'DMS': '#53C43B', 'DLS': '#E87A2C', 'NAc': '#47BBBF', 'PL': '#BB6ED8'}
 
 t = sess_fp['time']
 
 trial_start_ts = sess_fp['trial_start_ts'][:-1]
 cue_ts = trial_start_ts + trial_data['response_cue_time']
-reward_ts = trial_start_ts + trial_data['reward_time']
-reward_ts = reward_ts[trial_data['reward'] > 0]
+outcome_ts = trial_start_ts + trial_data['reward_time']
+reward_ts = outcome_ts[trial_data['reward'] > 0]
+unreward_ts = outcome_ts[trial_data['reward'] == 0]
 
-lines_dict = {'Response Cue': cue_ts, 'Reward Delivery': reward_ts}
+lines_dict = {'Response Cue': cue_ts, 'Reward Delivery': reward_ts, 'Unreward Tone': unreward_ts}
+lines_colors = {'Response Cue': '#FFBB00', 'Reward Delivery': '#3399CC', 'Unreward Tone': '#FC606D'}
 
 t_sel = (t > t_range[0]) & (t < t_range[1])
 
-fig, axs = plt.subplots(len(regions), 1, layout='constrained', figsize=[8,4*len(regions)], sharex=True)
+fig, axs = plt.subplots(len(regions), 1, layout='constrained', figsize=[9,3*len(regions)], sharex=True)
 
 axs = np.array(axs).reshape((len(regions)))
 
@@ -178,27 +222,33 @@ for i, region in enumerate(regions):
     
     for j, (name, lines) in enumerate(lines_dict.items()):
         lines = lines[(lines > t_range[0]) & (lines < t_range[1])]
-        ax.vlines(lines, 0, 1, label=name, color='C'+str(j+1), linestyles='dashed', transform=ax.get_xaxis_transform())
+        ax.vlines(lines, 0, 1, label=name, color=lines_colors[name], linestyles='dashed', transform=ax.get_xaxis_transform())
     
     _, y_label = fpah.get_signal_type_labels(signal_type)
+    ax.set_title(region)
     ax.set_ylabel(y_label)
     ax.set_xlabel('Time (s)')
+    
     ax.legend()
+    handles, labels = ax.get_legend_handles_labels()
+    ax.legend().remove()
+
+fig.legend(handles, labels, loc='outside right center')
 
 fpah.save_fig(fig, fpah.get_figure_save_path('Example Signals', '', '_'.join(regions)), format='pdf')
 
 # %% Investigate power spectra method differences
 import scipy.signal as sig
 
-sess_ids = {199: [117450], 400: [119233], 274: [119464]}
-signal_types = ['dff_iso_baseline', 'z_dff_iso_baseline', 'dff_iso_fband', 'z_dff_iso_fband']
+sess_ids = {400: [119000]}
+signal_types = ['dff_iso_baseline', 'dff_iso_fband', 'dff_iso_baseline_fband']
 
 x_lims = [0.0005, 10]
 
 for subj_id in sess_ids.keys():
     for sess_id in sess_ids[subj_id]:
         fp_data, implant_info = fpah.load_fp_data(wm_loc_db, {subj_id: [sess_id]}, baseline_correction=True, tilt_t=True, filter_dropout_outliers=False, band_iso_fit=True, 
-                                                  irls_fit=False, reload=False, baseline_lpf=0.0005)
+                                                  baseline_band_iso_fit=True, irls_fit=False, reload=False, baseline_lpf=0.0005)
         fp_data = fp_data[subj_id][sess_id]
         dt = fp_data['dec_info']['decimated_dt']
         
@@ -888,7 +938,7 @@ for vals, label in zip([r2_vals, r_vals], ['R2', 'Pearson R']):
 
 # %% Investigate frequency bands across regions
 
-freq_bands = [[0,0.06], [0.06,0.2], [0.2,0.6], [0.6,2], [2,6], [6,10]]
+freq_bands = [[0,0.1], [0.1,1], [1,10]]#[[0,0.06], [0.06,0.2], [0.2,0.6], [0.6,2], [2,6], [6,10]]
 order = 3
 dec = 2
 
@@ -931,8 +981,8 @@ for subj_id in sess_ids.keys():
         fig_split, axs_split = plt.subplots(n_bands, 1, sharey=False, sharex=True, layout='constrained', figsize=(20,n_bands*5))
         fig_split.suptitle('Subject {}, Session {}, Frequency Band Signals'.format(subj_id, sess_id))
         
-        fig_recon, axs_recon = plt.subplots(n_regions, 1, sharey=False, sharex=True, layout='constrained', figsize=(20,n_regions*5))
-        fig_recon.suptitle('Subject {}, Session {}, Frequency Band Reconstruction'.format(subj_id, sess_id))
+        # fig_recon, axs_recon = plt.subplots(n_regions, 1, sharey=False, sharex=True, layout='constrained', figsize=(20,n_regions*5))
+        # fig_recon.suptitle('Subject {}, Session {}, Frequency Band Reconstruction'.format(subj_id, sess_id))
         
         sig_recon = {r: np.zeros_like(t) for r in regions}
         sig_full = {}
@@ -971,12 +1021,12 @@ for subj_id in sess_ids.keys():
             ax.set_xlabel('Time (s)')
             ax.set_ylabel('Band Signal (dF/F)')
             
-        for i, region in enumerate(regions):
-            ax = axs_recon[i]
+        # for i, region in enumerate(regions):
+        #     ax = axs_recon[i]
             
-            ax.set_title(region)
-            ax.plot(t[::dec], sig_full[region][::dec], label='True Signal')
-            ax.plot(t[::dec], sig_recon[region][::dec], label='Reconstructed')
-            ax.set_xlabel('Time (s)')
-            ax.set_ylabel('Signal (dF/F)')
-            ax.legend()
+        #     ax.set_title(region)
+        #     ax.plot(t[::dec], sig_full[region][::dec], label='True Signal')
+        #     ax.plot(t[::dec], sig_recon[region][::dec], label='Reconstructed')
+        #     ax.set_xlabel('Time (s)')
+        #     ax.set_ylabel('Signal (dF/F)')
+        #     ax.legend()
