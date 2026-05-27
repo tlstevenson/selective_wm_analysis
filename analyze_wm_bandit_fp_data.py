@@ -23,6 +23,7 @@ import pickle
 import time
 from scipy.integrate import cumulative_trapezoid, trapezoid
 from collections import Counter
+import seaborn as sns
 
 Align = fpah.Alignment
 
@@ -41,7 +42,7 @@ tasks = ['wm', 'bandit']
 beh_names = {'wm': 'Single Tone WM', 'bandit': 'Probabilistic Bandit'}
 
 # optionally limit sessions based on subject ids
-subj_ids = [198, 199, 274, 400, 402]
+subj_ids = [198, 199, 274, 400, 402, 237, 238, 424, 483]
 wm_sess_ids = {k: [s for s in v if not s in fpah.__sess_ignore] for k, v in wm_sess_ids.items() if k in subj_ids}
 bandit_sess_ids = {k: [s for s in v if not s in fpah.__sess_ignore] for k, v in bandit_sess_ids.items() if k in subj_ids}
 
@@ -114,6 +115,251 @@ rew_hist_bins = pd.IntervalIndex.from_breaks(rew_hist_bin_edges)
 rew_hist_bin_strs = {b:'{}'.format(i) for i,b in enumerate(rew_hist_bins)}
 
 all_regions = ['PL', 'NAc', 'DMS', 'DLS', 'TS']
+
+# %% Lick Duration by Reward History
+
+# calculate lick duration
+wm_sess_data['lick_duration'] = wm_sess_data['parsed_events'].apply(lambda x: bah.calc_lick_duration(x['Events']))
+bandit_sess_data['lick_duration'] = bandit_sess_data['parsed_events'].apply(lambda x: bah.calc_lick_duration(x['Events']))
+
+# plot wm task mean lick duration vs. reward history
+wm_sess_data['lick_duration'] = wm_sess_data['lick_duration'].astype(float)
+
+hist_cols = [
+    ('n_rew_hist', 'Without Bails'),
+    ('n_rew_hist_bail', 'With Bails')]
+
+for col, label in hist_cols:
+
+    summary = (wm_sess_data
+               .dropna(subset=[col, 'lick_duration'])
+               .groupby(col)['lick_duration']
+               .agg(['mean', 'sem'])
+               .reset_index()
+               .sort_values(col))
+
+    plt.figure()
+
+    plt.plot(summary[col], summary['mean'], marker='o')
+
+    plt.fill_between(
+        summary[col],
+        summary['mean'] - summary['sem'],
+        summary['mean'] + summary['sem'],
+        alpha=0.3)
+
+    plt.xlabel('Reward History')
+    plt.ylabel('Mean Lick Duration')
+    plt.title(f'Working Memory: Lick Duration vs Reward History\n({label})')
+
+    plt.xticks(sorted(summary[col].unique()))
+    plt.show()
+
+# plot wm task mean lick duration vs. reward history BY SUBJECT
+
+hist_cols = [('n_rew_hist', 'Without Bails'), 
+             ('n_rew_hist_bail', 'With Bails')]
+
+for col, label in hist_cols:
+
+    g = sns.FacetGrid(wm_sess_data, col='subjid', col_wrap=3, height=5, sharex=False)
+
+    g.map_dataframe(sns.lineplot, x=col, y='lick_duration', errorbar='se', marker='o')
+
+    g.set_axis_labels('Reward History', 'Mean Lick Duration')
+    g.set_titles('Subject {col_name}')
+    
+    for ax in g.axes.flat:
+        ax.set_xlabel('Reward History')
+        ax.tick_params(labelbottom=True)
+    
+    g.fig.subplots_adjust(top=0.88, hspace=0.4)
+    
+    g.fig.suptitle(f'Working Memory: Lick Duration vs Reward History\n({label})', y=0.99)
+
+    plt.show()
+
+# plot bandit task mean lick duration vs. reward history
+bandit_sess_data['lick_duration'] = bandit_sess_data['lick_duration'].astype(float)
+
+summary = (bandit_sess_data
+           .dropna(subset=['n_rew_hist', 'lick_duration'])
+           .groupby('n_rew_hist')['lick_duration']
+           .agg(['mean', 'sem'])
+           .reset_index()
+           .sort_values('n_rew_hist'))
+
+plt.figure()
+
+plt.plot(summary['n_rew_hist'], summary['mean'], marker='o')
+
+plt.fill_between(
+    summary['n_rew_hist'],
+    summary['mean'] - summary['sem'],
+    summary['mean'] + summary['sem'],
+    alpha=0.3)
+
+plt.xlabel('Reward History')
+plt.ylabel('Mean Lick Duration')
+plt.title('Bandit: Lick Duration vs Reward History')
+
+plt.xticks(sorted(summary['n_rew_hist'].unique()))
+plt.show()
+
+# plot bandit task mean lick duration vs. reward history BY SUBJECT
+
+g = sns.FacetGrid(bandit_sess_data, col='subjid', col_wrap=3, height=5, sharex=False)
+
+g.map_dataframe(sns.lineplot, x='n_rew_hist', y='lick_duration', errorbar='se', marker='o')
+
+g.set_axis_labels('Reward History', 'Mean Lick Duration')
+g.set_titles('Subject {col_name}')
+
+for ax in g.axes.flat:
+    ax.set_xlabel('Reward History')
+    ax.tick_params(labelbottom=True)
+
+g.fig.subplots_adjust(top=0.88, hspace=0.4)
+
+g.fig.suptitle('Bandit: Lick Duration vs Reward History', y=0.99)
+
+plt.show()
+
+# %% Unrewarded Trials and Time to Next Trial Start by Reward History
+
+# wm task
+
+hist_cols = [('n_rew_hist', 'Without Bails'), 
+             ('n_rew_hist_bail', 'With Bails')]
+
+wm_unrewarded = wm_sess_data[wm_sess_data['rewarded'] == False]
+
+for col, label in hist_cols:
+
+    g = sns.FacetGrid(wm_unrewarded, col='subjid', col_wrap=3, height=5, sharex=False)
+
+    g.map_dataframe(sns.lineplot, x=col, y='next_cpoke_in_latency', errorbar='se', marker='o')
+
+    g.set_axis_labels('Reward History', 'Next Center Poke Latency')
+    g.set_titles('Subject {col_name}')
+
+    for ax in g.axes.flat:
+        ax.set_xlabel('Reward History')
+        ax.tick_params(labelbottom=True)
+
+    g.fig.subplots_adjust(top=0.88, hspace=0.4)
+
+    g.fig.suptitle(f'Working Memory: Unrewarded Trials\nNext Center Poke Latency vs Reward History\n({label})', y=0.99)
+
+    plt.show()
+
+# bandit task
+
+unrewarded_bandit = bandit_sess_data[bandit_sess_data['rewarded'] == False]
+
+g = sns.FacetGrid(unrewarded_bandit, col='subjid', col_wrap=3, height=5, sharex=False)
+
+g.map_dataframe(sns.lineplot, x='n_rew_hist', y='next_cpoke_in_latency', errorbar='se', marker='o')
+
+g.set_axis_labels('Reward History', 'Next Center Poke Latency')
+g.set_titles('Subject {col_name}')
+
+for ax in g.axes.flat:
+    ax.set_xlabel('Reward History')
+    ax.tick_params(labelbottom=True)
+
+g.fig.subplots_adjust(top=0.88, hspace=0.4)
+
+g.fig.suptitle('Bandit: Unrewarded Trials\nNext Center Poke Latency vs Reward History', y=0.99)
+
+plt.show()
+
+# %% RT by Reward History
+
+# wm task
+
+g = sns.FacetGrid(wm_sess_data, col='subjid', col_wrap=3, height=5, sharex=False, sharey=False)
+
+g.map_dataframe(sns.lineplot, x='n_rew_hist_bail', y='RT', errorbar='se', marker='o')
+
+g.set_titles('Subject {col_name}')
+g.set_axis_labels('Reward History', 'RT')
+
+for ax in g.axes.flat:
+    ax.set_xlabel('Reward History')
+    ax.tick_params(labelbottom=True)
+
+g.fig.subplots_adjust(top=0.88, hspace=0.4)
+
+g.fig.suptitle('Working Memory: RT vs Reward History\n(With Bails)', y=0.99)
+
+plt.show()
+    
+# bandit task
+
+g = sns.FacetGrid(bandit_sess_data, col='subjid', col_wrap=3, height=5, sharex=False, sharey=False)
+
+g.map_dataframe(sns.lineplot, x='n_rew_hist', y='RT', errorbar='se', marker='o')
+
+g.set_titles('Subject {col_name}')
+g.set_axis_labels('Reward History', 'RT')
+
+for ax in g.axes.flat:
+    ax.set_xlabel('Reward History')
+    ax.tick_params(labelbottom=True)
+
+g.fig.subplots_adjust(top=0.88, hspace=0.4)
+
+g.fig.suptitle('Bandit: RT vs Reward History', y=0.99)
+
+plt.show()
+
+# %% Center Port Poke Out to Response by Reward History
+
+# wm task
+
+wm_sess_data['cpoke_out_to_response'] = (wm_sess_data['response_time'] 
+                                         - wm_sess_data['cpoke_out_time'])
+
+g = sns.FacetGrid(wm_sess_data, col='subjid', col_wrap=3, height=5, sharex=False, sharey=False)
+
+g.map_dataframe(sns.lineplot, x='n_rew_hist_bail', y='cpoke_out_to_response', errorbar='se', marker='o')
+
+g.set_titles('Subject {col_name}')
+g.set_axis_labels('Reward History', 'Center Port Poke Out to Response')
+
+for ax in g.axes.flat:
+    ax.set_xlabel('Reward History')
+    ax.tick_params(labelbottom=True)
+
+g.fig.subplots_adjust(top=0.88, hspace=0.4)
+
+g.fig.suptitle('Working Memory: Center Port Poke Out to Response vs Reward History\n(With Bails)', y=0.99)
+
+plt.show()
+    
+# bandit task
+
+bandit_sess_data['cpoke_out_to_response'] = (bandit_sess_data['response_time'] 
+                                         - bandit_sess_data['cpoke_out_time'])
+
+g = sns.FacetGrid(bandit_sess_data, col='subjid', col_wrap=3, height=5, sharex=False, sharey = False)
+
+g.map_dataframe(sns.lineplot, x='n_rew_hist', y='cpoke_out_to_response', errorbar='se', marker='o')
+
+g.set_titles('Subject {col_name}')
+g.set_axis_labels('Reward History', 'Center Port Poke Out to Response')
+
+for ax in g.axes.flat:
+    ax.set_xlabel('Reward History')
+    ax.tick_params(labelbottom=True)
+
+g.fig.subplots_adjust(top=0.88, hspace=0.4)
+
+g.fig.suptitle('Bandit: Center Port Poke Out to Response vs Reward History', y=0.99)
+
+plt.show()
+
 
 # %% Get and process photometry data
 
@@ -794,7 +1040,7 @@ for task in tasks:
 plot_signals = ['z_dff_iso_baseline_fband'] # 'z_dff_iso',
 plot_tasks = ['wm', 'bandit'] #
 plot_meta_subj = True
-plot_per_subject = False # whether to have a plot per subject (True) or a plot per region (False)
+plot_per_subject = True # whether to have a plot per subject (True) or a plot per region (False)
     
 use_se = True
 ph = 3.5;

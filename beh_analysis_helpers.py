@@ -327,3 +327,37 @@ def calc_trial_hist(sess_data, n_back=5, exclude_bails=True, col_suffix=None):
 
 def trial_hist_exists(sess_data):
     return set(['choice_hist', 'rew_hist']).issubset(sess_data.columns)
+
+
+def calc_lick_duration(events):
+    
+    p2_in = events.get('Port2In', [])
+    
+    if not isinstance(p2_in, (list, np.ndarray)):
+        p2_in = [p2_in]
+        
+    if len(p2_in) == 0:
+        return np.nan
+    
+    first_p2_in = p2_in[0]
+    
+    p1_out = events.get('Port1Out', [])
+    
+    if not isinstance(p1_out, (list, np.ndarray)):
+        p1_out = [p1_out]
+    
+    p3_out = events.get('Port3Out', [])
+    
+    if not isinstance(p3_out, (list, np.ndarray)):
+        p3_out = [p3_out]
+    
+    side_outs = list(p1_out) + list(p3_out)
+    side_outs_before = [t for t in side_outs if t < first_p2_in]
+    
+    if len(side_outs_before) == 0:
+        return np.nan
+    
+    last_side_out = max(side_outs_before)
+    
+    return first_p2_in - last_side_out
+    
