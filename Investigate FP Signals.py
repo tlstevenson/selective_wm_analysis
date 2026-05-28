@@ -71,38 +71,6 @@ for subj_id in sess_ids.keys():
         
         plt.show()
         
-# %% update timestamps
-reload = False
-subj_ids = [400, 402, 424, 483]
-sess_ids = db_access.get_fp_data_sess_ids(subj_ids=subj_ids)
-
-skip_sess = [119000,119194,119233,119247,119285,119429,
-             119479,119713,119741,119785,119830,119974]
-skip_subj = []
-
-completed_sess = []
-
-for subj_id in sess_ids.keys():
-    if subj_id in skip_subj:
-        continue
-    
-    for sess_id in sess_ids[subj_id]:
-        
-        if sess_id in skip_sess:
-            continue
-        
-        fp_data = wm_loc_db.get_sess_fp_data(sess_id, reload=reload)
-        fp_data = fp_data['fp_data'][subj_id][sess_id]
-        t = fp_data['time']
-        dec_info = fp_data['dec_info']
-        fix_t = t - dec_info['initial_dt']
-
-        time_data = {'start': fix_t[0], 'end': fix_t[-1], 'dt': dec_info['decimated_dt'], 'length': len(t), 'dec_info': dec_info}
-
-        for region in fp_data['raw_signals'].keys():
-            db_access.update_fp_time_data(subj_id, sess_id, region, time_data)
-            
-        completed_sess.append(sess_id)
 
 # %% define plotting routine
 

@@ -17,6 +17,8 @@ import os
 import os.path as path
 import numpy as np
 
+# %%
+
 rec_date = date(2026,4,6)
 
 subj_region_dict = {483: {'NAc-L': 2, 'NAc-R': 1, 'TS-L': 4, 'TS-R': 3},
@@ -76,6 +78,36 @@ for subj_id in subj_ids:
         # rename file with session id
         new_name = path.join(root_dir, 'Session_{}.doric'.format(sess_id))
         os.rename(data_file, new_name)
+        
+    # rename videos
+    vid_dir = path.join(root_dir, 'Videos')
+    if path.exists(vid_dir):
+        subj_vid_files = [path.join(vid_dir, f) for f in glob.glob('*.mp4', root_dir=vid_dir)]
+        subj_dor_files = [path.join(vid_dir, f) for f in glob.glob('*.doric', root_dir=vid_dir)]
+        
+        vid_file_times = [datetime.fromtimestamp(pathlib.Path(f).stat().st_ctime, tz = timezone.utc) for f in subj_vid_files]
+        dor_file_times = [datetime.fromtimestamp(pathlib.Path(f).stat().st_ctime, tz = timezone.utc) for f in subj_dor_files]
+        vid_file_time_sel = [f_time.date() == rec_date for f_time in vid_file_times]
+        dor_file_time_sel = [f_time.date() == rec_date for f_time in dor_file_times]
+        
+        if sum(vid_file_time_sel) == 0 or sum(dor_file_time_sel) == 0:
+            print('Found no movies files for subject {} on date {}. Continuing...'.format(subj_id, rec_date.isoformat()))
+            continue
+        elif sum(vid_file_time_sel) > 1 or sum(dor_file_time_sel) > 1:
+            print('Found {} data files for subject {} on date {}. Please add them individually. Continuing...'.format(
+                max(sum(vid_file_time_sel), sum(dor_file_time_sel)), subj_id, rec_date.isoformat()))
+            continue
+        else:
+            vid_data_file = np.array(subj_vid_files)[np.array(vid_file_time_sel)][0]
+            dor_data_file = np.array(subj_dor_files)[np.array(dor_file_time_sel)][0]
+
+            # rename files with session id
+            new_vid_name = path.join(vid_dir, 'mov_{}.mp4'.format(sess_id))
+            new_dor_name = path.join(vid_dir, 'mov_{}.doric'.format(sess_id))
+            os.rename(vid_data_file, new_vid_name)
+            os.rename(dor_data_file, new_dor_name)
+    else:
+        print('Video directory {} does not exist'.format(vid_dir))
 
 # %% Add Manually
 
@@ -85,11 +117,11 @@ for subj_id in subj_ids:
 #                        print_file_struct = print_struct, print_attr = print_attr)
 
 
-# %% Rename old files
+# %% Rename old doric files
 
 # subj_ids = [198,199,274,400,402,237,238,424,483]
 # data_dir = 'D:/Tanner'
-#         
+        
 # for subj_id in subj_ids:
 #     root_dir = path.join(data_dir, str(subj_id))
 #     subj_data_files = [path.join(root_dir, f) for f in glob.glob('*.doric', root_dir=root_dir)]
@@ -110,63 +142,43 @@ for subj_id in subj_ids:
 #         new_name = path.join(root_dir, 'Session_{}.doric'.format(subj_sess_ids[subj_id][0]))
 #         os.rename(data_file, new_name)
         
+# %% Rename old video files
 
-# %% Update time data
-
-from sys_neuro_tools import doric_utils as dor
-from sys_neuro_tools import acq_utils as acq
-
-target_dt = 0.005
-
-subj_region_dict = {198: {'PL': 1, 'DMS': 2, 'DLS': 3},
-                    199: {'PL': 1, 'DMS': 2, 'DLS': 3, 'TS': 4},
-                    274: {'DLS-L': 1, 'DMS-L': 2, 'DMS-R': 3, 'DLS-R': 4},
-                    424: {'PL': 1, 'NAc': 2, 'DMS': 3, 'DLS': 4},
-                    237: {'PL': 1, 'NAc': 2, 'DMS': 3, 'TS': 4},
-                    238: {'NAc': 1, 'DMS': 2, 'DLS': 3, 'TS': 4},
-                    483: {'NAc-L': 1, 'NAc-R': 2, 'TS-L': 3, 'TS-R': 4},
-                    400: {'DLS': 1, 'NAc': 2, 'PL': 3, 'DMS': 4},
-                    402: {'DLS': 1, 'PL': 2, 'DMS': 3, 'TS': 4}}
-wavelength_dict = {1: 420, 2: 490, 3: 420, 4: 490}
-io_channel_map = {1: [1,2], 2: [1,2], 3: [3,4], 4: [3,4]} # input channels to output channels
-
-subj_ids = list(subj_region_dict.keys())
-
-data_dir = 'D:/Tanner'
-
-for subj_id in subj_ids:
-    
-    subj_sess_ids = db_access.get_fp_data_sess_ids(subj_ids=subj_id)
-    
-    root_dir = path.join(data_dir, str(subj_id))
-    subj_data_files = [path.join(root_dir, f) for f in glob.glob('*.doric', root_dir=root_dir)]
-    
-    region_dict = subj_region_dict[subj_id]
-
-    for sess_id in subj_sess_ids[subj_id]:
-        data_path = [f for f in subj_data_files if str(sess_id) in f]
+# subj_ids = [198,199,274,400,402,237,238,424,483]
+# data_dir = 'D:/Tanner'
         
-        dor_signal_path = '/DataAcquisition/FPConsole/Signals/Series0001/'
-        ttl_name = 'ttl'
+# for subj_id in subj_ids:
+#     vid_dir = path.join(data_dir, str(subj_id), 'Videos')
 
-        signal_name_dict = {ttl_name: {'time': 'DigitalIO/Time', 'values': 'DigitalIO/DIO01'}}
-
-        signal_name_dict.update({'{}_{}'.format(r, wavelength_dict[c]):
-                                 {'time': 'LockInAOUT0{}/Time'.format(c),
-                                  'values': 'LockInAOUT0{}/AIN0{}'.format(c, region_dict[r])}
-                                 for r in region_dict.keys() for c in wavelength_dict.keys() if c in io_channel_map[region_dict[r]]})
-
-        data = dor.get_specific_data(data_path, dor_signal_path, signal_name_dict)
-
-        data, issues = dor.fill_missing_data(data, 'time')
-        if len(issues) > 0:
-            print('Issues found:\n{0}'.format('\n'.join(issues)))
-
-        signal_data = {k:v for k,v in data.items() if k != ttl_name and 'values' in v}
-        dec_time, dec_signals, dec_info = acq.decimate_data(signal_data, target_dt = target_dt)
-
-        time_data = {'start': dec_time[0], 'end': dec_time[-1], 'dt': dec_info['decimated_dt'], 'length': len(dec_time), 'dec_info': dec_info}
-
-        for region in region_dict.keys():
-            db_access.update_fp_time_data(subj_id, sess_id, region, time_data)
+#     subj_vid_files = [path.join(vid_dir, f) for f in glob.glob('*.mp4', root_dir=vid_dir)]
+#     subj_dor_files = [path.join(vid_dir, f) for f in glob.glob('*.doric', root_dir=vid_dir)]
+    
+#     vid_file_times = [datetime.fromtimestamp(pathlib.Path(f).stat().st_ctime, tz = timezone.utc) for f in subj_vid_files]
+#     dor_file_times = [datetime.fromtimestamp(pathlib.Path(f).stat().st_ctime, tz = timezone.utc) for f in subj_dor_files]
+    
+#     if len(subj_vid_files) != len(subj_dor_files):
+#         print('There are different numbers of video and doric files in {}'.format(vid_dir))
+#         continue
+    
+#     for vid_file, vid_time, dor_file, dor_time in zip(subj_vid_files, vid_file_times, subj_dor_files, dor_file_times):
+        
+#         if vid_time.date() != dor_time.date():
+#             print('Dates dont match up for {} and {}. Please rename them individually. Continuing...'.format(vid_file, dor_file))
+#             continue
+        
+#         if sum([f_time.date() == vid_time.date() for f_time in vid_file_times]) > 1:
+#             print('Found multiple files on the same day for subject {} on date {}. Please rename them individually. Continuing...'.format(subj_id, vid_time.date().isoformat()))
+#             continue
+        
+#         subj_sess_ids = db_access.get_subj_sess_ids_by_date([subj_id], vid_time.date().isoformat())
+        
+#         if len(subj_sess_ids[subj_id]) > 1:
+#             print('Found multiple sessions on the same day for subject {} on date {}. Please rename them individually. Continuing...'.format(subj_id, vid_time.date().isoformat()))
+#             continue
+        
+#         # rename files with session id
+#         new_vid_name = path.join(vid_dir, 'mov_{}.mp4'.format(subj_sess_ids[subj_id][0]))
+#         new_dor_name = path.join(vid_dir, 'mov_{}.doric'.format(subj_sess_ids[subj_id][0]))
+#         os.rename(vid_file, new_vid_name)
+#         os.rename(dor_file, new_dor_name)
 
