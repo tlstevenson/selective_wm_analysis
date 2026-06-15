@@ -243,7 +243,9 @@ unique_colors = cmap(color_indices)
 for i in range(len(group_names)):
     for j in range(len(node_names)):
         node_score_data = score_group_distributions[group_names[i]][node_names[j]]
+# %%
         if(j == 0):
+
             b = ax_score.boxplot(node_score_data, positions=[i+j*len(group_names)], label=group_names[i], tick_labels=[node_names[j]], patch_artist=True)
             plt.setp(b['boxes'], color=unique_colors[i])
         else:
