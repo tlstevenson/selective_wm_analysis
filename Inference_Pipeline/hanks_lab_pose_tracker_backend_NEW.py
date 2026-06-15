@@ -37,23 +37,29 @@ config = ics.load_or_create_config()
 
 #FIXME: conda_env_path needs to be renamed to sleap_env_path everywhere
 #%%Define traversal function
-def get_file_paths(directory_path):
+def get_file_paths(directory_path, extension="None"):
     """Returns a list of strings containing the paths of all files in a directory."""
     path_obj = Path(directory_path)
     
+    if extension=="None":
+        return [str(file) for file in path_obj.iterdir() if file.is_file()]
+    else:
+        return[str(file) for file in path_obj.iterdir() if file.is_file() and file.suffix==".mp4"]
+    
     # .is_file() ensures we don't include subdirectories in the list
-    return [str(file) for file in path_obj.iterdir() if file.is_file()]
 
 # Example usage:
 # files = get_file_paths("./my_folder")
 #%%Select new videos by directory
-vid_folders = [r"E:/Tanner_Vids/ReformattedVideos/199",
-               r"E:/Tanner_Vids/ReformattedVideos/274",
-               r"E:/Tanner_Vids/ReformattedVideos/400",
-               r"E:/Tanner_Vids/ReformattedVideos/402"]
+vid_folders = [r"C:\Users\cns-th-lab\Tanner_Alex_Vids\198",
+               r"C:\Users\cns-th-lab\Tanner_Alex_Vids\237",
+               r"C:\Users\cns-th-lab\Tanner_Alex_Vids\274",
+               r"C:\Users\cns-th-lab\Tanner_Alex_Vids\402",
+               r"C:\Users\cns-th-lab\Tanner_Alex_Vids\483"]
 curr_vids = []
 for vid_folder in vid_folders:
     curr_vids = curr_vids + get_file_paths(vid_folder)
+print(curr_vids)
 #%%Select new videos by hand
 curr_vids = []
 go = "yes"
