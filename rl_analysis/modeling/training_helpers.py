@@ -14,7 +14,10 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 from pyutils import cluster_utils
 from sys_neuro_tools import plot_utils
-import beh_analysis_helpers as bah
+try:
+    import beh_analysis_helpers as bah
+except ImportError:
+    bah = None
 import agents
 import time
 from filelock import FileLock
@@ -45,6 +48,8 @@ def define_choice_outcome(sess_data):
 def get_model_training_data(sess_data, basic_model, limit_mask=False, n_limit_hist=2):
     
     if limit_mask:
+        if bah is None:
+            raise ImportError('beh_analysis_helpers is required for limit_mask=True but could not be imported')
         if not bah.trial_hist_exists(sess_data):
             bah.calc_trial_hist(sess_data, n_limit_hist)
     
@@ -90,7 +95,8 @@ def get_model_training_data(sess_data, basic_model, limit_mask=False, n_limit_hi
             mask[trial_data['forced_choice'].to_numpy()[1:]] = 0
             
         trial_mask_eval[i, :n_trials, :] = torch.from_numpy(mask)
-            
+         
+        #add this function to fitbandit models.py config
         if limit_mask:
             # exclude trials that are stays after the animal has received repeated rewards on the same side
             choices = trial_data['choice'].to_numpy()
@@ -131,7 +137,7 @@ def_end_tol = 1e-6
         
 def fit_model(model, model_name, inputs, labels, trial_mask_train, trial_mask_eval, loss, subj_name, save_path, n_fits=def_n_fits, 
               n_steps=def_n_steps, end_tol=def_end_tol, optim_generator=None, train_output_formatter=None, 
-              eval_output_transform=None, skip_existing_fits=True, refit_existing=False, print_train_params=False, equal_sess_weight=False):
+              eval_output_transform=None, skip_existing_fits=False, refit_existing=False, print_train_params=False, equal_sess_weight=False):
 
     lock = FileLock('fitting.lock')
     
@@ -271,19 +277,21 @@ def get_cv_fold_masks(trial_mask_train, trial_mask_eval, n_trials, n_folds=3):
 #%%
 def fit_model_cv(model, model_name, inputs, labels, trial_mask_train, trial_mask_eval, n_trials, loss, subj_name, save_path, n_fits=def_n_fits,
                  n_steps=def_n_steps, end_tol=def_end_tol, optim_generator=None, train_output_formatter=None,
-                 eval_output_transform=None, skip_existing_fits=True, print_train_params=False,
+                 eval_output_transform=None, skip_existing_fits=False, print_train_params=False,
                  equal_sess_weight=False, n_folds=3):
-    
+    print('fit_model_cv started for {} | {}'.format(subj_name, model_name))
     lock = FileLock('fitting.lock')
     
     if optim_generator is None:
         optim_generator = lambda p: optim.Adam(p, lr=0.01)
         
+    print('Loading model dict from save path...')
     if path.exists(save_path):
         with lock:
             model_dict = agents.load_model(save_path)
     else:
         model_dict = {}
+    print('Model dict loaded successfully')
         
     if not str(subj_name) in model_dict:
         model_dict[str(subj_name)] = {}
@@ -297,6 +305,8 @@ def fit_model_cv(model, model_name, inputs, labels, trial_mask_train, trial_mask
     else:
         n_exist_fits = len(model_dict[str(subj_name)][cv_model_name])
     
+    print('n_exist_fits: {} | n_fits: {}'.format(n_exist_fits, n_fits))
+    
     # only do 1 fit at a time on the cluster
     n_model_fits = 1 if on_cluster else n_fits
     
@@ -305,11 +315,17 @@ def fit_model_cv(model, model_name, inputs, labels, trial_mask_train, trial_mask
             n_model_fits = 0
         else:
             n_model_fits = 1 if on_cluster else (n_fits - n_exist_fits)
+    print('n_model_fits: {}'.format(n_model_fits))
     
     # number of sessions from the first dimension of inputs
     n_sess = inputs.shape[0]
     
+    print('n_sess: {} | inputs shape: {} | labels shape: {}'.format(n_sess, inputs.shape, labels.shape))
+    print('Building fold masks...')
+    
     fold_masks = get_cv_fold_masks(trial_mask_train, trial_mask_eval, n_trials, n_folds) #each fold covers all sessions
+    print('Fold masks built. n_folds: {}'.format(len(fold_masks)))
+    print('Forward chaining CV for {} | {} sessions | model: {}\n'.format(subj_name, n_sess, model_name))
 
     print('Forward chaining CV for {} | {} sessions | model: {}\n'.format(subj_name, n_sess, model_name))
 
@@ -327,11 +343,13 @@ def fit_model_cv(model, model_name, inputs, labels, trial_mask_train, trial_mask
             print('\n  Fold {}/{}:'.format(fold_idx + 1, len(fold_masks)))
 
             (fold_train_mask, fold_test_mask) = fold_masks[fold_idx]
+            print('  Resetting model params and optimizer...')
             
             # reset model and optimizer fresh for each fold so no parameter
             # state leaks from one fold to the next
             model.reset_params()
             optimizer = optim_generator(model.parameters(recurse=True))
+            print('  Model reset complete. Starting train_model...')
             
             try:
                 # train on all sessions simultaneously using the fold train mask
@@ -342,12 +360,14 @@ def fit_model_cv(model, model_name, inputs, labels, trial_mask_train, trial_mask
                                 loss_diff_exit_thresh=end_tol,
                                 print_params=print_train_params,
                                 equal_sess_weight=equal_sess_weight)
+                print('  train_model complete. Starting eval_model...')
     
                 # evaluate on all sessions simultaneously using the fold test mask
                 # mask selects the appropriate test window per session
                 _, _, fold_perf = eval_model(model, inputs, labels,
                                              trial_mask=fold_test_mask,
                                              output_transform=eval_output_transform)
+                print('  eval_model complete.')
     
                 # convert LL to NLL and accumulate across all folds
                 fold_nll = -fold_perf['ll_total']
@@ -375,6 +395,7 @@ def fit_model_cv(model, model_name, inputs, labels, trial_mask_train, trial_mask
             'n_folds':   len(fold_masks),
             'n_sess':    n_sess,
         }
+        print('Saving results...')
 
         with lock:
             # on the cluster reload before writing to pick up results from
@@ -389,7 +410,8 @@ def fit_model_cv(model, model_name, inputs, labels, trial_mask_train, trial_mask
             model_dict[str(subj_name)][cv_model_name].append(cv_result)
 
             agents.save_model(model_dict, save_path)
-
+            
+        print('Results saved successfully.')
         fit_idx += 1
 
 
@@ -530,9 +552,9 @@ def log_likelihood(labels, outputs, trial_mask=None):
         
     # calculate log likelihood for binary classification
     # labels should be 0 or 1 and outputs should span [0,1]
+    outputs = np.clip(outputs, 1e-7, 1 - 1e-7)
     ll = labels*np.log(outputs) + (1-labels)*np.log(1-outputs)
     ll = ll * trial_mask
-    
     ll_tot = np.sum(ll)
     
     return ll_tot, ll_tot/np.sum(trial_mask)

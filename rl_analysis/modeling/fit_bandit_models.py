@@ -57,7 +57,9 @@ def perform_fit(config, fit_group_idx):
     
     save_file_name = config['save_file_name']
     
-    training_data = th.get_model_training_data(sess_data, basic_model)
+    training_data = th.get_model_training_data(sess_data, basic_model,
+                                               limit_mask=config['limit_mask'],
+                                               n_limit_hist=config['n_limit_hist'])
     loss_output_transforms = th.get_loss_output_transforms(basic_model)
 
     if config["cv_model"]:

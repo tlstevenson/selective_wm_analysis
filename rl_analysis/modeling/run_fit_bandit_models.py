@@ -32,8 +32,8 @@ all_add_agents = {}
 
 ## Additional Agents
 # will be applied to all main agents
-all_add_agents[''] = None
-all_add_agents['Persev (free alpha)'] = [agents.PerseverativeAgent(n_vals=2)]
+#all_add_agents[''] = None  # only rerun Persev (fixed) — base Bayes doesn't have this bug
+#all_add_agents['Persev (free alpha)'] = [agents.PerseverativeAgent(n_vals=2)]
 all_add_agents['Persev (fixed)'] = [agents.PerseverativeAgent(n_vals=2, constraints={'alpha': {'fit': False, 'init': 1}})]
 
 ## Q MODELS
@@ -43,20 +43,20 @@ all_main_agent_gens['Q'] = lambda s: agents.QValueAgent(constraints=s)
 all_main_agent_settings['Q'] = {
         # All Alphas Free, Different K Fixes
         #'All Free': {},
-        
+
         # 'All Alpha Free, S/R K Fixed': {'k_same_rew': {'fit': False}},
-        
+
         # 'All Alpha Free, Same K Fixed': {'k_same_rew': {'fit': False}, 'k_same_unrew': {'fit': False}},
-        
-        
+
+
         # 'All Alpha Free, D/R K Free': {'k_same_rew': {'fit': False}, 'k_same_unrew': {'fit': False}, 'k_diff_unrew': {'fit': False}},
-    
-        'All Alpha Free, All K Fixed, Diff K=0.5': {'k_same_rew': {'fit': False}, 'k_same_unrew': {'fit': False},
-                                                     'k_diff_rew': {'fit': False, 'init': 0.5}, 'k_diff_unrew': {'fit': False, 'init': 0.5}},
-        
+
+        #'All Alpha Free, All K Fixed, Diff K=0.5': {'k_same_rew': {'fit': False}, 'k_same_unrew': {'fit': False},
+        #                                             'k_diff_rew': {'fit': False, 'init': 0.5}, 'k_diff_unrew': {'fit': False, 'init': 0.5}},
+
         # # All Alphas shared, Different K Fixes
-        'All Alpha Shared, All K Fixed': {'alpha_same_unrew': {'share': 'alpha_same_rew'}, 'alpha_diff_rew': {'share': 'alpha_same_rew'}, 
-                                          'alpha_diff_unrew': {'share': 'alpha_same_rew'}, 'k_same_rew': {'fit': False}, 
+        'All Alpha Shared, All K Fixed': {'alpha_same_unrew': {'share': 'alpha_same_rew'}, 'alpha_diff_rew': {'share': 'alpha_same_rew'},
+                                          'alpha_diff_unrew': {'share': 'alpha_same_rew'}, 'k_same_rew': {'fit': False},
                                           'k_same_unrew': {'fit': False},'k_diff_rew': {'fit': False}, 'k_diff_unrew': {'fit': False}},
         
         # 'All Alpha Shared, D/R K Free': {'alpha_same_unrew': {'share': 'alpha_same_rew'}, 'alpha_diff_rew': {'share': 'alpha_same_rew'}, 
@@ -122,11 +122,11 @@ all_main_agent_settings['Q'] = {
         # 'Alpha Rew/Unrew Shared, Same K Fixed': {'alpha_diff_rew': {'share': 'alpha_same_rew'}, 'alpha_diff_unrew': {'share': 'alpha_same_unrew'}, 
         #                                          'k_same_rew': {'fit': False}, 'k_same_unrew': {'fit': False}},
         
-        'Alpha Rew/Unrew Shared, All K Fixed': {'alpha_diff_rew': {'share': 'alpha_same_rew'}, 
-                                            'alpha_diff_unrew': {'share': 'alpha_same_unrew'}, 
-                                            'k_same_rew': {'fit': False}, 
-                                            'k_same_unrew': {'fit': False}, 
-                                            'k_diff_rew': {'fit': False}, 
+        'Alpha Rew/Unrew Shared, All K Fixed': {'alpha_diff_rew': {'share': 'alpha_same_rew'},
+                                            'alpha_diff_unrew': {'share': 'alpha_same_unrew'},
+                                            'k_same_rew': {'fit': False},
+                                            'k_same_unrew': {'fit': False},
+                                            'k_diff_rew': {'fit': False},
                                             'k_diff_unrew': {'fit': False}},
         
         # 'Alpha Rew/Unrew Shared, D/R K Free': {'alpha_diff_rew': {'share': 'alpha_same_rew'}, 'alpha_diff_unrew': {'share': 'alpha_same_unrew'}, 
@@ -166,41 +166,54 @@ all_main_agent_settings['Q'] = {
 all_main_agent_gens['SI'] = lambda s: agents.StateInferenceAgent(**s)
 
 all_main_agent_settings['SI'] = {
-        #'Shared Evidence': {'complement_c_rew':True, 'complement_c_diff':True}, 
-        
-         #'Separate Same/Diff Evidence': {'complement_c_rew':True, 'complement_c_diff':False},
-        
-        ##'Separate Rew/Unrew Evidence': {'complement_c_rew':False, 'complement_c_diff':True}, 
-        
-         'All Separate Evidence': {'complement_c_rew':False, 'complement_c_diff':False},
-        
-         'Free Same/Diff Rew Evidence': {'complement_c_rew':False, 'complement_c_diff':False,
-                                         'constraints': {'c_same_unrew': {'fit': False, 'init': 0},
-                                                       'c_diff_unrew': {'fit': False, 'init': 0}}},
+        #'Shared Evidence': {'complement_c_rew':True, 'complement_c_diff':True},
 
-         'Shared Rew Evidence, Unrew Fixed 0': {'complement_c_rew':False, 'complement_c_diff':True,
-                                                'constraints': {'c_diff_rew': {'share': 'c_same_rew'},
-                                                                'c_same_unrew': {'fit': False, 'init': 0},
-                                                                'c_diff_unrew': {'fit': False, 'init': 0}}},
-         'Fixed c: 75/10 Condition': {
-             'complement_c_rew': False, 'complement_c_diff': False,
-             'constraints': {'c_same_rew':  {'fit': False, 'init': np.log(0.75 / 0.10)},   
-                             'c_diff_rew':  {'fit': False, 'init': np.log(0.10 / 0.75)},   
-                             'c_same_unrew':{'fit': False, 'init': np.log(0.25 / 0.90)},   # no reward=1-preward
-                             'c_diff_unrew':{'fit': False, 'init': np.log(0.90 / 0.25)}}   
-         },
+        #'Separate Same/Diff Evidence': {'complement_c_rew':True, 'complement_c_diff':False},
 
-        'Fixed c: 50/10 Condition': {
-        'complement_c_rew': False, 'complement_c_diff': False,
-        'constraints': {'c_same_rew':  {'fit': False, 'init': np.log(0.50 / 0.10)}, 
-                        'c_diff_rew':  {'fit': False, 'init': np.log(0.10 / 0.50)},   
-                        'c_same_unrew':{'fit': False, 'init': np.log(0.50 / 0.90)},   
-                        'c_diff_unrew':{'fit': False, 'init': np.log(0.90 / 0.50)},   
-         }
-     }
+        ##'Separate Rew/Unrew Evidence': {'complement_c_rew':False, 'complement_c_diff':True},
+
+        #'All Separate Evidence': {'complement_c_rew':False, 'complement_c_diff':False},
+
+        #'Free Same/Diff Rew Evidence': {'complement_c_rew':False, 'complement_c_diff':False,
+        #                                'constraints': {'c_same_unrew': {'fit': False, 'init': 0},
+        #                                              'c_diff_unrew': {'fit': False, 'init': 0}}},
+
+        #'Shared Rew Evidence, Unrew Fixed 0': {'complement_c_rew':False, 'complement_c_diff':False,
+        #                                       'constraints': {'c_diff_rew': {'share': 'c_same_rew'},
+        #                                                       'c_same_unrew': {'fit': False, 'init': 0},
+        #                                                       'c_diff_unrew': {'fit': False, 'init': 0}}},
+
+         #'Fixed c: 75/10 Condition': {
+         #    'complement_c_rew': False, 'complement_c_diff': False,
+         #    'constraints': {'c_same_rew':  {'fit': False, 'init': 2*0.75 - 1},
+         #                    'c_diff_rew':  {'fit': False, 'init': 1 - 2*0.10},
+         #                    'c_same_unrew':{'fit': False, 'init': 1 - 2*0.25},
+         #                    'c_diff_unrew':{'fit': False, 'init': 2*0.90 - 1}}
+         #},
+
+        #'Fixed c: 50/10 Condition': {
+        #    'complement_c_rew': False, 'complement_c_diff': False,
+        #    'constraints': {'c_same_rew':  {'fit': False, 'init': 2*0.50 - 1},
+        #                    'c_diff_rew':  {'fit': False, 'init': 1 - 2*0.10},
+        #                    'c_same_unrew':{'fit': False, 'init': 1 - 2*0.50},
+        #                    'c_diff_unrew':{'fit': False, 'init': 2*0.90 - 1},
+        #}
+        #}
 }
 
-                    
+## RL STATE INFERENCE MODELS
+
+all_main_agent_gens['RL SI'] = lambda s: agents.RLStateInferenceAgent(**s)
+
+all_main_agent_settings['RL SI'] = {
+        #'All Separate Evidence': {'complement_c_rew': False, 'complement_c_diff': False},
+
+        #'Free Same/Diff Rew Evidence': {'complement_c_rew': False, 'complement_c_diff': False,
+        #                                'constraints': {'c_same_unrew': {'fit': False, 'init': 0},
+        #                                                'c_diff_unrew': {'fit': False, 'init': 0}}},
+        }
+
+
 ## FULL BAYESIAN MODEL FITS
 
 all_main_agent_gens['Bayes'] = lambda s: agents.BayesianAgent(p_step=0.01, **s)
@@ -211,11 +224,73 @@ all_main_agent_settings['Bayes'] = {
         'No Switch Scatter, Perfect Update, No Stay Bias, Simul Updates': {'update_p_switch_first': False,
                                                                            'constraints': {'switch_scatter_sig': {'init': 0, 'fit': False},
                                                                                            'imperfect_update_alpha': {'init': 0, 'fit': False},
-                                                                                           'stay_bias_lam': {'init': 0, 'fit': False}}}, 
+                                                                                           'stay_bias_lam': {'init': 0, 'fit': False}}},
             
         # 'Fixed 0.5 Prior Rew Mean, No Switch Scatter': {'constraints': {'switch_scatter_sig': {'init': 0, 'fit': False}, 
         #                                                          'init_high_rew_mean': {'init': 0, 'fit': False}, 
         #                                                          'init_low_rew_mean': {'init': 1, 'fit': False}}}
+        }
+
+
+## Q+SI Combined Models
+# Q (All Alpha Shared, All K Fixed) + SI (Shared Rew Evidence, Unrew Fixed 0)
+# generator returns a list of two agents; the run loop handles this via isinstance check
+
+all_main_agent_gens['Q+SI'] = lambda s: [
+    agents.QValueAgent(constraints=s['q']),
+    agents.StateInferenceAgent(**s['si'])
+]
+
+all_main_agent_settings['Q+SI'] = {
+    #'All Alpha Shared, All K Fixed + Shared Rew Evidence, Unrew Fixed 0': {
+    #    'q': {
+    #        'alpha_same_unrew': {'share': 'alpha_same_rew'},
+    #        'alpha_diff_rew':   {'share': 'alpha_same_rew'},
+    #        'alpha_diff_unrew': {'share': 'alpha_same_rew'},
+    #        'k_same_rew':   {'fit': False},
+    #        'k_same_unrew': {'fit': False},
+    #        'k_diff_rew':   {'fit': False},
+    #        'k_diff_unrew': {'fit': False},
+    #    },
+    #    'si': {
+    #        'complement_c_rew':  False,
+    #        'complement_c_diff': False,
+    #        'constraints': {
+    #            'c_diff_rew':   {'share': 'c_same_rew'},
+    #            'c_same_unrew': {'fit': False, 'init': 0},
+    #            'c_diff_unrew': {'fit': False, 'init': 0},
+    #        }
+    #    }
+    #}
+}
+
+
+## Q VALUE STATE INFERENCE MODELS
+
+all_main_agent_gens['Q SI'] = lambda s: agents.QValueStateInferenceAgent(**s)
+
+all_main_agent_settings['Q SI'] = {
+        #'All Alpha Shared, All K Fixed': {
+        #    'constraints': {
+        #        'alpha_high_unrew': {'share': 'alpha_high_rew'},
+        #        'alpha_low_rew':    {'share': 'alpha_high_rew'},
+        #        'alpha_low_unrew':  {'share': 'alpha_high_rew'},
+        #        'k_high_rew':  {'fit': False},
+        #        'k_high_unrew': {'fit': False},
+        #        'k_low_rew':   {'fit': False},
+        #        'k_low_unrew': {'fit': False},
+        #    }
+        #},
+        #'Alpha Rew/Unrew Shared, All K Fixed': {
+        #    'constraints': {
+        #        'alpha_low_rew':    {'share': 'alpha_high_rew'},
+        #        'alpha_low_unrew':  {'share': 'alpha_high_unrew'},
+        #        'k_high_rew':  {'fit': False},
+        #        'k_high_unrew': {'fit': False},
+        #        'k_low_rew':   {'fit': False},
+        #        'k_low_unrew': {'fit': False},
+        #    }
+        #},
         }
 
 
@@ -321,24 +396,24 @@ all_main_agent_settings['Bayes'] = {
 
 run_on_cluster = True
 
-subj_ids = [198, 199, 274, 400, 402]
+subj_ids = [198, 199, 274, 400, 402, 237, 238, 424, 483]
 separate_rew_rates = True
 fit_ind_subj = True
 fit_meta_subj = True
 equal_sess_weight = True
 
-skip_existing_fits = False
+skip_existing_fits = True
 refit_existing = False
 print_train_params = False
 
-# limit_mask = False
-# n_limit_hist = 2
+limit_mask = False
+n_limit_hist = 2
 
 #limitations
 n_fits = 3
 n_steps = 10000
 end_tol = 1e-6
-cv_model = True 
+cv_model = False
 meta_subj_name = 'meta'
 model_beh_name = 'probabilistic_bandit'
 
@@ -354,7 +429,7 @@ all_sess = loc_db.get_behavior_data(utils.flatten(subj_sess_ids), reload=reload_
 group_sess_ids = {}
 
 if separate_rew_rates:
-    save_file_name = 'fit_models_sep_rates_tszma.json'
+    save_file_name = 'fit_models_sep_rates_persev_rerun.json'
     
     rew_rates = all_sess['block_prob'].unique()
     
@@ -373,9 +448,10 @@ else:
 
 local_ph = path_helper(model_beh_name, False)
 
-fit_config = {'fit_group_names': list(group_sess_ids.keys()), 'group_sess_ids': group_sess_ids, 'save_file_name': save_file_name, 'model_beh_name': model_beh_name, 
-              'equal_sess_weight': equal_sess_weight, 'skip_existing_fits': skip_existing_fits, 'refit_existing': refit_existing, 
-              'print_train_params': print_train_params, 'n_fits': n_fits, 'n_steps': n_steps, 'end_tol': end_tol, 'cv_model': cv_model}
+fit_config = {'fit_group_names': list(group_sess_ids.keys()), 'group_sess_ids': group_sess_ids, 'save_file_name': save_file_name, 'model_beh_name': model_beh_name,
+              'equal_sess_weight': equal_sess_weight, 'skip_existing_fits': skip_existing_fits, 'refit_existing': refit_existing,
+              'print_train_params': print_train_params, 'n_fits': n_fits, 'n_steps': n_steps, 'end_tol': end_tol, 'cv_model': cv_model,
+              'limit_mask': limit_mask, 'n_limit_hist': n_limit_hist}
 
 
 #%%
@@ -401,18 +477,21 @@ if run_on_cluster:
 for agent_name in all_main_agent_gens.keys():
     for setting_name, setting_vals in all_main_agent_settings[agent_name].items():
         for add_agent_name, add_agent_list in all_add_agents.items():
-            main_agent = all_main_agent_gens[agent_name](setting_vals)
-            
+            main_agents = all_main_agent_gens[agent_name](setting_vals)
+            # generators may return a single agent or a list (e.g. Q+SI combined)
+            if not isinstance(main_agents, list):
+                main_agents = [main_agents]
+
             if add_agent_list is None:
                 model_name = '{} - {}'.format(agent_name, setting_name)
-                model = agents.SummationModule([main_agent])
+                model = agents.SummationModule(main_agents)
             else:
                 model_name = '{}/{} - {}'.format(agent_name, add_agent_name, setting_name)
-                model = agents.SummationModule([main_agent]+add_agent_list)
-                
+                model = agents.SummationModule(main_agents + add_agent_list)
+
             fit_config['model'] = agents.serialize_model(model)
             fit_config['model_name'] = model_name
-            fit_config['basic_model'] = isinstance(main_agent, agents.SingleValueAgent)
+            fit_config['basic_model'] = any(isinstance(a, agents.SingleValueAgent) for a in main_agents)
 
             if run_on_cluster:
 
@@ -446,6 +525,7 @@ for agent_name in all_main_agent_gens.keys():
                     fit_bandit_models.perform_fit(fit_config, subj_idx)
 
 #%%
+#retrive data from cluster to local
 local_ph = path_helper(model_beh_name, False)
 cluster_ph = path_helper(model_beh_name, True)
 
