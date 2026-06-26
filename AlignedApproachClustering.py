@@ -6,9 +6,9 @@ Created on Thu Apr 30 18:16:27 2026
 """
 
 import init
-
 import pyutils.utils as utils
 from hankslab_db import db_access
+import doric_utils as du
 import hankslab_db.tonecatdelayresp_db as db
 import hankslab_db.pclicksdiscrim_db as discrim_db
 import beh_analysis_helpers as bah
@@ -22,9 +22,7 @@ import os
 #%%
 #Extract rate number and recording date from name
 #r"C:\Users\cns-th-lab\Tanner_Alex_Vids\198\Videos\198.2025-07-28.mov_0001.mp4",
-vid_list = [r"C:\Users\cns-th-lab\Tanner_Alex_Vids\198\Videos\198.2025-07-29.mov_0002.mp4",
-            r"C:\Users\cns-th-lab\Tanner_Alex_Vids\199\Videos\199.2025-07-28.mov_0001.mp4",
-            r"C:/Users/cns-th-lab/Tanner_Alex_Vids/199/Videos/199.2025-07-29.mov_0002.mp4"]
+vid_list = [r"C:\Users\cns-th-lab\Tanner_Alex_Vids\483\Videos\483.2026-04-03.mov_0004.mp4"]
 print(vid_list)
 subj_date_data_dict = {}
 subj_date_sess_dict = {}
@@ -59,7 +57,6 @@ for vid in vid_list:
 #%%
 for subj_id in subj_date_data_dict.keys():
     for date in subj_date_data_dict[subj_id].keys():
-        print(subj_date_data_dict[subj_id][date])
         print(subj_date_data_dict[subj_id][date].info())
         print(len(subj_date_data_dict[subj_id][date]["cpoke_in_time"]))
         print(len(subj_date_data_dict[subj_id][date]["cpoke_out_time"]))
@@ -69,3 +66,23 @@ for subj_id in subj_date_data_dict.keys():
     break
 #Extract all interpolated data at nose poke times
 #Discard NaN sequences at Nose poke times
+
+#%%Investigate doric structure
+doric_file_fp = r"C:\Users\cns-th-lab\Tanner_Alex_Vids\483\Session_0004.doric"
+doric_file_vid = r"C:\Users\cns-th-lab\Tanner_Alex_Vids\483\Videos\483.2026-04-03.mov_0004.doric"
+du.h5print(doric_file_vid)
+time = du.h5read(doric_file_vid, ['DataAcquisition', 'BehaviorCamera', 'Video', 'Series0001', 'DMK-33UX290', 'Time'])
+print(time)
+print(time[0])
+print(time[1])
+time = np.array(time[0])
+print(np.shape(time))
+
+#%%
+for subj_id in subj_date_data_dict.keys():
+    for date in subj_date_data_dict[subj_id].keys():
+        print(subj_date_data_dict[subj_id][date].iloc[0]["parsed_events"].keys())
+        print(subj_date_data_dict[subj_id][date].iloc[0]["parsed_events"]['States'].keys())
+        print(subj_date_data_dict[subj_id][date].iloc[0]["parsed_events"]['Events'].keys())
+        break
+    break

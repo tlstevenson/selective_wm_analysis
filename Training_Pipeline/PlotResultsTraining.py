@@ -230,7 +230,7 @@ for group_name, group_df in nan_df_by_group:
 
 #%% Plot group results (scores)
 fig_score, ax_score = plt.subplots() #TODO: Remove hardcode 4 for model count
-fig.suptitle("Score Distribution per Node By Model")
+fig_score.suptitle("Score Distribution per Node By Model")
 plot_num_score = 0
 group_names = list(score_group_distributions.keys())
 ax_score.tick_params(axis='x', rotation=90,labelsize=4)

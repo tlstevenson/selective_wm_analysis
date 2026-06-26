@@ -23,7 +23,10 @@ def ThresholdedPositions(positions, scores, threshold):
     positions[mask] = np.nan
     return positions
 
-
+def ThresholdedInterpolatedPositions(positions, scores, threshold, interpol_type, max_gap):
+    mask = scores < threshold
+    positions[:, :, 0,:][mask] = np.nan
+    positions[:, :, 1,:][mask] = np.nan
 
 with h5py.File(DATA_PATH, "r") as f:
     # Decode node names

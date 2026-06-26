@@ -16,6 +16,7 @@ from pathlib import Path
 import os
 import subprocess
 import sys
+import shutil
 
 #%% Define traversal function
 def get_file_paths(directory_path, extension="None"):
@@ -28,8 +29,16 @@ def get_file_paths(directory_path, extension="None"):
         return[str(file) for file in path_obj.iterdir() if file.is_file() and file.suffix==extension]
 
 #%% Select new videos by directory
-vid_par_dir = r"C:\Users\cns-th-lab\Tanner_Alex_Vids"
-vid_folders = []
+vid_par_dir = r"C:\Users\cns-th-lab\TannerVidsRenamed"
+#r"C:\Users\cns-th-lab\TannerVidsRenamed\198\Videos"
+#r"C:\Users\cns-th-lab\TannerVidsRenamed\199\Videos",
+vid_folders = [r"C:\Users\cns-th-lab\TannerVidsRenamed\237\Videos"]#,
+               #r"C:\Users\cns-th-lab\TannerVidsRenamed\238\Videos",
+               #r"C:\Users\cns-th-lab\TannerVidsRenamed\274\Videos",
+               #r"C:\Users\cns-th-lab\TannerVidsRenamed\400\Videos",
+               #r"C:\Users\cns-th-lab\TannerVidsRenamed\402\Videos",
+               #r"C:\Users\cns-th-lab\TannerVidsRenamed\424\Videos",
+               #r"C:\Users\cns-th-lab\TannerVidsRenamed\483\Videos",]
 curr_vids = []
 for vid_folder in vid_folders:
     curr_vids = curr_vids + get_file_paths(vid_folder, ".mp4")
@@ -75,7 +84,7 @@ if len(additional_vids) > 0:
 def vid_to_slp(path):
     #.mp4 -> .proj.slp
     path_without_ext, ext = os.path.splitext(path)
-    return f"{path_without_ext}.proj.slp"
+    return f"{path_without_ext}.slp"
 
 def get_mirrored_path_slp(parent_folder, child_file, new_folder):
     """
@@ -148,7 +157,42 @@ def run_inference(video_list, write_path_list, model_path):
             return False
     print("\nAll videos processed!")
     return True
+#%%Main execution
 
+#Define model
+centroid_model_loc = r"C:\Users\cns-th-lab\SLEAP_Projects\models\260523_198_199x_237x_238x_274x_400x_402x_424x_483x.centroid.n=222"
+centered_model_loc = r"C:\Users\cns-th-lab\SLEAP_Projects\models\260523_198_199x_237x_238x_274x_400x_402x_424x_483x.centered_instance.n=222"
+centroid_model_name = os.path.basename(centroid_model_loc)
+centered_model_name = os.path.basename(centered_model_loc)
+model_name = os.path.basename(os.path.splitext(os.path.splitext(centroid_model_loc)[0])[0])
+par_models_folder = os.path.join(vid_par_dir, "models")
+
+#Define a folder to copy the model to
+centroid_model_folder_loc = os.path.join(vid_par_dir, "models", centroid_model_name)
+centered_model_folder_loc = os.path.join(vid_par_dir, "models", centered_model_name)
+
+#Copy the model to that location
+try:
+    shutil.copytree(centroid_model_loc, centroid_model_folder_loc)
+    shutil.copytree(centered_model_loc, centered_model_folder_loc)
+except Exception as e:
+    print(e)
+    print("Model probably already exists")
+print(f"Centroid model new location: {centroid_model_folder_loc}")
+print(f"Centered model new location: {centered_model_folder_loc}")
+print("Make sure to update these in the program")
+
+#%% Define write paths
+write_paths = []
+for video in curr_vids:
+    try:
+        write_paths.append(os.path.join(os.path.dirname(video), "predictions", model_name, vid_to_slp(os.path.basename(video))))
+    except:
+        print(f"Could not append path for video {video}")
+        
+#%% Maim execiton
+run_inference(curr_vids, write_paths, [centroid_model_folder_loc, centered_model_folder_loc])
+#%%Main execution (DEPRACATED)
 r"""folder_model_dict = {r"C:\Users\cns-th-lab\SLEAP_Labels_198_402": [r"C:\Users\cns-th-lab\SLEAP_Projects\EENII4C\models\STABLE.260429.centroid.n=72", r"C:/Users/cns-th-lab/SLEAP_Projects/EENII4C/models/STABLE.260429.centered_instance.n=72"],
                      r"C:\Users\cns-th-lab\SLEAP_Labels_198_237x_402":[r"C:\Users\cns-th-lab\SLEAP_Projects\models\260502_198_402_237x.centroid.n=92", r"C:/Users/cns-th-lab/SLEAP_Projects/models/260502_198_402_237x.centered_instance.n=92"],
                      r"C:\Users\cns-th-lab\SLEAP_Labels_198_199x_237x_402":[r"C:\Users\cns-th-lab\SLEAP_Projects\models\260504_198_199x_237x_402.centroid.n=112", r"C:\Users\cns-th-lab\SLEAP_Projects\models\260504_198_199x_237x_402.centered_instance.n=112"]}
