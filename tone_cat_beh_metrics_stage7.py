@@ -16,6 +16,9 @@ from matplotlib.gridspec import GridSpec
 import numpy as np
 import pandas as pd
 
+import statsmodels.api as sm
+import warnings
+
 # %% LOAD DATA
 
 stage = 7
@@ -33,7 +36,8 @@ else:
 #subj_ids = subject_info['subjid']
 #subj_ids = subj_ids[subj_ids != 187]
 #subj_ids = [187,190,192,193,198,199,400,402]
-subj_ids = [198,199,274,400,402]
+#subj_ids = [198, 199, 237, 238, 274, 400, 402, 424, 483]  # updated subj_ids
+subj_ids = [198, 199, 274, 400] # short list for testing code
 
 # get session ids
 if fp_sess_only:
@@ -332,3 +336,133 @@ for subj_id in plot_subjs:
     ax.yaxis.grid(True)
     ax.set_title('Response Probabilities')
 
+
+#%% Multinomial Logistic Regression
+
+# Suppress pandas fragmentation and future warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
+pd.options.mode.chained_assignment = None 
+
+print("Setting up Regression Data...")
+
+# Map labels to numbers for regression
+# Left = -1, Right = 1, None/Bail = 0
+val_map = {'left': -1, 'right': 1, 'none': 0}
+
+all_sess['curr_target'] = all_sess['correct_port'].map(val_map)
+all_sess['curr_choice_val'] = all_sess['choice'].map(val_map)
+
+# Defining outcomes: 0 = Left choice, 1 = Right choice, 2 = Bail
+def get_outcome(row):
+    if row['bail']: return 2
+    if row['choice'] == 'right': return 1
+    return 0
+all_sess['outcome'] = all_sess.apply(get_outcome, axis=1)
+
+# History + Predictors (Grouped by subjid and sessid)
+# Recalculated to ensure trial 1 of a new session doesn't look at the previous session
+all_sess['prev_choice'] = all_sess.groupby(['subjid', 'sessid'])['curr_choice_val'].shift(1)
+all_sess['prev_target'] = all_sess.groupby(['subjid', 'sessid'])['curr_target'].shift(1)
+all_sess['prev_bail_val'] = all_sess.groupby(['subjid', 'sessid'])['bail'].shift(1).astype(float)
+all_sess['prev_rew_bool'] = all_sess.groupby(['subjid', 'sessid'])['rewarded'].shift(1)
+
+# Win-Stay Case
+# If choice = right(1) and reward=True, interaction is 1.
+# If choice = left(-1) and reward=True, interaction is -1.
+all_sess['prev_choice_reward'] = all_sess['prev_choice'] * (all_sess['prev_rew_bool'] == True).astype(float)
+
+# Lose-Switch Case:
+all_sess['prev_choice_unreward'] = all_sess['prev_choice'] * ((all_sess['prev_rew_bool'] == False) & (all_sess['prev_choice'] != 0)).astype(float)
+
+# Stimulus + Time Factors
+d_max = all_sess['delay_time'].max()
+all_sess['delay_norm'] = (all_sess['delay_time']) / (d_max)  # removed d_min subtraction on num and denom
+all_sess['target_delay_interaction'] = all_sess['curr_target'] * all_sess['delay_norm']
+
+# Filter for Regression Ready Data
+# List of predictors:
+# We exclude raw prev_reward because it's included in the interactions, to prevent degeneracy
+predictors = [
+    'curr_target', 
+    'delay_norm', 
+    'target_delay_interaction', 
+    'prev_target',
+    'prev_bail_val', 
+    'prev_choice_reward', 
+    'prev_choice_unreward'
+]
+
+## prev_choice was degenerating for some trials, causing very large numbers or NaNs
+
+# Drop NaNs (including trial 1's which now have NaNs in history columns)
+reg_ready_df = all_sess.dropna(subset=predictors + ['outcome']).copy()
+
+# Fitting Loop (Aggregate and Individual)
+fit_mode = 'both' # options: 'all', 'individual', 'both'
+plot_results = True 
+
+if fit_mode == 'all':
+    subj_list = ['all']
+elif fit_mode == 'individual':
+    subj_list = reg_ready_df['subjid'].unique().tolist()
+else:
+    subj_list = ['all'] + reg_ready_df['subjid'].unique().tolist()
+
+for subj in subj_list:
+    if subj == 'all':
+        print(f"\n{'-'*50}\nFitting Model: ALL SUBJECTS\n{'-'*50}")
+        subset = reg_ready_df.copy()
+    else:
+        print(f"\n{'-'*50}\nFitting Model: SUBJECT {subj}\n{'-'*50}")
+        subset = reg_ready_df[reg_ready_df['subjid'] == subj].copy()
+
+    if len(subset) < 50:
+        continue
+
+    X = sm.add_constant(subset[predictors])
+    y = subset['outcome']
+
+    try:
+        model = sm.MNLogit(y, X).fit(method='newton', maxiter=100, disp=False)
+        
+        # Metric: Avg P that model makes right choice (Geometric Mean)
+        avg_p_choice = np.exp(model.llf / model.nobs)
+        
+        print(f"Log-Likelihood: {model.llf:.2f}")
+        print(f"Avg P(Choice) per trial: {avg_p_choice:.3f}")
+        print("\n--- Regression Summary ---")
+        print(model.summary())
+        
+        # Display p-values for quick filtering
+        p_vals = model.pvalues
+        print("\nInsignificant predictors (P > 0.05):")
+        print(p_vals[p_vals > 0.05].dropna(how='all'))
+        
+        # Plotting Trajectories for each subject
+        if plot_results and subj != 'all':
+            sample_sess = subset['sessid'].unique()[0]
+            sess_subset = subset[subset['sessid'] == sample_sess]
+            X_sess = sm.add_constant(sess_subset[predictors])
+            y_probs = model.predict(X_sess) 
+
+            fig, ax = plt.subplots(figsize=(10, 4))
+            trials = np.arange(len(sess_subset))
+            
+            ax.plot(trials, y_probs[0], color='blue', label='P(Left)', alpha=0.8)
+            ax.plot(trials, y_probs[1], color='green', label='P(Right)', alpha=0.8)
+            ax.plot(trials, y_probs[2], color='red', label='P(Bail)', alpha=0.8)
+
+            # Choice indicators at the top
+            for i, (idx, row) in enumerate(sess_subset.iterrows()):
+                c = 'blue' if row['outcome']==0 else ('green' if row['outcome']==1 else 'red')
+                h = 1.15 if row['rewarded'] else 1.05 
+                ax.vlines(i, 1.0, h, colors=c, linewidth=2)
+
+            ax.set_ylim(0, 1.25)
+            ax.set_title(f"Predictions vs Choice (Subj {subj}, Sess {sample_sess})")
+            ax.set_ylabel("Probability")
+            ax.legend(loc='lower left', ncol=3)
+            plt.show()
+
+    except Exception as e:
+        print(f"Fitting failed for {subj}: {e}")

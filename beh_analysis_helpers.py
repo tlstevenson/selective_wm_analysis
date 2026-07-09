@@ -67,7 +67,7 @@ def calc_avg_info(data, value_col, groupby_col):
            std=(value_col, np.std), se=(value_col, utils.stderr)).infer_objects().reset_index()
 
 
-def get_rate_dict(data, rate_col, groupby_cols, ci_level=0.95):
+def get_rate_dict(data, rate_col, groupby_cols, ci_level=0.95, trial_sel=None):
     rate_dict = {}
 
     for col in groupby_cols:
@@ -75,22 +75,25 @@ def get_rate_dict(data, rate_col, groupby_cols, ci_level=0.95):
             # first get individual column rates
             for ind_col in col:
                 if not ind_col in rate_dict:
-                    rate_dict[ind_col] = calc_rate_info(data, rate_col, ind_col, ci_level)
+                    rate_dict[ind_col] = calc_rate_info(data, rate_col, ind_col, ci_level, trial_sel=trial_sel)
 
             # then get joined rates
             key = ' x '.join(col)
-            rate_dict[key] = calc_rate_info(data, rate_col, col, ci_level)
+            rate_dict[key] = calc_rate_info(data, rate_col, col, ci_level, trial_sel=trial_sel)
 
         else:
-            rate_dict[col] = calc_rate_info(data, rate_col, col, ci_level)
+            rate_dict[col] = calc_rate_info(data, rate_col, col, ci_level, trial_sel=trial_sel)
 
     return rate_dict
 
 
-def calc_rate_info(data, rate_col, groupby_col, ci_level=0.95):
+def calc_rate_info(data, rate_col, groupby_col, ci_level=0.95, trial_sel=None):
+    
+    if trial_sel is None:
+        trial_sel = np.full(len(data), True, dtype=bool)
 
     # remove any NA or nan values that may be in the rate column and cast to int
-    data = data.dropna(subset=rate_col)
+    data = data[trial_sel].dropna(subset=rate_col)
     data[rate_col] = data[rate_col].astype(int)
 
     rate_info = data.groupby(groupby_col).agg(
