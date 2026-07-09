@@ -794,6 +794,7 @@ for task in tasks:
 plot_signals = ['z_dff_iso_baseline_fband'] # 'z_dff_iso',
 plot_tasks = ['wm', 'bandit'] #
 plot_meta_subj = True
+plot_per_subject = False # whether to have a plot per subject (True) or a plot per region (False)
     
 use_se = True
 ph = 3.5;
@@ -813,6 +814,14 @@ norm_dashlines = {task: {align: [aligned_time[task]['events'][align][a] for a in
 
 save_plots = True
 show_plots = True
+
+        
+def sort_subj_regions(subj_regions):
+    plot_order = {r: i for i, r in enumerate(all_regions)}
+    return sorted(subj_regions, key=lambda x: next((plot_order[r] for r in all_regions if r in x), np.inf))
+
+def get_subj_region_mapping(subj_regions):
+    return {r: [k for k in all_regions if k in r][0] for r in subj_regions}
 
 # declare method to stack data matrices for the given task, alignment, and selection grouping
 def stack_mats(task, align, trial_groups, signal_types=plot_signals):
@@ -860,7 +869,7 @@ def stack_mats(task, align, trial_groups, signal_types=plot_signals):
 
         if plot_meta_subj:
             # build region mapping since some animals have bilateral implants in the same region
-            reg_mapping = {s: {r: [k for k in all_regions if k in r][0] for r in implant_info[s].keys()} for s in subj_ids}
+            reg_mapping = {s: get_subj_region_mapping(implant_info[s].keys()) for s in subj_ids}
             
             stacked_mat_dict[signal_type]['all'] = {r: {g: np.full_like(aligned_time[task]['t'][align][r], np.nan) for g in trial_groups} for r in all_regions}
             
@@ -881,13 +890,9 @@ def save_plot(fig, task, subjects, plot_name):
 
     if not show_plots:
         plt.close(fig)
-        
-def sort_subj_regions(subj_regions):
-    plot_order = {r: i for i, r in enumerate(all_regions)}
-    return sorted(subj_regions, key=lambda x: next((plot_order[r] for r in all_regions if r in x), np.inf))
 
 # declare method to plot avg signals for the given plot_groups for one or more tasks, signal types, and alignments
-def plot_avg_signals(plot_groups, group_labels, plot_titles, gen_title, aligns, subjects=subj_ids, tasks=plot_tasks, signal_types=plot_signals,
+def plot_avg_signals(plot_groups, group_labels, plot_group_titles, gen_title, aligns, subjects=subj_ids, tasks=plot_tasks, signal_types=plot_signals,
                      xlims_dict=None, dashlines=None, legend_params=None, group_colors=None, gen_plot_name=None, include_norm_reward=True):
 
     if not utils.is_list(aligns):
@@ -944,32 +949,70 @@ def plot_avg_signals(plot_groups, group_labels, plot_titles, gen_title, aligns, 
             for signal_type in signal_types:
                 _, y_label = fpah.get_signal_type_labels(signal_type)
                 
-                for subj in subjects:
+                if plot_per_subject:
+                    for subj in subjects:
+    
+                        plot_stacked_signals = stacked_signals[signal_type][subj]
+                        # preserves ordering of regions
+                        plot_regions = sort_subj_regions(plot_stacked_signals.keys())
+                        
+                        if subj == 'all':
+                            plot_region_labels = plot_regions
+                        else:
+                            plot_region_labels = ['{} ({})'.format(r, implant_info[subj][r]['side']) for r in plot_regions]
+                        
+                        # handle bilateral regions
+                        reg_mapping = get_subj_region_mapping(plot_regions)
+                        plot_t = {r: t[reg_mapping[r]] for r in plot_regions}
+                        plot_xlims = None if align_xlims is None else {r: align_xlims[reg_mapping[r]] for r in plot_regions}
 
-                    plot_stacked_signals = stacked_signals[signal_type][subj]
-                    # preserves ordering of regions
-                    plot_regions = sort_subj_regions(plot_stacked_signals.keys())
+                        title = '{} Aligned to {} - Subj {}, {}'.format(gen_title, align_title, subj, beh_names[task])
+
+                        fig, plotted = fpah.plot_avg_signals(plot_stacked_signals, plot_regions, plot_region_labels, plot_groups, plot_group_titles, group_labels, 
+                                                             plot_t, title, x_label, y_label, parents_on_rows=True, xlims=plot_xlims, dashlines=dashlines,
+                                                             x_ticks=x_ticks, plot_x0=plot_x0, legend_params=legend_params, use_se=use_se, 
+                                                             group_colors=group_colors, ph=ph, pw=pw)
                     
-                    title = '{} Aligned to {} - Subj {}, {}'.format(gen_title, align_title, subj, beh_names[task])
-                    if subj == 'all':
-                        implant_side_info = None
-                    else:
-                        implant_side_info = implant_info[subj]
+                        if plotted and not gen_plot_name is None:
+                            save_plot(fig, task, subj, '{}_{}_{}'.format(align, gen_plot_name, signal_type))
+                else:
+                    for region in all_regions:
 
-                    fig, plotted = fpah.plot_avg_signals(plot_groups, group_labels, plot_stacked_signals, plot_regions, t, 
-                                                         title, plot_titles, x_label, y_label, 
-                                                         xlims_dict=align_xlims, implant_info=implant_side_info,
-                                                         dashlines=dashlines, legend_params=legend_params, group_colors=group_colors, 
-                                                         use_se=use_se, ph=ph, pw=pw, x_ticks=x_ticks, plot_x0=plot_x0)
+                        plot_stacked_signals = {}
+                        plot_subjects = []
+                        plot_subject_labels = []
+                        
+                        for subj in subjects:
+                            # handle subjects with bilateral regions
+                            for subj_reg in stacked_signals[signal_type][subj].keys():                                
+                                if region in subj_reg:
+                                    if subj == 'all':
+                                        subj_label = subj
+                                    else:
+                                        subj_label = '{} ({})'.format(subj, implant_info[subj][subj_reg]['side'])
+                                        
+                                    plot_stacked_signals[subj_label] = stacked_signals[signal_type][subj][subj_reg]
+                                    plot_subjects.append(subj_label)
+                                    plot_subject_labels.append(subj_label)
+                                    
+                        plot_xlims = None if align_xlims is None else align_xlims[region]
+                        
+                        title = '{} Aligned to {} - Region {}, {}'.format(gen_title, align_title, region, beh_names[task])
+                            
+                        fig, plotted = fpah.plot_avg_signals(plot_stacked_signals, plot_subjects, plot_subject_labels, plot_groups, plot_group_titles, group_labels, 
+                                                             t[region], title, x_label, y_label, parents_on_rows=False, xlims=plot_xlims, dashlines=dashlines,
+                                                             x_ticks=x_ticks, plot_x0=plot_x0, legend_params=legend_params, use_se=use_se, 
+                                                             group_colors=group_colors, ph=ph, pw=pw)
+
+                    
+                        if plotted and not gen_plot_name is None:
+                            save_plot(fig, task, region, '{}_{}_{}'.format(align, gen_plot_name, signal_type))
                 
-                    if plotted and not gen_plot_name is None:
-                        save_plot(fig, task, subj, '{}_{}_{}'.format(align, gen_plot_name, signal_type))
-                
-                    if not plotted:
-                        plt.close(fig)
-                    else:
-                        plt.show()
-                        plt.close(fig)
+                if not plotted:
+                    plt.close(fig)
+                else:
+                    plt.show()
+                    plt.close(fig)
 
 
 # %% Choice and side
@@ -2383,7 +2426,7 @@ freq_bands = list(zip(freq_vals[:-1], freq_vals[1:]))
 recalculate = False
 reprocess_sess_ids = []
 
-signal_types = ['dff_iso_baseline_fband'] # 'z_dff_iso_baseline' 
+signal_types = ['z_dff_iso_baseline_fband'] # 'z_dff_iso_baseline' 
 
 # get dt information
 tmp_subj = list(wm_sess_ids.keys())[0]
@@ -2402,7 +2445,7 @@ if path.exists(save_path) and not recalculate:
         fband_corr_metadata = saved_data['metadata']
         fband_corr_regions = fband_corr_metadata['regions']
         
-        recalculate = fband_corr_metadata['freq_bands'] != freq_bands or (fband_corr_metadata['engage_next_poke_thresh'] != engage_next_poke_thresh)
+        recalculate = fband_corr_metadata['freq_bands'] != freq_bands
 
 elif not path.exists(save_path):
     recalculate = True
@@ -2486,13 +2529,13 @@ for subj_id in subj_ids:
                             else:
                                 t_sel = None
                                 
-                            tot_xcorr, _ = fp_utils.correlate(signal_i, signal_j, dt, max_lag=0, t_sel=t_sel)
+                            tot_xcorr, _ = fp_utils.correlate(signal_i, signal_j, dt, max_lag=0, t_sel=t_sel, z_score_t_sel=True)
                             
                             fband_corrs[subj_id][task][sess_id][signal_type][e][reg_i, reg_j, -1] = tot_xcorr[0]
                             fband_corrs[subj_id][task][sess_id][signal_type][e][reg_j, reg_i, -1] = tot_xcorr[0]
                             
                             for k in range(len(freq_bands)):
-                                band_xcorr, _ = fp_utils.correlate(signal_i_fbands[k,:], signal_j_fbands[k,:], dt, max_lag=0, t_sel=t_sel)
+                                band_xcorr, _ = fp_utils.correlate(signal_i_fbands[k,:], signal_j_fbands[k,:], dt, max_lag=0, t_sel=t_sel, z_score_t_sel=True)
     
                                 fband_corrs[subj_id][task][sess_id][signal_type][e][reg_i, reg_j, k] = band_xcorr[0]
                                 fband_corrs[subj_id][task][sess_id][signal_type][e][reg_j, reg_i, k] = band_xcorr[0]
@@ -3235,3 +3278,464 @@ for subj_id in subj_ids:
         #                     ['PC IC {}'.format(i) for i in range(n_regions)], lines_dict)
         
         
+# %% Time delay embedded PCA
+
+# perform PCA on signals stacked across time delays
+# for example, if I have a 1xN signal from a region, I can build a TxN signal by sequentially stacking 
+# the signal delayed by 1 to T timepoints. The resulting loading vectors for each PCA axis will end up
+# giving periodic components that are similar to a dominant frequency/wavelet
+
+from sklearn.decomposition import PCA
+
+t_pre = 4
+t_post = 4
+
+tilt_t = False
+baseline_correction = True
+baseline_band_iso_fit = True
+band_iso_fit = False
+filter_dropout_outliers = False
+
+signal_type = 'z_dff_iso_baseline_fband'
+
+ignore_regions = ['PL']
+
+sess_ids = {274: [119776, 119993], 400: [119785, 120001], 402: [119839, 120009]}
+loc_db = bandit_loc_db
+
+n_pcs = 4
+dec = 4
+
+for subj_id in sess_ids.keys():
+    
+    subj_regions = list(implant_info[subj_id].keys())
+    
+    if subj_id in fpah.__region_ignore:
+        subj_regions = [r for r in subj_regions if r not in fpah.__region_ignore[subj_id]]
+        
+    subj_regions = [r for r in subj_regions if r not in ignore_regions]
+        
+    n_regions = len(subj_regions)
+
+    for sess_id in sess_ids[subj_id]:
+
+        fp_data, _ = fpah.load_fp_data(loc_db, {subj_id: [sess_id]}, baseline_correction=baseline_correction, tilt_t=tilt_t, 
+                                       band_iso_fit=band_iso_fit, filter_dropout_outliers=filter_dropout_outliers)
+        fp_data = fp_data[subj_id][sess_id]
+        dt = fp_data['dec_info']['decimated_dt']
+        
+        n_pre = int(t_pre/(dt*dec))
+        n_post = int(t_post/(dt*dec))
+        n_tot = n_pre + n_post
+        
+        comp_t = np.arange(-n_pre, n_post)*dt*dec
+        
+        trial_data = loc_db.get_behavior_data(sess_id)
+
+        full_t = fp_data['time']
+        _, dec_t = fp_utils.decimate(full_t, full_t, dec, dt=dt)
+        plot_t = dec_t[n_pre:-n_post]
+         
+        trial_start_ts = fp_data['trial_start_ts'][:-1]
+        cport_on_ts = trial_start_ts + trial_data['cport_on_time']
+        cpoke_in_ts = trial_start_ts + trial_data['cpoke_in_time']
+        #tone_ts = trial_start_ts + trial_data['abs_tone_start_times']
+        cue_ts = trial_start_ts + trial_data['response_cue_time']
+        cpoke_out_ts = trial_start_ts + trial_data['cpoke_out_time']
+        response_ts = trial_start_ts + trial_data['response_time']
+        outcome_ts = trial_start_ts + trial_data['reward_time']
+        reward_ts = outcome_ts[trial_data['reward'] > 0]
+        unreward_ts = outcome_ts[trial_data['reward'] == 0]
+
+        lines_dict = {'Cport On': cport_on_ts, 'Cpoke In': cpoke_in_ts, #'Tone': tone_ts,
+                      'Resp Cue': cue_ts, 'Cpoke Out': cpoke_out_ts, 'Response': response_ts,
+                      'Reward': reward_ts, 'Unreward': unreward_ts}
+        
+        # build signal matrix
+        signal_mat = np.empty([len(plot_t), n_tot*n_regions])
+
+        dec_signals = {}
+        for i, region in enumerate(subj_regions):
+            signal = fp_data['processed_signals'][region][signal_type]
+            dec_signal, _ = fp_utils.decimate(signal, full_t, dec, dt=dt)
+            dec_signals[region] = dec_signal
+            for j in range(n_tot):
+                signal_mat[:,i*n_tot+j] = dec_signal[j:-n_tot+j]
+            
+        # remove nans
+        nans = np.any(np.isnan(signal_mat), axis=1)
+        signal_mat = signal_mat[~nans,:]
+
+        # do PCA
+        pca = PCA()
+        signal_pca = pca.fit_transform(signal_mat)
+        explained_var = pca.explained_variance_ratio_
+        components = pca.components_
+        
+        # plot results
+        fig, axs = plt.subplots(n_pcs+1, 2, layout='constrained', figsize=[20,6*n_pcs], width_ratios=[1,7], sharex='col')                
+        fig.suptitle('Subject {}, Session {}, {}'.format(subj_id, sess_id, region))
+        
+        # plot full signal with behavioral events
+        ax = axs[0,1]
+        for region in subj_regions:
+            ax.plot(dec_t, dec_signals[region], label=region, alpha=0.4)
+        
+        for j, (name, lines) in enumerate(lines_dict.items()):
+            ax.vlines(lines, 0, 1, label=name, color='C{}'.format(j+n_regions), linestyles='dashed', 
+                      transform=ax.get_xaxis_transform())
+
+        ax.set_title('Region Signals')
+        ax.set_xlabel('Time (s)')
+        ax.set_ylabel('dF/F')
+        ax.legend()
+
+        for i in range(n_pcs):
+            
+            # plot component
+            ax = axs[i+1,0]
+            for j, region in enumerate(subj_regions):
+                ax.plot(comp_t, components[i,j*n_tot:(j+1)*n_tot], label=region)
+                
+            ax.set_title('PC {}'.format(i))
+            ax.set_xlabel('Time (s)')
+            ax.set_ylabel('Signal')
+            ax.xaxis.set_tick_params(which='both', labelbottom=True)
+            ax.legend()
+
+            # plot component loading with behavioral events
+            ax = axs[i+1,1]
+            ax.plot(plot_t[~nans], signal_pca[:,i], label='_')
+            
+            for j, (name, lines) in enumerate(lines_dict.items()):
+                ax.vlines(lines, 0, 1, label=name, color='C{}'.format(j+1), linestyles='dashed', 
+                          transform=ax.get_xaxis_transform())
+
+            ax.set_title('PC {} Loading. Explained Var: {:.2f}'.format(i, explained_var[i]))
+            ax.set_xlabel('Time (s)')
+            ax.set_ylabel('PC Loading')
+            ax.xaxis.set_tick_params(which='both', labelbottom=True)
+            ax.legend()
+            
+        plt.show()
+        
+# %% Perform Dynamic Mode Decomposition
+
+from pydmd import BOPDMD, DMD, HankelDMD
+from pydmd.preprocessing import hankel_preprocessing
+from pydmd.plotter import plot_summary
+
+t_pre = 1
+t_post = 1
+
+tilt_t = False
+baseline_correction = True
+baseline_band_iso_fit = True
+band_iso_fit = False
+filter_dropout_outliers = False
+
+signal_type = 'z_dff_iso_baseline_fband'
+
+sess_ids = {274: [119776, 119993], 400: [119785, 120001], 402: [119839, 120009]}
+loc_db = bandit_loc_db
+
+svd_rank = 0
+n_plot = 4
+dec = 4
+
+for subj_id in sess_ids.keys():
+    
+    subj_regions = list(implant_info[subj_id].keys())
+    
+    if subj_id in fpah.__region_ignore:
+        subj_regions = [r for r in subj_regions if r not in fpah.__region_ignore[subj_id]]
+        
+    n_regions = len(subj_regions)
+
+    for sess_id in sess_ids[subj_id]:
+
+        fp_data, _ = fpah.load_fp_data(loc_db, {subj_id: [sess_id]}, baseline_correction=baseline_correction, tilt_t=tilt_t, 
+                                       band_iso_fit=band_iso_fit, filter_dropout_outliers=filter_dropout_outliers)
+        fp_data = fp_data[subj_id][sess_id]
+        dt = fp_data['dec_info']['decimated_dt']
+
+        n_pre = int(utils.convert_to_multiple(t_pre, dt)/(dt*dec))
+        n_post = int(utils.convert_to_multiple(t_post, dt)/(dt*dec))+1
+        n_tot = n_pre + n_post
+        
+        comp_t = np.arange(-n_pre, n_post)*dt*dec
+        
+        trial_data = loc_db.get_behavior_data(sess_id)
+
+        full_t = fp_data['time']
+        _, dec_t = fp_utils.decimate(full_t, full_t, dec, dt=dt)
+        plot_t = dec_t[n_pre:-n_post]
+         
+        trial_start_ts = fp_data['trial_start_ts'][:-1]
+        cport_on_ts = trial_start_ts + trial_data['cport_on_time']
+        cpoke_in_ts = trial_start_ts + trial_data['cpoke_in_time']
+        #tone_ts = trial_start_ts + trial_data['abs_tone_start_times']
+        cue_ts = trial_start_ts + trial_data['response_cue_time']
+        cpoke_out_ts = trial_start_ts + trial_data['cpoke_out_time']
+        response_ts = trial_start_ts + trial_data['response_time']
+        outcome_ts = trial_start_ts + trial_data['reward_time']
+        reward_ts = outcome_ts[trial_data['reward'] > 0]
+        unreward_ts = outcome_ts[trial_data['reward'] == 0]
+
+        lines_dict = {'Cport On': cport_on_ts, 'Cpoke In': cpoke_in_ts, #'Tone': tone_ts,
+                      'Resp Cue': cue_ts, 'Cpoke Out': cpoke_out_ts, 'Response': response_ts,
+                      'Reward': reward_ts, 'Unreward': unreward_ts}
+        
+        # build signal matrix
+        signal_mat = np.empty([n_tot*n_regions, len(plot_t)])
+
+        dec_signals = {}
+        for i, region in enumerate(subj_regions):
+            signal = fp_data['processed_signals'][region][signal_type]
+            dec_signal, _ = fp_utils.decimate(signal, full_t, dec, dt=dt)
+            dec_signals[region] = dec_signal
+            for j in range(n_tot):
+                signal_mat[i*n_tot+j,:] = dec_signal[j:-n_tot+j]
+            
+        # remove nans
+        nans = np.any(np.isnan(signal_mat), axis=0)
+        signal_mat = signal_mat[:,~nans]
+
+        # do DMD
+        #dmd = BOPDMD(svd_rank=svd_rank)
+        #dmd.fit(signal_mat, plot_t[~nans])
+        dmd = DMD(svd_rank=svd_rank, sorted_eigs='abs')
+        dmd.fit(signal_mat)
+        eigs = dmd.eigs
+        modes = dmd.modes
+        dynamics = dmd.dynamics
+        amps = dmd.amplitudes
+        
+        plot_summary(dmd, max_sval_plot=190)
+        
+        # plot results
+        fig, axs = plt.subplots(n_plot+1, 2, layout='constrained', figsize=[20,6*n_plot], width_ratios=[1,7], sharex='col')                
+        fig.suptitle('Subject {}, Session {}, {}'.format(subj_id, sess_id, region))
+        
+        # plot full signal with behavioral events
+        ax = axs[0,1]
+        for region in subj_regions:
+            ax.plot(dec_t, dec_signals[region], label=region, alpha=0.4)
+        
+        for j, (name, lines) in enumerate(lines_dict.items()):
+            ax.vlines(lines, 0, 1, label=name, color='C{}'.format(j+n_regions), linestyles='dashed', 
+                      transform=ax.get_xaxis_transform())
+
+        ax.set_title('Region Signals')
+        ax.set_xlabel('Time (s)')
+        ax.set_ylabel('dF/F')
+        ax.legend()
+
+        for i in range(n_plot):
+            
+            # plot component
+            ax = axs[i+1,0]
+            for j, region in enumerate(subj_regions):
+                ax.plot(comp_t, modes[j*n_tot:(j+1)*n_tot,i].real, label=region)
+                
+            ax.set_title('DMD Mode {}'.format(i))
+            ax.set_xlabel('Time (s)')
+            ax.set_ylabel('Signal')
+            ax.xaxis.set_tick_params(which='both', labelbottom=True)
+            ax.legend()
+
+            # plot component loading with behavioral events
+            ax = axs[i+1,1]
+            ax.plot(plot_t[~nans], dynamics[i].real, label='_')
+            
+            for j, (name, lines) in enumerate(lines_dict.items()):
+                ax.vlines(lines, 0, 1, label=name, color='C{}'.format(j+1), linestyles='dashed', 
+                          transform=ax.get_xaxis_transform())
+
+            ax.set_title('DMD Mode {} Dynamics. Amplitude: {:.2f}'.format(i, amps[i]))
+            ax.set_xlabel('Time (s)')
+            ax.set_ylabel('PC Loading')
+            ax.xaxis.set_tick_params(which='both', labelbottom=True)
+            ax.legend()
+            
+        plt.show()
+        
+        
+# %% Perform SeqNMF
+
+from seqnmf import seqnmf, plot, helpers
+
+tilt_t = False
+baseline_correction = True
+baseline_band_iso_fit = True
+band_iso_fit = False
+filter_dropout_outliers = False
+
+signal_type = 'z_dff_iso_baseline_fband'
+ignore_regions = ['PL'] # 
+
+sess_ids = {400: [119785, 120001], 402: [119839, 120009]} # 274: [119776, 119993], 
+loc_db = bandit_loc_db
+
+n_factors = 5
+factor_len = 1 # in seconds
+# 1e-5 too little, not sparse enough, 1e-3 too large, too sparse
+penalty = 1e-4
+h_ortho_penalty = 1e-4
+max_iter = 1000
+tol = 1e-5
+dec = 4
+n_plot = 5
+
+results = {}
+
+for subj_id in sess_ids.keys():
+    
+    subj_regions = list(implant_info[subj_id].keys())
+    
+    if subj_id in fpah.__region_ignore:
+        subj_regions = [r for r in subj_regions if r not in fpah.__region_ignore[subj_id]]
+        
+    subj_regions = [r for r in subj_regions if r not in ignore_regions]
+        
+    n_regions = len(subj_regions)
+
+    for sess_id in sess_ids[subj_id]:
+
+        fp_data, _ = fpah.load_fp_data(loc_db, {subj_id: [sess_id]}, baseline_correction=baseline_correction, tilt_t=tilt_t, 
+                                       band_iso_fit=band_iso_fit, filter_dropout_outliers=filter_dropout_outliers)
+        fp_data = fp_data[subj_id][sess_id]
+        dt = fp_data['dec_info']['decimated_dt']
+
+        trial_data = loc_db.get_behavior_data(sess_id)
+
+        full_t = fp_data['time']
+        _, dec_t = fp_utils.decimate(full_t, full_t, dec, dt=dt)
+         
+        trial_start_ts = fp_data['trial_start_ts'][:-1]
+        cport_on_ts = trial_start_ts + trial_data['cport_on_time']
+        cpoke_in_ts = trial_start_ts + trial_data['cpoke_in_time']
+        #tone_ts = trial_start_ts + trial_data['abs_tone_start_times']
+        cue_ts = trial_start_ts + trial_data['response_cue_time']
+        cpoke_out_ts = trial_start_ts + trial_data['cpoke_out_time']
+        response_ts = trial_start_ts + trial_data['response_time']
+        outcome_ts = trial_start_ts + trial_data['reward_time']
+        reward_ts = outcome_ts[trial_data['reward'] > 0]
+        unreward_ts = outcome_ts[trial_data['reward'] == 0]
+
+        lines_dict = {'Cport On': cport_on_ts, 'Cpoke In': cpoke_in_ts, #'Tone': tone_ts,
+                      'Resp Cue': cue_ts, 'Cpoke Out': cpoke_out_ts, 'Response': response_ts,
+                      'Reward': reward_ts, 'Unreward': unreward_ts}
+        
+        # build signal matrix
+        signal_mat = np.empty([n_regions, len(dec_t)])
+
+        dec_signals = {}
+        signal_mods = {}
+        for i, region in enumerate(subj_regions):
+            signal = fp_data['processed_signals'][region][signal_type]
+            dec_signal, _ = fp_utils.decimate(signal, full_t, dec, dt=dt)
+            dec_signals[region] = dec_signal
+            # make each signal positive and have equal power
+            offset = np.nanmin(dec_signal) - 0.01
+            signal_mat[i,:] = dec_signal - offset
+            signal_mods[region] = {'offset': offset}
+            
+        # set nans to zero so they do not affect the pattern extraction but their timecourse stays the same
+        nans = np.any(np.isnan(signal_mat), axis=0)
+        signal_mat[:,nans] = 0
+        
+        # normalize the power across channels
+        power = np.sqrt(np.mean(signal_mat**2, axis=1, keepdims=True))
+        signal_mat = signal_mat / power
+        
+        for i, region in enumerate(subj_regions):
+            signal_mods[region]['power'] = power[i,0]
+        
+        factor_t = np.arange(0, factor_len, step=dt*dec)
+
+        # do seqNMF
+        [W, H, cost, loadings, power] = seqnmf(signal_mat, K=n_factors, L=len(factor_t), Lambda=penalty, 
+                                               max_iter=max_iter, tol=tol, lambda_OrthH=h_ortho_penalty)
+
+        results[sess_id] = {'W': W, 'H': H, 'cost': cost, 'loadings': loadings, 'power': power}
+        #plot(W, H).show()
+
+        # plot results
+
+        fig, axs = plt.subplots(n_plot+1, 2, layout='constrained', figsize=[20,6*n_plot], width_ratios=[1,7], sharex='col')                
+        fig.suptitle('Subject {}, Session {}, Proportion Power Explained: {:.3f}, Final Cost: {:.3f}'.format(subj_id, sess_id, power, cost[-1,0]))
+        
+        # plot full signal with behavioral events
+        ax = axs[0,1]
+        for i, region in enumerate(subj_regions):
+            ax.plot(dec_t, signal_mat[i,:], label=region, alpha=0.5)
+        
+        for j, (name, lines) in enumerate(lines_dict.items()):
+            ax.vlines(lines, 0, 1, label=name, color='C{}'.format(j+n_regions), linestyles='dashed', 
+                      transform=ax.get_xaxis_transform())
+
+        ax.set_title('Region Signals')
+        ax.set_xlabel('Time (s)')
+        ax.set_ylabel('dF/F')
+        ax.legend()
+        sig_handles, sig_labels = ax.get_legend_handles_labels()
+        ax.legend().remove()
+
+        for i in range(n_plot):
+            
+            # plot component
+            ax = axs[i+1,0]
+            for j, region in enumerate(subj_regions):
+                ax.plot(factor_t, W[j,i,:], label=region, alpha=0.5)
+                
+            ax.set_title('seqNMF Factor {}'.format(i))
+            ax.set_xlabel('Time (s)')
+            ax.set_ylabel('Signal')
+            ax.xaxis.set_tick_params(which='both', labelbottom=True)
+            ax.legend()
+            factor_handles, factor_labels = ax.get_legend_handles_labels()
+            ax.legend().remove()
+
+            # plot component loading with behavioral events
+            ax = axs[i+1,1]
+            #ax.plot(dec_t, H[i,:], label='_', color='black')
+            
+            # plot reconstruction
+            factor_recon = helpers.reconstruct(np.reshape(W[:, i, :], [W.shape[0], 1, W.shape[2]]), 
+                                               np.reshape(H[i, :], [1, H.shape[1]]))
+            for j, region in enumerate(subj_regions):
+                ax.plot(dec_t, factor_recon[j,:], label=region, alpha=0.5)
+            
+            for j, (name, lines) in enumerate(lines_dict.items()):
+                ax.vlines(lines, 0, 1, label=name, color='C{}'.format(j+n_regions), linestyles='dashed', 
+                          transform=ax.get_xaxis_transform())
+
+            ax.set_title('seqNMF Factor {} Loading and Reconstruction. Power: {:.3f}'.format(i, loadings[i]))
+            ax.set_xlabel('Time (s)')
+            ax.set_ylabel('Loading')
+            ax.xaxis.set_tick_params(which='both', labelbottom=True)
+            
+        ax = axs[0,0]
+        ax.set_axis_off()
+        ax.legend(factor_handles, factor_labels)
+        fig.legend(sig_handles, sig_labels, loc='outside right upper')
+        plt.show()
+        
+
+# %%
+
+filename = 'seqnmf_fits'
+save_path = path.join(utils.get_user_home(), 'db_data', filename+'.pkl')
+with open(save_path, 'wb') as f:
+    pickle.dump({'results': results,
+                 'metadata': {'n_factors': n_factors,
+                             'factor_len': factor_len,
+                             'penalty': penalty,
+                             'max_iter': max_iter}},
+                f)
+    
+with open(save_path, 'rb') as f:
+    saved_data = pickle.load(f)
+    results = saved_data['results']
+    metadata = saved_data['metadata']

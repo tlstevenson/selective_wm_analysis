@@ -459,12 +459,12 @@ def _get_new_block_var_vol(prev_var=None, prev_vol=None, no_high_high=True):
 
 # %%
 # d=5
-# h=20
-# l=5
-# n_l=7
-# n_h=9
-# s_h=11
-# s_l=9
+# h=15
+# l=0
+# n_l=5
+# n_h=5
+# s_h=60
+# s_l=6
 
 # x_h = np.concatenate((np.flip(np.arange(h, h-np.ceil(n_h/2)*d, -d)), np.arange(h+d, h+np.ceil(n_h/2)*d, d))) 
 # x_l = np.concatenate((np.flip(np.arange(l, l-np.ceil(n_l/2)*d, -d)), np.arange(l+d, l+np.ceil(n_l/2)*d, d))) 
@@ -472,8 +472,14 @@ def _get_new_block_var_vol(prev_var=None, prev_vol=None, no_high_high=True):
 # x_h = x_h[x_h >= 0]
 # x_l = x_l[x_l >= 0]
 
-# plt.bar(x_h, sts.norm.pdf(x_h, loc=h, scale=s_h), alpha=0.5) 
-# plt.bar(x_l, sts.norm.pdf(x_l, loc=l, scale=s_l), alpha=0.5)
+# p_h = sts.norm.pdf(x_h, loc=h, scale=s_h)
+# p_h = p_h/np.sum(p_h)
+
+# p_l = sts.norm.pdf(x_l, loc=l, scale=s_l)
+# p_l = p_l/np.sum(p_l)
+
+# plt.bar(x_h, p_h, alpha=0.5) 
+# plt.bar(x_l, p_l, alpha=0.5)
 
 # plt.title('μ high: {}, μ low: {}, σ high: {}, σ low: {}, n high: {}, n low: {}, step: {}'.format(h, l, s_h, s_l, n_h, n_l, d))
 

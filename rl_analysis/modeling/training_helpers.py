@@ -67,10 +67,15 @@ def get_model_training_data(sess_data, basic_model, limit_mask=False, n_limit_hi
     trial_mask_train = torch.zeros(n_sess, max_trials-1, 1)
     trial_mask_eval = torch.zeros(n_sess, max_trials-1, 1)
     
+    n_trials_per_sess= np.zeros(n_sess, dtype=int) #track num trial per session
+    
     # populate tensors from behavioral data
     for i, sess_id in enumerate(sess_ids):
         trial_data = sess_data[sess_data['sessid'] == sess_id]
         n_trials = len(trial_data) - 1 # one less because we predict the next choice based on the prior choice
+        
+        n_trials_per_sess[i]= n_trials #store num trials per session
+        
         
         basic_inputs[i, :n_trials, :] = torch.from_numpy(np.array([trial_data['choice_inputs'][:-1], trial_data['outcome_inputs'][:-1]]).T)
         two_side_inputs[i, :n_trials, :] = torch.from_numpy(np.array([trial_data['chose_left_int'][:-1], trial_data['chose_right_int'][:-1], trial_data['rewarded_int'][:-1]]).T)
@@ -99,10 +104,12 @@ def get_model_training_data(sess_data, basic_model, limit_mask=False, n_limit_hi
         
     if basic_model:
         return {'inputs': basic_inputs, 'labels': left_choice_labels,
-                'trial_mask_train': trial_mask_train, 'trial_mask_eval': trial_mask_eval}
+            'trial_mask_train': trial_mask_train, 'trial_mask_eval': trial_mask_eval,
+            'n_trials_per_sess': n_trials_per_sess}
     else:
         return {'inputs': two_side_inputs, 'labels': choice_class_labels,
-                'trial_mask_train': trial_mask_train, 'trial_mask_eval': trial_mask_eval}
+            'trial_mask_train': trial_mask_train, 'trial_mask_eval': trial_mask_eval,
+            'n_trials_per_sess': n_trials_per_sess}
 
 def get_loss_output_transforms(basic_model):
     if basic_model:
@@ -118,7 +125,7 @@ def get_loss_output_transforms(basic_model):
 
 # %% Fitting methods
 
-def_n_fits = 2
+def_n_fits = 3
 def_n_steps = 10000
 def_end_tol = 1e-6
         
@@ -211,8 +218,182 @@ def fit_model(model, model_name, inputs, labels, trial_mask_train, trial_mask_ev
             
         except RuntimeError as e:
             print('Error: {}. \nTrying Again...'.format(e))
+            
+            
+#%%
+def get_cv_fold_masks(trial_mask_train, trial_mask_eval, n_trials, n_folds=3):
+    
+    
+    n_sess = trial_mask_train.shape[0]
+    
+    fold_masks=[]
+    
+    for fold_idx in range(n_folds - 1):
+        # initialize full-size train and test masks as all False
+        # same shape as original masks [n_sess, max_trials, 1]
+        fold_train_mask = torch.zeros_like(trial_mask_train, dtype=torch.bool) #unique train mask
+        fold_test_mask  = torch.zeros_like(trial_mask_eval,  dtype=torch.bool) #unique test mask
+        
+        for sess_idx in range(n_sess):
+            # use n_trials from get_model_training_data directly
+            n_real = n_trials[sess_idx]
+            
+            # compute fold size dynamically per session using n_folds
+            fold_size = n_real // n_folds
+            
+            if fold_size == 0:
+                print('Warning: session {} has too few trials to split into {} folds, skipping.'.format(
+                    sess_idx, n_folds))
+                continue
+            
+            # compute split boundaries using fold_idx
+            train_end = fold_size * (fold_idx + 1)
+            test_end  = fold_size * (fold_idx + 2)
+            
+            # for the last fold extend test_end to n_real to capture remainder trials
+            if fold_idx == n_folds - 2:
+                test_end = n_real
+            
+            # select trials from the original masks 
+            # set train window trials to match original trial_mask_train
+            fold_train_mask[sess_idx, :train_end, :] = trial_mask_train[sess_idx, :train_end, :]
+            # set test window trials to match original trial_mask_eval
+            fold_test_mask[sess_idx, train_end:test_end, :] = trial_mask_eval[sess_idx, train_end:test_end, :]
+            
+            print('  Session {} | Fold {}/{}: train trials 0-{}, test trials {}-{}'.format(
+                sess_idx, fold_idx + 1, n_folds - 1, train_end - 1, train_end, test_end - 1))
+        
+        fold_masks.append((fold_train_mask, fold_test_mask))
+    
+    
+    return fold_masks
+            
+#%%
+def fit_model_cv(model, model_name, inputs, labels, trial_mask_train, trial_mask_eval, n_trials, loss, subj_name, save_path, n_fits=def_n_fits,
+                 n_steps=def_n_steps, end_tol=def_end_tol, optim_generator=None, train_output_formatter=None,
+                 eval_output_transform=None, skip_existing_fits=True, print_train_params=False,
+                 equal_sess_weight=False, n_folds=3):
+    
+    lock = FileLock('fitting.lock')
+    
+    if optim_generator is None:
+        optim_generator = lambda p: optim.Adam(p, lr=0.01)
+        
+    if path.exists(save_path):
+        with lock:
+            model_dict = agents.load_model(save_path)
+    else:
+        model_dict = {}
+        
+    if not str(subj_name) in model_dict:
+        model_dict[str(subj_name)] = {}
+        
+    cv_model_name = model_name + '_cv'
+
+    # determine the number of fit repeats
+    if cv_model_name not in model_dict[str(subj_name)]:
+        model_dict[str(subj_name)][cv_model_name] = []
+        n_exist_fits = 0
+    else:
+        n_exist_fits = len(model_dict[str(subj_name)][cv_model_name])
+    
+    # only do 1 fit at a time on the cluster
+    n_model_fits = 1 if on_cluster else n_fits
+    
+    if skip_existing_fits:
+        if n_exist_fits >= n_fits:
+            n_model_fits = 0
+        else:
+            n_model_fits = 1 if on_cluster else (n_fits - n_exist_fits)
+    
+    # number of sessions from the first dimension of inputs
+    n_sess = inputs.shape[0]
+    
+    fold_masks = get_cv_fold_masks(trial_mask_train, trial_mask_eval, n_trials, n_folds) #each fold covers all sessions
+
+    print('Forward chaining CV for {} | {} sessions | model: {}\n'.format(subj_name, n_sess, model_name))
+
+    fit_idx = 0
+    while fit_idx < n_model_fits:
+        print('\n{} CV, fit {}\n'.format(model_name, fit_idx))
+
+        fold_results = []
+        total_nll = 0.0  # accumulates NLL across all folds from all sessions
+
+        fold_idx = 0
+        # iterate through fold masks all sessions fit simultaneously in each fold
+        while fold_idx < len(fold_masks):
+            
+            print('\n  Fold {}/{}:'.format(fold_idx + 1, len(fold_masks)))
+
+            (fold_train_mask, fold_test_mask) = fold_masks[fold_idx]
+            
+            # reset model and optimizer fresh for each fold so no parameter
+            # state leaks from one fold to the next
+            model.reset_params()
+            optimizer = optim_generator(model.parameters(recurse=True))
+            
+            try:
+                # train on all sessions simultaneously using the fold train mask
+                # mask selects the appropriate training window per session
+                _ = train_model(model, optimizer, loss, inputs, labels, n_steps,
+                                trial_mask=fold_train_mask,
+                                output_formatter=train_output_formatter,
+                                loss_diff_exit_thresh=end_tol,
+                                print_params=print_train_params,
+                                equal_sess_weight=equal_sess_weight)
+    
+                # evaluate on all sessions simultaneously using the fold test mask
+                # mask selects the appropriate test window per session
+                _, _, fold_perf = eval_model(model, inputs, labels,
+                                             trial_mask=fold_test_mask,
+                                             output_transform=eval_output_transform)
+    
+                # convert LL to NLL and accumulate across all folds
+                fold_nll = -fold_perf['ll_total']
+                total_nll += fold_nll
+    
+                fold_results.append({
+                    'fold_idx':  fold_idx,   # fold number
+                    'perf':      fold_perf,  # full performance dict from eval_model
+                    'nll':       fold_nll,   # NLL on this fold's test set
+                })
+    
+                print('    Fold NLL: {:.3f} | Acc: {:.2f}%'.format(fold_nll, fold_perf['acc'] * 100))
+                
+                fold_idx += 1
+                
+            except RuntimeError as e:
+                print('Error: {}. \nTrying Again...'.format(e))
+
+        print('\n{} CV Total NLL: {:.3f} | Total folds: {}'.format(model_name, total_nll, len(fold_masks)))
+
+        cv_result = {
+            'model':     model,        # model parameters from the last fold
+            'folds':     fold_results, # per-fold breakdown of performance
+            'total_nll': total_nll,    # primary metric for model comparison
+            'n_folds':   len(fold_masks),
+            'n_sess':    n_sess,
+        }
+
+        with lock:
+            # on the cluster reload before writing to pick up results from
+            # other parallel processes
+            if on_cluster and path.exists(save_path):
+                model_dict = agents.load_model(save_path)
+                if not str(subj_name) in model_dict:
+                    model_dict[str(subj_name)] = {}
+                if cv_model_name not in model_dict[str(subj_name)]:
+                    model_dict[str(subj_name)][cv_model_name] = []
+
+            model_dict[str(subj_name)][cv_model_name].append(cv_result)
+
+            agents.save_model(model_dict, save_path)
+
+        fit_idx += 1
 
 
+#%%
 def train_model(model, optimizer, loss, inputs, labels, n_cycles, trial_mask=None, batch_size=None, output_formatter=None, 
                 print_time=True, eval_interval=100, loss_diff_exit_thresh=1e-6, print_params=False, equal_sess_weight=False):
     ''' A general-purpose method for training a network
