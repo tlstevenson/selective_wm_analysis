@@ -6,14 +6,11 @@ Created on Tue Jul 14 10:32:08 2026
 """
 
 import init
-from sys_neuro_tools import math_utils
 import pandas as pd
 import numpy as np
 import h5py
 import os
 import matplotlib.pyplot as plt
-from scipy.interpolate import CubicSpline
-import math
 #%% A way to specify all sess ids
 sess_ids = [116543,116498] #Currently manually specified
 #%% A way to get all data from sess_ids

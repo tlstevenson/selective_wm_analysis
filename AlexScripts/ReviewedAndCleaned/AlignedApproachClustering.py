@@ -12,6 +12,13 @@ import numpy as np
 import os
 from pathlib import Path
 from hankslab_db import tonecatdelayresp_db as wm_db, basicRLtasks_db as bandit_db
+from sys_neuro_tools import sleap_utils
+
+from sklearn.preprocessing import StandardScaler
+from sklearn.cluster import KMeans
+from sklearn.decomposition import PCA
+import matplotlib.pyplot as plt
+import pandas as pd
 
 #%% Tanner imports
 """
@@ -143,3 +150,62 @@ for subj_id in subj_date_data_dict.keys():
         print(subj_date_data_dict[subj_id][date].iloc[0]["parsed_events"]['Events'].keys())
         break
     break"""
+    
+#%%Potential old code for PCA analysis of poses (DOUBLE CHECK)
+def PCA_analysis(local_pos, processed_dict, num_test = 10):
+    #Need an array such that the index is the 10,000 points
+    #However, it should be nose x, nose y, body x, body y, etc. not 3d
+    #Normalize all the positions
+    raw_df = sleap_utils.LocationToDataframe(local_pos, processed_dict["node_names"])
+    no_nan = raw_df.dropna()
+    #ColFill(raw_df, "nose_x")
+    #ColFill(raw_df, "nose_y")
+    scaler = StandardScaler()
+    segmentation_std = scaler.fit_transform(no_nan)
+    
+    pca = PCA()
+    pca.fit(segmentation_std)
+    
+    #Check how many components are needed to account for 80% of variability
+    plt.plot(range(22), pca.explained_variance_ratio_.cumsum(), marker = 'o', linestyle = '--')
+    plt.title("Explained Variance By Components")
+    plt.xlabel("Number of Components")
+    plt.ylabel("Cumulative Explained Variance")
+    plt.show()
+    
+    #Results showed four or five pcs work best
+    pca = PCA(n_components=4)
+    pca.fit(segmentation_std)
+    scores_pca = pca.transform(segmentation_std)
+    #Check which number of clusters works best
+    wcss = []
+    for i in range(1,num_test):
+        kmeans_pca = KMeans(n_clusters=i, init = 'k-means++', random_state = 42)
+        kmeans_pca.fit(scores_pca)
+        wcss.append(kmeans_pca.inertia_)
+        
+    plt.plot(range(1,num_test), wcss, marker='o')
+    plt.xlabel("Number of Clusters")
+    plt.ylabel("Within Cluster Sum of Squares")
+    plt.title("K-means with PCA Clustering")
+    plt.show()
+    
+    #Three clusters works best
+    kmeans_pca = KMeans(n_clusters=3, init = 'k-means++', random_state = 42)
+    kmeans_pca.fit(scores_pca)
+    
+    print(np.shape(scores_pca))
+    print(scores_pca[1:5,:])
+    
+    #Add new data to dataframe
+    df_scores = pd.DataFrame(scores_pca, columns=["component 1", "component 2", "component 3", "component 4"])
+    print(df_scores.head())
+    df_segmentation_std_kmeans = pd.concat([no_nan, df_scores], axis=1)
+    #Rename the columns
+    print(df_segmentation_std_kmeans.head())
+    df_clusters = pd.DataFrame(kmeans_pca.labels_, columns=["cluster"])
+    print(df_clusters.head())
+    df_segmentation_std_kmeans = pd.concat([df_segmentation_std_kmeans, df_clusters], axis=1)
+    #df_segmentation_std_kmeans['cluster'] = kmeans_pca.labels_
+    df_segmentation_std_kmeans.head()
+    return df_segmentation_std_kmeans

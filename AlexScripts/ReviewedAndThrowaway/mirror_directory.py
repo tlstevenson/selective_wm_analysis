@@ -50,39 +50,10 @@ except Exception as e:
 #If no file is found, it creates a reformated video under the video convention
 #Naming convention: mov_001_get_date()_r
 
-def process_video(origin_vid_path, new_vid_path):
-    # Define the output file path for the processed video
 
-    # Define the FFmpeg command
-    command = [
-    'ffmpeg',
-    '-y', # Overwrite output files without asking
-    '-i', origin_vid_path,
-    '-c:v', 'libx264',
-    '-pix_fmt', 'yuv420p',
-    '-preset', 'superfast',
-    '-crf', '23',
-    new_vid_path
-    ]
-
-    print(f"Processing video: {origin_vid_path}")
-    try:
-        # Run the FFmpeg command
-        subprocess.run(command, check=True)
-        print(f"Successfully processed {origin_vid_path} -> {new_vid_path}")
-    except subprocess.CalledProcessError as e:
-        print(f"Error processing {origin_vid_path} : {e}")
-    except FileNotFoundError:
-        print("Error: FFmpeg is not installed or not in your system's PATH.")
-        print("Please install FFmpeg to run this script.")
 
     
-def get_date(file_path):
-    # Get the creation time as a timestamp
-    creation_timestamp = os.path.getctime(file_path)
-    # Convert the timestamp to a datetime object
-    creation_datetime = datetime.datetime.fromtimestamp(creation_timestamp)
-    return str(creation_datetime)
+
 
 # os.walk() generates the file paths in a directory tree
 for dirpath, dirnames, filenames in os.walk(source_dir):

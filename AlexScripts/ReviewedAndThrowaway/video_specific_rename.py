@@ -37,6 +37,8 @@ for subj_folder in subj_folders:
             #os.rename(file_path, new_path)
         else:
             print(f"Filepath {file_path} skipped as it was already renamed.")
+            
+
 """
 
 #%%

@@ -232,20 +232,53 @@ for folder in label_folder_paths:
                 print(f"File at location {h5_path_name} already exists. Skipping.")
             slp_to_analysis_h5(file_full_path, h5_path_name)
 
-#%%Main execution (DEPRACATED)
-r"""folder_model_dict = {r"C:\Users\cns-th-lab\SLEAP_Labels_198_402": [r"C:\Users\cns-th-lab\SLEAP_Projects\EENII4C\models\STABLE.260429.centroid.n=72", r"C:/Users/cns-th-lab/SLEAP_Projects/EENII4C/models/STABLE.260429.centered_instance.n=72"],
-                     r"C:\Users\cns-th-lab\SLEAP_Labels_198_237x_402":[r"C:\Users\cns-th-lab\SLEAP_Projects\models\260502_198_402_237x.centroid.n=92", r"C:/Users/cns-th-lab/SLEAP_Projects/models/260502_198_402_237x.centered_instance.n=92"],
-                     r"C:\Users\cns-th-lab\SLEAP_Labels_198_199x_237x_402":[r"C:\Users\cns-th-lab\SLEAP_Projects\models\260504_198_199x_237x_402.centroid.n=112", r"C:\Users\cns-th-lab\SLEAP_Projects\models\260504_198_199x_237x_402.centered_instance.n=112"]}
+#%% TODO: Edit below if you want to update this to a json config settings file
 """
-#folder_model_dict = {r"C:\Users\cns-th-lab\SLEAP_Labels_198_199x_237x_402":[r"C:\Users\cns-th-lab\SLEAP_Projects\models\260504_198_199x_237x_402.centroid.n=112", r"C:\Users\cns-th-lab\SLEAP_Projects\models\260504_198_199x_237x_402.centered_instance.n=112"]}
-folder_model_dict = {r"C:\Users\cns-th-lab\SLEAP_Labels_198_199x_237x_238x_274x_400x_402x_424x_483x":[r"C:\Users\cns-th-lab\SLEAP_Projects\models\260523_198_199x_237x_238x_274x_400x_402x_424x_483x.centroid.n=222", 
-                                                                                                      r"C:\Users\cns-th-lab\SLEAP_Projects\models\260523_198_199x_237x_238x_274x_400x_402x_424x_483x.centered_instance.n=222"]}
-for analysis_folder in folder_model_dict.keys():
-    write_paths = []
-    for i in range(len(curr_vids)):
-        write_paths.append(get_mirrored_path_slp(vid_par_dir, curr_vids[i], analysis_folder))
+import os
+import json
+import sys
+from pathlib import Path
 
-    centroid_model_path = folder_model_dict[analysis_folder][0]
-    centered_instance_model_path = folder_model_dict[analysis_folder][1]
-    run_inference(curr_vids, write_paths, [centroid_model_path, centered_instance_model_path])
-print("Labeling complete. Outputs saved to write_paths.")
+#%% Config default setup
+
+def load_or_create_config(config_name="hanks_pose_config.json"):
+    #Loads the JSON config if it exists. 
+    #If not, creates a default template and halts execution.
+    user_home = Path.home();
+    # Define the default paths you want in your template
+    default_config = {
+        "processed_vids_folder": os.path.join(user_home, "ReformattedVideos"),
+        "analysis_folder": os.path.join(user_home, "Analysis"),
+        "conda_env_path": "C:/path/to/sleap_env",
+        "inference_script_path": os.path.join(Path(__file__).parent.resolve(), "inference_capsule_env.py"),
+        "single_model_path": "C:/path/to/model",
+        "centroid_model_path": "C:/path/to/model",
+        "centered_model_path": "C:/path/to/model",
+        "disk_env_path": "C:/path/to/disk_env",
+        "disk_files_path": "C:/path/to/disk_parent_folder"
+    }
+    config_path = os.path.join(user_home, config_name)
+    # Check if the file already exists
+    if not os.path.exists(config_path):
+        print(f"Warning: Configuration file not found at '{config_path}'.")
+        print("Creating a default template...")
+        
+        # Write the default dictionary to the file
+        with open(config_path, 'w') as file:
+            # indent=4 makes the JSON file readable with line breaks and spacing
+            json.dump(default_config, file, indent=4)
+            
+        print("Template created! Please open 'config.json', update it with your actual paths, and run this script again.")
+        # Exit the script so it doesn't try to run with dummy "C:/path/to/..." variables
+        sys.exit(0)
+
+    # If it does exist, load and return it normally
+    manual_fields = ["conda_env_path", "single_model_path", "centroid_model_path", "centered_model_path"]
+    defaults = ["C:/path/to/sleap_env", "C:/path/to/model", "C:/path/to/model", "C:/path/to/model"]
+    with open(config_path, 'r') as file:
+        config = json.load(file)
+        for i in range(len(manual_fields)):
+            if config[manual_fields[i]] == defaults[i]:
+                raise Exception(f"Field {manual_fields[i]} is set to default value {defaults[i]}. Make sure that this and all other manual fields are valid.")
+                sys.exit(0)
+        return config"""
