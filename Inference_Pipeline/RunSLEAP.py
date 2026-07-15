@@ -30,15 +30,17 @@ def get_file_paths(directory_path, extension="None"):
 
 #%% Select new videos by directory
 vid_par_dir = r"C:\Users\cns-th-lab\TannerVidsRenamed"
-#r"C:\Users\cns-th-lab\TannerVidsRenamed\198\Videos"
-#r"C:\Users\cns-th-lab\TannerVidsRenamed\199\Videos",
-vid_folders = [r"C:\Users\cns-th-lab\TannerVidsRenamed\237\Videos"]#,
-               #r"C:\Users\cns-th-lab\TannerVidsRenamed\238\Videos",
-               #r"C:\Users\cns-th-lab\TannerVidsRenamed\274\Videos",
-               #r"C:\Users\cns-th-lab\TannerVidsRenamed\400\Videos",
-               #r"C:\Users\cns-th-lab\TannerVidsRenamed\402\Videos",
-               #r"C:\Users\cns-th-lab\TannerVidsRenamed\424\Videos",
-               #r"C:\Users\cns-th-lab\TannerVidsRenamed\483\Videos",]
+vid_folders = [r"C:\Users\cns-th-lab\TannerVidsRenamed\198\Videos",
+               r"C:\Users\cns-th-lab\TannerVidsRenamed\199\Videos"]
+#
+#,
+r"""vid_folders = [r"C:\Users\cns-th-lab\TannerVidsRenamed\237\Videos",
+               r"C:\Users\cns-th-lab\TannerVidsRenamed\238\Videos",
+               r"C:\Users\cns-th-lab\TannerVidsRenamed\274\Videos",
+               r"C:\Users\cns-th-lab\TannerVidsRenamed\400\Videos",
+               r"C:\Users\cns-th-lab\TannerVidsRenamed\402\Videos",
+               r"C:\Users\cns-th-lab\TannerVidsRenamed\424\Videos",
+               r"C:\Users\cns-th-lab\TannerVidsRenamed\483\Videos"]"""
 curr_vids = []
 for vid_folder in vid_folders:
     curr_vids = curr_vids + get_file_paths(vid_folder, ".mp4")
@@ -190,8 +192,46 @@ for video in curr_vids:
     except:
         print(f"Could not append path for video {video}")
         
-#%% Maim execiton
+#%% Main execiton
 run_inference(curr_vids, write_paths, [centroid_model_folder_loc, centered_model_folder_loc])
+
+#%% Convertion to analysis h5 files
+def slp_to_analysis_h5(slp_path, h5_path):
+    """
+    Converts a SLEAP .slp file to a standard analysis .h5 file using sleap-io.
+    """
+    print(f"  -> Exporting to {h5_path} via CLI...")
+    command = ["uv", "run", "sleap", "export", str(slp_path), "-o", str(h5_path)]
+    
+    try:
+        if not os.path.exists(h5_path):
+            subprocess.run(command, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+    except subprocess.CalledProcessError as e:
+        print(e)
+    return h5_path
+
+label_folder_paths = [r"C:\Users\cns-th-lab\TannerVidsRenamed\198\Videos\predictions\260523_198_199x_237x_238x_274x_400x_402x_424x_483x",
+               r"C:\Users\cns-th-lab\TannerVidsRenamed\199\Videos\predictions\260523_198_199x_237x_238x_274x_400x_402x_424x_483x",
+               r"C:\Users\cns-th-lab\TannerVidsRenamed\237\Videos\predictions\260523_198_199x_237x_238x_274x_400x_402x_424x_483x",
+               r"C:\Users\cns-th-lab\TannerVidsRenamed\238\Videos\predictions\260523_198_199x_237x_238x_274x_400x_402x_424x_483x",
+               r"C:\Users\cns-th-lab\TannerVidsRenamed\274\Videos\predictions\260523_198_199x_237x_238x_274x_400x_402x_424x_483x",
+               r"C:\Users\cns-th-lab\TannerVidsRenamed\400\Videos\predictions\260523_198_199x_237x_238x_274x_400x_402x_424x_483x",
+               r"C:\Users\cns-th-lab\TannerVidsRenamed\402\Videos\predictions\260523_198_199x_237x_238x_274x_400x_402x_424x_483x",
+               r"C:\Users\cns-th-lab\TannerVidsRenamed\424\Videos\predictions\260523_198_199x_237x_238x_274x_400x_402x_424x_483x",
+               r"C:\Users\cns-th-lab\TannerVidsRenamed\483\Videos\predictions\260523_198_199x_237x_238x_274x_400x_402x_424x_483x",
+               ]
+for folder in label_folder_paths:
+    for file in os.listdir(folder):
+        file_full_path = os.path.join(folder, file)
+        root, ext = os.path.splitext(file_full_path)
+        if ext == ".slp":
+            h5_path_name = f"{root}.h5"
+            if not os.path.exists(h5_path_name):
+                print(f"Converting {file_full_path} to {h5_path_name}")
+            else:
+                print(f"File at location {h5_path_name} already exists. Skipping.")
+            slp_to_analysis_h5(file_full_path, h5_path_name)
+
 #%%Main execution (DEPRACATED)
 r"""folder_model_dict = {r"C:\Users\cns-th-lab\SLEAP_Labels_198_402": [r"C:\Users\cns-th-lab\SLEAP_Projects\EENII4C\models\STABLE.260429.centroid.n=72", r"C:/Users/cns-th-lab/SLEAP_Projects/EENII4C/models/STABLE.260429.centered_instance.n=72"],
                      r"C:\Users\cns-th-lab\SLEAP_Labels_198_237x_402":[r"C:\Users\cns-th-lab\SLEAP_Projects\models\260502_198_402_237x.centroid.n=92", r"C:/Users/cns-th-lab/SLEAP_Projects/models/260502_198_402_237x.centered_instance.n=92"],
