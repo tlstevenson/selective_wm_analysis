@@ -14,6 +14,14 @@ def InitializeTkinter():
     root.withdraw()  # Hides the main window
     
 def GetFile(dialogue_title):
+    path = filedialog.askopenfilename(title=dialogue_title)
+    if path:  # Check if a file was selected (user didn't cancel)
+        print(f"Selected file path: {path}")
+        return path
+    else:
+        return None
+    
+def GetFiles(dialogue_title):
     path = filedialog.askopenfilenames(title=dialogue_title)
     if path:  # Check if a file was selected (user didn't cancel)
         print(f"Selected file path: {path}")

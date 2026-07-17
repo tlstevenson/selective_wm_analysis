@@ -12,7 +12,7 @@ import h5py
 import os
 import matplotlib.pyplot as plt
 #%% A way to specify all sess ids
-sess_ids = [116543,116498] #Currently manually specified
+sess_ids = ["116543","116498"] #Currently manually specified
 #%% A way to get all data from sess_ids
 label_paths = [r"C:\Users\cns-th-lab\TannerVidsRenamed\198\Videos\predictions\260523_198_199x_237x_238x_274x_400x_402x_424x_483x",
                r"C:\Users\cns-th-lab\TannerVidsRenamed\199\Videos\predictions\260523_198_199x_237x_238x_274x_400x_402x_424x_483x",
@@ -31,7 +31,7 @@ if mode == "sess":
     for folder in label_paths:
         for file in os.listdir(folder):
             name, ext = os.path.splitext(file)
-            if ext == ".h5" and int(str.removeprefix(name, "mov_")) in sess_ids:
+            if ext == ".h5" and str.removeprefix(name, "mov_") in sess_ids:
                 label_files.append(os.path.join(folder, file))
 elif mode == "all":
     label_files = [os.path.join(folder, file) for folder in label_paths for file in os.listdir(folder) if os.path.splitext(".h5")]
@@ -75,7 +75,7 @@ labels_df = pd.DataFrame(labels_dict)
 #%% Filter it
 
 # 3. Get Thresholded Coordinates (Only 1 score for both so must index separately)
-labels_df["thresh_tracks"] = labels_df.apply(lambda row: ThresholdedPositions(row, .3), axis=1)
+labels_df["thresh_tracks"] = labels_df.apply(lambda row: ThresholdedPositions(row, .3), axis=1) #Throws error if no valid
 #%% Interpolate it (doesnt account for large gaps)
 def CubicInterpolation(row, target_column, max_dist):
     data_shape = np.shape(row[target_column])
@@ -150,4 +150,39 @@ for n in range(len(node_names)):
     #print(labels_df["rotated_tracks"][0][0,n,1,0])
     #plt.scatter(labels_df["rotated_tracks"][0][0,n,0,0], labels_df["rotated_tracks"][0][0,n,1,0], color="blue")
 plt.show()
-#%% Subsample and plot it
+#%% Access fp and behavioral data (+ imports)
+from hankslab_db import db_access
+#import doric_utils as du
+import numpy as np
+import os
+#from pathlib import Path
+from hankslab_db import tonecatdelayresp_db as wm_db, basicRLtasks_db as bandit_db
+#from sys_neuro_tools import sleap_utils
+
+#from sklearn.preprocessing import StandardScaler
+#from sklearn.cluster import KMeans
+#from sklearn.decomposition import PCA
+import matplotlib.pyplot as plt
+import pandas as pd
+#%%
+#trial_start_ts_dict = db_access.get_fp_trial_start_ts(sess_ids)
+
+wm_loc_db = wm_db.LocalDB_ToneCatDelayResp()
+bandit_loc_db = bandit_db.LocalDB_BasicRLTasks('twoArmBandit')
+
+wm_sess_data = wm_loc_db.get_behavior_data(sess_ids)
+bandit_sess_data = wm_loc_db.get_behavior_data(sess_ids)
+
+#%%
+
+for sess_id in sess_ids:
+    try:
+        trial_data = wm_loc_db.get_behavior_data(sess_id)
+    except:
+        trial_data = bandit_loc_db.get_behavior_data(sess_id)
+    trial_start_ts = trial_start_ts_dict[sess_id]
+    trial_start_ts = trial_start_ts[:-1]
+    cue_ts = trial_start_ts + trial_data['response_cue_time']
+    cpoke_out_ts = trial_start_ts + trial_data['cpoke_out_time']
+    response_ts = trial_start_ts + trial_data['response_time']
+ 

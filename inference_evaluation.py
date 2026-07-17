@@ -1,0 +1,206 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Jul 16 13:25:58 2026
+
+@author: cns-th-lab
+"""
+
+#%% I begin inference evaluation by overlaying poses with video.
+# This gives a subjective understanding of the data
+import cv2
+import pandas as pd
+import numpy as np
+import h5py
+import init
+import file_select_ui as fsui
+import os
+import PredictionViewer as pv
+import subprocess
+import matplotlib.pyplot as plt
+
+# --- Configuration ---
+VIDEO_PATH = ''#fsui.GetFile("Please select a video file")
+INFERENCE_PATH = fsui.GetFile("Please select the corresponding .h5 path")  # Or .csv
+OUTPUT_WINDOW = "Keypoint Inspector"
+FPS = 30 # Defined conversion rate
+
+if os.path.splitext(os.path.basename(VIDEO_PATH))[0] != os.path.splitext(os.path.basename(INFERENCE_PATH))[0]:
+    raise Warning("Session id of video and data do not match by current naming conventions.")
+#%% Run App
+pv.RunApp(VIDEO_PATH, INFERENCE_PATH, OUTPUT_WINDOW, FPS)
+
+#%% Currently homeless functions for slp -> h5 and h5 -> coords, names, scores
+def slp_to_analysis_h5(slp_path, h5_path):
+    """
+    Converts a SLEAP .slp file to a standard analysis .h5 file using sleap-io.
+    """
+    print(f"  -> Exporting to {h5_path} via CLI...")
+    command = ["uv", "run", "sleap", "export", str(slp_path), "-o", str(h5_path)]
+    
+    try:
+        if not os.path.exists(h5_path):
+            subprocess.run(command, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+    except subprocess.CalledProcessError as e:
+        print(e)
+    return h5_path
+
+def ExtractH5RawData(inference_path):
+    with h5py.File(inference_path, "r") as f:
+        # Decode node names
+        node_names = [n.decode('utf-8') for n in f['node_names'][:]]
+        
+        # 1. Get Prediction Scores 
+        # Raw shape: (tracks, nodes, frames) -> Transposed: (frames, nodes, tracks)
+        scores = np.transpose(f['point_scores'][:], (2, 1, 0)) 
+        
+        # 2. Get Coordinates
+        # Raw shape: (tracks, nodes, 2, frames) -> Transposed: (frames, nodes, 2, tracks)
+        tracks_coords = np.transpose(f['tracks'][:])
+        
+        return tracks_coords, node_names, scores
+
+#%% Visualize where model is missing
+coords, names, scores = ExtractH5RawData(INFERENCE_PATH)
+
+#%% Visualize where model is missing or low confidence (OPTIONAL)
+def ThresholdedPositions(positions, scores, threshold):
+    mask = scores < threshold
+    positions[:, :, 0,:][mask] = np.nan
+    positions[:, :, 1,:][mask] = np.nan
+    return positions
+
+coords = ThresholdedPositions(coords, scores, 0.3)
+#%%% Function definitions
+def measure_nan_gaps(s: pd.Series) -> pd.Series:
+    """
+    Takes a pandas Series and returns a Series of the same length where the 
+    start of each NaN gap contains the length of that gap, and all other 
+    values are 0.
+    """
+    # Create an output series initialized with zeros
+    out = pd.Series(0, index=s.index, dtype=int)
+    
+    is_nan = s.isna()
+    
+    # 1. Identify the starting index of each NaN gap
+    starts = is_nan & ~is_nan.shift(1, fill_value=False)
+    
+    # 2. Group the data into blocks (increments every time a non-NaN is seen)
+    blocks = (~is_nan).cumsum()
+    
+    # 3. Count the number of NaNs in each block
+    gap_sizes = is_nan.groupby(blocks).sum().astype(int)
+    
+    # 4. Filter for only the blocks that actually contain NaNs
+    gap_sizes = gap_sizes[gap_sizes > 0]
+    
+    # 5. Assign the computed lengths to the starting positions
+    if len(out.loc[starts]) != len(gap_sizes.values):
+        raise IndexError("The indexes of the gap starts and calculated gap lengths do not match in length")
+    else:
+        out.loc[starts] = gap_sizes.values
+    return out, starts, gap_sizes
+
+#%%% Visualize starts of long NaN gaps by node
+fig, ax = plt.subplots(len(names)//2, 2)
+for i in range(len(names)):
+    nan_out, nan_starts, _ = measure_nan_gaps(pd.Series(coords[:,i, 0, 0]))
+    print(names[i])
+    ax[i//2, i%2].bar(np.arange(0, np.shape(coords)[0])[nan_starts],nan_out[nan_starts])
+    #ax[i//2, i%2].set_title(names[i])
+plt.show()
+
+#%%% NaN heatplot across frames
+fig2, ax2 = plt.subplots(len(names)//2, 2)
+for i in range(len(names)):
+    print(names[i])
+    is_nan = np.isnan(coords[:,i, 0, 0])
+    nan_x_points = np.arange(0, np.shape(coords)[0])[is_nan]
+    ax2[i//2, i%2].bar(nan_x_points,np.ones(len(nan_x_points)))
+    ax[i//2, i%2].set_title(names[i])
+plt.show()
+
+#%%% Proportion of NaN by node
+prop_nan = []
+for i in range(len(names)):
+    nan_out, nan_starts, _ = measure_nan_gaps(pd.Series(coords[:,i, 0, 0]))
+    prop_nan_i = np.sum(nan_out) / len(nan_out)
+    prop_nan.append(prop_nan_i)
+print(prop_nan)
+plt.bar(names, prop_nan)
+plt.show()
+
+#%%% Distribution of gap lengths by node
+fig3, ax3 = plt.subplots(len(names)//2, 2)
+for i in range(len(names)):
+    print(names[i])
+    nan_out, nan_starts, nan_gap_sizes = measure_nan_gaps(pd.Series(coords[:,i, 0, 0]))
+    ax3[i//2, i%2].hist(nan_gap_sizes)
+    #ax[i//2, i%2].set_title(names[i])
+plt.show()
+#%% Visualize Velocity Performance
+
+#%% Purely model evaluation NOT evluation of inference
+import numpy as np
+import pandas as pd
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sleap_nn.evaluation import load_metrics, Evaluator
+from pathlib import Path
+import sleap_nn
+#%%% Path definitions
+
+model_path = r"C:\Users\cns-th-lab\SLEAP_Projects\models\260523_198_199x_237x_238x_274x_400x_402x_424x_483x.centered_instance.n=222"
+validation_metrics_path = r"C:\Users\cns-th-lab\SLEAP_Projects\models\260523_198_199x_237x_238x_274x_400x_402x_424x_483x.centered_instance.n=222\metrics.val.0.npz"
+
+#%%% Metrics loading
+metrics = sleap_nn.evaluation.load_metrics(validation_metrics_path)
+print("\n".join(metrics.keys()))
+
+print("Error distance (50%):", metrics["distance_metrics"]["p50"])
+print("Error distance (90%):", metrics["distance_metrics"]["p90"])
+print("Error distance (95%):", metrics["distance_metrics"]["p95"])
+
+#%%% Visualize localization error
+plt.figure(figsize=(6, 3), dpi=150, facecolor="w")
+sns.histplot(metrics["distance_metrics"]["dists"].flatten(), binrange=(0, 20), kde=True, kde_kws={"clip": (0, 20)}, stat="probability")
+plt.xlabel("Localization error (px)");
+plt.show()
+
+#%%% Plot OKS Scores
+plt.figure(figsize=(6, 3), dpi=150, facecolor="w")
+sns.histplot(metrics["voc_metrics"]["oks_voc.match_scores"].flatten(), binrange=(0, 1), kde=True, kde_kws={"clip": (0, 1)}, stat="probability")
+plt.xlabel("Object Keypoint Similarity");
+plt.show()
+
+plt.figure(figsize=(4, 4), dpi=150, facecolor="w")
+for precision, thresh in zip(metrics["voc_metrics"]['oks_voc.precisions'][::2], metrics["voc_metrics"]["oks_voc.match_score_thresholds"][::2]):
+    plt.plot(metrics["voc_metrics"]["oks_voc.recall_thresholds"], precision, "-", label=f"OKS @ {thresh:.2f}")
+plt.xlabel("Recall")
+plt.ylabel("Precision")
+plt.legend(loc="lower left");
+plt.show()
+
+#%%% Want these to be close to 1
+print("mAP:", metrics["voc_metrics"]["oks_voc.mAP"])
+print("mAR:", metrics["voc_metrics"]["oks_voc.mAR"])
+
+#%%% Can generate more ground truth and reevaluate with the following
+from sleap_nn.predict import run_inference
+import sleap_io as sio
+from sleap_nn.evaluation import Evaluator
+
+#Generate new prediction for ground truth
+new_ground_truth_labels = "test.pkg.slp" #Must be .pkg.slp to include images
+labels_gt = sio.load_slp(new_ground_truth_labels)
+labels_pr = run_inference(data_path=new_ground_truth_labels, model_paths=[model_path])
+
+evals = Evaluator(labels_gt, labels_pr)
+metrics = evals.evaluate()
+
+print("Error distance (50%):", metrics["distance_metrics"]["p50"])
+print("Error distance (90%):", metrics["distance_metrics"]["p90"])
+print("Error distance (95%):", metrics["distance_metrics"]["p95"])
+print("mAP:", metrics["voc_metrics"]["oks_voc.mAP"])
+print("mAR:", metrics["voc_metrics"]["oks_voc.mAR"])

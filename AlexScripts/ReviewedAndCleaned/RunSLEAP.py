@@ -31,16 +31,14 @@ def get_file_paths(directory_path, extension="None"):
 #%% Select new videos by directory
 vid_par_dir = r"C:\Users\cns-th-lab\TannerVidsRenamed"
 vid_folders = [r"C:\Users\cns-th-lab\TannerVidsRenamed\198\Videos",
-               r"C:\Users\cns-th-lab\TannerVidsRenamed\199\Videos"]
-#
-#,
-r"""vid_folders = [r"C:\Users\cns-th-lab\TannerVidsRenamed\237\Videos",
+               r"C:\Users\cns-th-lab\TannerVidsRenamed\199\Videos",
+               r"C:\Users\cns-th-lab\TannerVidsRenamed\237\Videos",
                r"C:\Users\cns-th-lab\TannerVidsRenamed\238\Videos",
                r"C:\Users\cns-th-lab\TannerVidsRenamed\274\Videos",
                r"C:\Users\cns-th-lab\TannerVidsRenamed\400\Videos",
                r"C:\Users\cns-th-lab\TannerVidsRenamed\402\Videos",
                r"C:\Users\cns-th-lab\TannerVidsRenamed\424\Videos",
-               r"C:\Users\cns-th-lab\TannerVidsRenamed\483\Videos"]"""
+               r"C:\Users\cns-th-lab\TannerVidsRenamed\483\Videos"]
 curr_vids = []
 for vid_folder in vid_folders:
     curr_vids = curr_vids + get_file_paths(vid_folder, ".mp4")
@@ -162,8 +160,8 @@ def run_inference(video_list, write_path_list, model_path):
 #%%Main execution
 
 #Define model
-centroid_model_loc = r"C:\Users\cns-th-lab\SLEAP_Projects\models\260523_198_199x_237x_238x_274x_400x_402x_424x_483x.centroid.n=222"
-centered_model_loc = r"C:\Users\cns-th-lab\SLEAP_Projects\models\260523_198_199x_237x_238x_274x_400x_402x_424x_483x.centered_instance.n=222"
+centroid_model_loc = r"C:\Users\cns-th-lab\SLEAP_Projects\models\260716_port_model.centroid.n=40"
+centered_model_loc = r"C:\Users\cns-th-lab\SLEAP_Projects\models\260716_port_model.centered_instance.n=40"
 centroid_model_name = os.path.basename(centroid_model_loc)
 centered_model_name = os.path.basename(centered_model_loc)
 model_name = os.path.basename(os.path.splitext(os.path.splitext(centroid_model_loc)[0])[0])
