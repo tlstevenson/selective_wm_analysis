@@ -14,8 +14,7 @@ import h5py
 
 def ThresholdedPositions(positions, scores, threshold):
     mask = scores < threshold
-    positions[:, :, 0,:][mask] = np.nan
-    positions[:, :, 1,:][mask] = np.nan
+    positions[mask] = np.nan
     return positions
 
 def ThresholdedInterpolatedPositions(positions, scores, threshold, interpol_type, max_gap):

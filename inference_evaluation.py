@@ -7,7 +7,6 @@ Created on Thu Jul 16 13:25:58 2026
 
 #%% I begin inference evaluation by overlaying poses with video.
 # This gives a subjective understanding of the data
-import cv2
 import pandas as pd
 import numpy as np
 import h5py
@@ -60,9 +59,10 @@ def ExtractH5RawData(inference_path):
         return tracks_coords, node_names, scores
 
 #%% Visualize where model is missing
+#%%% Get raw data
 coords, names, scores = ExtractH5RawData(INFERENCE_PATH)
 
-#%% Visualize where model is missing or low confidence (OPTIONAL)
+#%%% Get thresholded data
 def ThresholdedPositions(positions, scores, threshold):
     mask = scores < threshold
     positions[:, :, 0,:][mask] = np.nan
@@ -70,6 +70,25 @@ def ThresholdedPositions(positions, scores, threshold):
     return positions
 
 coords = ThresholdedPositions(coords, scores, 0.3)
+
+#%%% Get interpolated data
+def InterpolateCoordsCubic(coords, limit_arg):
+    deconstr_dict = {}
+    
+    #Turn each x and y series into a column
+    for i in range(np.shape(coords)[1]):
+        deconstr_dict[f"{i}_x"] = coords[:, i, 0, 0] 
+        deconstr_dict[f"{i}_y"] = coords[:, i, 1, 0]
+    my_df = pd.DataFrame(deconstr_dict)
+    my_df.interpolate(method="polynomial", order=3, limit=limit_arg, axis=0)
+    
+    #Reverse of the deconstruction indexing by column
+    for i in range(np.shape(coords)[1]):
+        coords[:,i,0,0] = deconstr_dict[f"{i}_x"]
+        coords[:,i,1,0] = deconstr_dict[f"{i}_y"]
+    return coords
+
+coords = InterpolateCoordsCubic(coords, 15)
 #%%% Function definitions
 def measure_nan_gaps(s: pd.Series) -> pd.Series:
     """
@@ -117,7 +136,7 @@ for i in range(len(names)):
     is_nan = np.isnan(coords[:,i, 0, 0])
     nan_x_points = np.arange(0, np.shape(coords)[0])[is_nan]
     ax2[i//2, i%2].bar(nan_x_points,np.ones(len(nan_x_points)))
-    ax[i//2, i%2].set_title(names[i])
+    ax2[i//2, i%2].set_title(names[i])
 plt.show()
 
 #%%% Proportion of NaN by node
@@ -139,7 +158,48 @@ for i in range(len(names)):
     #ax[i//2, i%2].set_title(names[i])
 plt.show()
 #%% Visualize Velocity Performance
+def CalcVelocity(coords):
+    print(np.shape(coords))
+    dx = np.diff(coords[:,:,0,:], axis = 0)
+    dy = np.diff(coords[:,:,1,:], axis = 0)
+    velocities = np.sqrt(dx**2 + dy**2)
+    print(np.shape(np.squeeze(velocities)))
+    return np.squeeze(velocities)
+all_node_velocity = np.squeeze(CalcVelocity(coords))
 
+#%%% Visualize velocity time trace
+fig4, ax4 = plt.subplots(len(names))
+for i in range(len(names)):
+    print(names[i])
+    ax4[i].plot(np.arange(np.shape(all_node_velocity)[0]), all_node_velocity[:,i])
+    ax4[i].set_title(names[i])
+plt.show()
+#%%% Visualize boxplot of valid velocities
+cleaned_all_node_velocity = [col[~np.isnan(col)] for col in np.transpose(all_node_velocity)] #Cleans by node (needed for list of nodes)
+x = np.arange(np.shape(all_node_velocity)[1])
+#%%
+for i in range(len(x)):
+    plt.boxplot(cleaned_all_node_velocity[i][:], positions=[x[i]], tick_labels=[names[i]])
+plt.show()
+
+#%%% Observe what various thresholds would do to data
+
+#%%%% Boxplot with threshold
+vel_threshold = 50
+x = np.arange(np.shape(all_node_velocity)[1])
+y = np.ones(len(x)) * vel_threshold
+plt.plot(x,y, color = "red")
+for i in range(len(x)):
+    plt.boxplot(cleaned_all_node_velocity[i][:], positions=[x[i]], tick_labels=[names[i]])
+plt.show()
+#%%%% Proportion of valid velocities removed
+prop_valid_vel = []
+for i in range(len(x)):
+    num_above_thresh = len(cleaned_all_node_velocity[i][:][cleaned_all_node_velocity[i][:] > vel_threshold])
+    prop_valid_vel_i = num_above_thresh / len(cleaned_all_node_velocity[i][:])
+    prop_valid_vel.append(prop_valid_vel_i)
+plt.bar(names, prop_valid_vel)
+plt.show()
 #%% Purely model evaluation NOT evluation of inference
 import numpy as np
 import pandas as pd
