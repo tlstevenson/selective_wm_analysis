@@ -16,6 +16,8 @@ import os
 import PredictionViewer as pv
 import subprocess
 import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
+
 
 # --- Configuration ---
 VIDEO_PATH = ''#fsui.GetFile("Please select a video file")
@@ -157,6 +159,39 @@ for i in range(len(names)):
     ax3[i//2, i%2].hist(nan_gap_sizes)
     #ax[i//2, i%2].set_title(names[i])
 plt.show()
+#%%% Diagnose NaN areas by frequency
+num_nan_per_node = np.sum(np.isnan(coords[:,:,0,0]), axis = 0) #(14,)
+tot_prop_nan = num_nan_per_node/np.shape(coords)[0]
+bin_length_frames = 30
+print(tot_prop_nan)
+#%%
+
+#TODO: Vectorize logic
+prop_bins = []
+lower_bound = 0
+while lower_bound < np.shape(coords)[0]:
+    bin_coords = coords[lower_bound:min(lower_bound + bin_length_frames, np.shape(coords)[0]), :, 0, 0] #All nodes c1 coords for c2 frames
+    bin_prop_nan = np.sum(np.isnan(bin_coords[:,:]), axis=0) / bin_length_frames
+    prop_bins.append(bin_prop_nan)
+    lower_bound = lower_bound + bin_length_frames
+
+prop_bins = np.array(prop_bins) #(bins, nodes)
+print(prop_bins[0,:])
+
+#%%
+std_prop_nan = np.std(prop_bins, axis=0) #()
+print(std_prop_nan)
+
+#%%
+bin_zs = (prop_bins - tot_prop_nan)/std_prop_nan
+print(bin_zs[0,:])
+
+#%%
+print(np.shape(bin_zs))
+plt.imshow(bin_zs, cmap="cividis")
+plt.gca().set_aspect(1/(np.shape(bin_zs)[0] / np.shape(bin_zs)[1]))
+plt.colorbar()
+plt.show()
 #%% Visualize Velocity Performance
 def CalcVelocity(coords):
     print(np.shape(coords))
@@ -177,7 +212,6 @@ plt.show()
 #%%% Visualize boxplot of valid velocities
 cleaned_all_node_velocity = [col[~np.isnan(col)] for col in np.transpose(all_node_velocity)] #Cleans by node (needed for list of nodes)
 x = np.arange(np.shape(all_node_velocity)[1])
-#%%
 for i in range(len(x)):
     plt.boxplot(cleaned_all_node_velocity[i][:], positions=[x[i]], tick_labels=[names[i]])
 plt.show()
@@ -185,7 +219,7 @@ plt.show()
 #%%% Observe what various thresholds would do to data
 
 #%%%% Boxplot with threshold
-vel_threshold = 50
+vel_threshold = 30
 x = np.arange(np.shape(all_node_velocity)[1])
 y = np.ones(len(x)) * vel_threshold
 plt.plot(x,y, color = "red")
@@ -199,6 +233,40 @@ for i in range(len(x)):
     prop_valid_vel_i = num_above_thresh / len(cleaned_all_node_velocity[i][:])
     prop_valid_vel.append(prop_valid_vel_i)
 plt.bar(names, prop_valid_vel)
+plt.show()
+
+#%%%% Diagnose velocity outlier areas by frequency
+
+#!!!Get the prop_valid_vel on average from previous cell
+bin_length_frames = 30
+
+#TODO: Vectorize logic
+prop_bins_vel = []
+lower_bound = 0
+while lower_bound < np.shape(all_node_velocity)[0]:
+    bin_vels = all_node_velocity[lower_bound:min(lower_bound + bin_length_frames, np.shape(all_node_velocity)[0])] #All nodes c1 coords for c2 frames
+    bin_prop_vel = np.sum(~np.isnan(bin_vels) & (bin_vels > vel_threshold), axis=0) / np.sum(~np.isnan(bin_vels))
+    
+    if lower_bound == 0:
+        print(np.shape(bin_vels))
+        print(np.shape(bin_prop_vel))
+        print(bin_prop_vel)
+    prop_bins_vel.append(bin_prop_vel)
+    lower_bound = lower_bound + bin_length_frames
+
+prop_bins_vel = np.array(prop_bins_vel) #(bins, nodes)
+print(np.shape(prop_bins_vel))
+
+std_prop_vel = np.std(prop_bins_vel, axis=0) #()
+print(std_prop_vel)
+
+bin_vel_zs = (prop_bins_vel -np.array(prop_valid_vel))/std_prop_vel
+print(f"Prop valid velocities removed: {prop_valid_vel}")
+print(np.shape(bin_vel_zs))
+
+plt.imshow(bin_vel_zs, cmap="cividis")
+plt.gca().set_aspect(1/(np.shape(bin_vel_zs)[0] / np.shape(bin_vel_zs)[1]))
+plt.colorbar()
 plt.show()
 #%% Purely model evaluation NOT evluation of inference
 import numpy as np

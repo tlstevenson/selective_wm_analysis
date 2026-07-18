@@ -194,3 +194,45 @@ def RunApp(video_path, inference_path, output_window, fps):
     cap.release()
     cv2.destroyAllWindows()
     cv2.waitKey(1)
+    
+#%% Potential old code for plotting actual edges if necessary
+"""def PlotSkeleton(frame, processed_dict, skeleton_color="black", nodes_mark=[], ax=None):
+    '''Uses processed dict from process_hdf5_data to visualize the skeleton
+    in matplotlib figure. DOES NOT SHOW GRAPH AUTOMATICALLY (use plt.show()).
+    ---
+    Params: 
+    frame: the current frame in the video that needs to be plotted
+    processed_dict: result of processing hdf5 file
+    skeleton_color: color of the edges
+    nodes_mark: boolean mask for which nodes may be outliers
+    ---
+    Returns: None
+    '''
+    #plt.gca().invert_yaxis() #Images have 0,0 at top left and positive down
+    for node_idx in range(len(frame)):
+        if len(nodes_mark) != 0  and nodes_mark[node_idx] == 1:
+            node_color="red"
+        else:
+            node_color=skeleton_color
+        if ax != None:
+            ax.scatter(frame[node_idx,0], frame[node_idx,1], color=node_color)
+        else:
+            plt.scatter(frame[node_idx,0], frame[node_idx,1], color=node_color)
+        offset_x=20
+        if skeleton_color == "black" or ((skeleton_color=="green") and (nodes_mark[node_idx] == 1)):
+            if ax != None:
+                ax.text(frame[node_idx,0]+offset_x, frame[node_idx,1],processed_dict["node_names"][node_idx])
+            else:
+                plt.text(frame[node_idx,0]+offset_x, frame[node_idx,1],processed_dict["node_names"][node_idx])
+        #plt.legend()
+
+    for edge_ind in processed_dict["edge_inds"]:
+        #Get the first and second indices and use them to get the x position
+        x = [frame[edge_ind[0]][0], frame[edge_ind[1]][0]]
+        #Get the first and second indices and use them to get the y position
+        y = [frame[edge_ind[0]][1], frame[edge_ind[1]][1]]
+        #Plot the current edge
+        if ax != None:
+            ax.plot(x,y,color=skeleton_color)
+        else:
+            plt.plot(x, y, color = skeleton_color)"""
