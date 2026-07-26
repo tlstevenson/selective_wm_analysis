@@ -12,7 +12,7 @@ import h5py
 import os
 import matplotlib.pyplot as plt
 #%% A way to specify all sess ids
-sess_ids = ["116543","116498"] #Currently manually specified
+sess_ids = ["116543"]#,"116498"] #Currently manually specified
 #%% A way to get all data from sess_ids
 label_paths = [r"C:\Users\cns-th-lab\TannerVidsRenamed\198\Videos\predictions\260523_198_199x_237x_238x_274x_400x_402x_424x_483x",
                r"C:\Users\cns-th-lab\TannerVidsRenamed\199\Videos\predictions\260523_198_199x_237x_238x_274x_400x_402x_424x_483x",
@@ -71,6 +71,7 @@ for file in label_files:
         labels_dict["tracks"].append(tracks_coords)
 
 labels_df = pd.DataFrame(labels_dict)
+labels_df.set_index('sess')
 
 #%% Filter it
 
@@ -150,6 +151,19 @@ for n in range(len(node_names)):
     #print(labels_df["rotated_tracks"][0][0,n,1,0])
     #plt.scatter(labels_df["rotated_tracks"][0][0,n,0,0], labels_df["rotated_tracks"][0][0,n,1,0], color="blue")
 plt.show()
+
+#%% Port label paths and dataframe assignment
+
+port_label_paths = [r"C:\Users\cns-th-lab\TannerVidsRenamed\198\Videos\predictions\260716_port_model",
+                    r"C:\Users\cns-th-lab\TannerVidsRenamed\199\Videos\predictions\260716_port_model",
+                    r"C:\Users\cns-th-lab\TannerVidsRenamed\237\Videos\predictions\260716_port_model",
+                    r"C:\Users\cns-th-lab\TannerVidsRenamed\238\Videos\predictions\260716_port_model",
+                    r"C:\Users\cns-th-lab\TannerVidsRenamed\274\Videos\predictions\260716_port_model",
+                    r"C:\Users\cns-th-lab\TannerVidsRenamed\400\Videos\predictions\260716_port_model",
+                    r"C:\Users\cns-th-lab\TannerVidsRenamed\402\Videos\predictions\260716_port_model",
+                    r"C:\Users\cns-th-lab\TannerVidsRenamed\424\Videos\predictions\260716_port_model",
+                    r"C:\Users\cns-th-lab\TannerVidsRenamed\483\Videos\predictions\260716_port_model"]
+                    
 #%% Access fp and behavioral data (+ imports)
 from hankslab_db import db_access
 #import doric_utils as du
@@ -164,9 +178,7 @@ from hankslab_db import tonecatdelayresp_db as wm_db, basicRLtasks_db as bandit_
 #from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
 import pandas as pd
-#%%
-#trial_start_ts_dict = db_access.get_fp_trial_start_ts(sess_ids)
-
+#%% Read trial data from database 
 wm_loc_db = wm_db.LocalDB_ToneCatDelayResp()
 bandit_loc_db = bandit_db.LocalDB_BasicRLTasks('twoArmBandit')
 
@@ -174,15 +186,49 @@ wm_sess_data = wm_loc_db.get_behavior_data(sess_ids)
 bandit_sess_data = wm_loc_db.get_behavior_data(sess_ids)
 
 #%%
+print(sess_ids)
+print(wm_sess_data.head())
+print(wm_sess_data.columns.tolist())
+print(wm_sess_data.iloc[0])
+#%%
+print(wm_sess_data.iloc[1])
 
-for sess_id in sess_ids:
-    try:
-        trial_data = wm_loc_db.get_behavior_data(sess_id)
-    except:
-        trial_data = bandit_loc_db.get_behavior_data(sess_id)
-    trial_start_ts = trial_start_ts_dict[sess_id]
-    trial_start_ts = trial_start_ts[:-1]
-    cue_ts = trial_start_ts + trial_data['response_cue_time']
-    cpoke_out_ts = trial_start_ts + trial_data['cpoke_out_time']
-    response_ts = trial_start_ts + trial_data['response_time']
- 
+#%%
+print(sess_ids)
+print(bandit_sess_data.head())
+print(bandit_sess_data.columns.tolist())
+#%%
+
+#for sess_id in sess_ids:
+sess_start = wm_sess_data["starttime"]
+trial_abs_time = wm_sess_data["trialtime"]
+
+print(sess_start[0])
+print(trial_abs_time[0])
+trial_time_rel_start = trial_abs_time - sess_start
+#%%
+print(trial_time_rel_start[0].time().microsecond)
+
+#%%Relative center poke in times with None placeholders for invalid trials
+cpoke_in_times_rel = [(trial_time_rel_start[i] + pd.Timedelta(wm_sess_data["cpoke_in_time"][i], unit = "s")).time()
+                      if not np.isnan(wm_sess_data["cpoke_in_time"][i]) 
+                      else None
+                      for i in range(len(trial_abs_time))]
+print(cpoke_in_times_rel)
+
+#%%Relative center poke in times without None placeholders for invalid trials
+cpoke_in_times_rel = [(trial_time_rel_start[i] + pd.Timedelta(wm_sess_data["cpoke_in_time"][i], unit = "s")).time()
+                      for i in range(len(trial_abs_time))
+                      if not np.isnan(wm_sess_data["cpoke_in_time"][i])]
+print(cpoke_in_times_rel)
+
+#%%Read video doric times
+from sys_neuro_tools import doric_utils as du
+active_sess_vid_doric = r"C:\Users\cns-th-lab\TannerVidsRenamed\198\Videos\mov_116543.doric"
+du.h5print(active_sess_vid_doric)
+time_in, time_in_info = du.h5read(active_sess_vid_doric,['DataAcquisition','BehaviorCamera','Video','Series0001','DMK-33UX290','Time']);
+print(time_in)
+print(time_in_info)
+#%%
+print(np.shape(labels_df.iloc[0]["tracks"])[0])
+print(len(time_in))
