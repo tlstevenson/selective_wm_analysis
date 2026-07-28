@@ -3,6 +3,8 @@
 Created on Thu Jul 16 13:25:58 2026
 
 @author: cns-th-lab
+
+env: neuropy
 """
 
 #%% I begin inference evaluation by overlaying poses with video.
@@ -17,7 +19,7 @@ import PredictionViewer as pv
 import subprocess
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
-
+import math
 
 # --- Configuration ---
 VIDEO_PATH = ''#fsui.GetFile("Please select a video file")
@@ -26,7 +28,7 @@ OUTPUT_WINDOW = "Keypoint Inspector"
 FPS = 30 # Defined conversion rate
 
 if os.path.splitext(os.path.basename(VIDEO_PATH))[0] != os.path.splitext(os.path.basename(INFERENCE_PATH))[0]:
-    raise Warning("Session id of video and data do not match by current naming conventions.")
+    print("Session id of video and data do not match by current naming conventions.")
 #%% Run App
 pv.RunApp(VIDEO_PATH, INFERENCE_PATH, OUTPUT_WINDOW, FPS)
 
@@ -66,31 +68,35 @@ coords, names, scores = ExtractH5RawData(INFERENCE_PATH)
 
 #%%% Get thresholded data
 def ThresholdedPositions(positions, scores, threshold):
+    positions_copy = np.copy(positions)
     mask = scores < threshold
-    positions[:, :, 0,:][mask] = np.nan
-    positions[:, :, 1,:][mask] = np.nan
-    return positions
+    positions_copy[:, :, 0,:][mask] = np.nan
+    positions_copy[:, :, 1,:][mask] = np.nan
+    return positions_copy
 
-coords = ThresholdedPositions(coords, scores, 0.3)
+thresh_coords = ThresholdedPositions(coords, scores, 0.3)
 
 #%%% Get interpolated data
 def InterpolateCoordsCubic(coords, limit_arg):
     deconstr_dict = {}
+    coords_copy = np.copy(coords)
     
-    #Turn each x and y series into a column
+    # Turn each x and y series into a column
     for i in range(np.shape(coords)[1]):
-        deconstr_dict[f"{i}_x"] = coords[:, i, 0, 0] 
-        deconstr_dict[f"{i}_y"] = coords[:, i, 1, 0]
+        deconstr_dict[f"{i}_x"] = coords_copy[:, i, 0, 0] 
+        deconstr_dict[f"{i}_y"] = coords_copy[:, i, 1, 0]
+        
     my_df = pd.DataFrame(deconstr_dict)
-    my_df.interpolate(method="polynomial", order=3, limit=limit_arg, axis=0)
     
-    #Reverse of the deconstruction indexing by column
+    my_df = my_df.interpolate(method="polynomial", order=3, limit=limit_arg, limit_area='inside', axis=0)
+    
     for i in range(np.shape(coords)[1]):
-        coords[:,i,0,0] = deconstr_dict[f"{i}_x"]
-        coords[:,i,1,0] = deconstr_dict[f"{i}_y"]
-    return coords
+        coords_copy[:,i,0,0] = my_df[f"{i}_x"]
+        coords_copy[:,i,1,0] = my_df[f"{i}_y"]
+        
+    return coords_copy
 
-coords = InterpolateCoordsCubic(coords, 15)
+cube_coords = InterpolateCoordsCubic(thresh_coords, 30)
 #%%% Function definitions
 def measure_nan_gaps(s: pd.Series) -> pd.Series:
     """
@@ -123,42 +129,231 @@ def measure_nan_gaps(s: pd.Series) -> pd.Series:
     return out, starts, gap_sizes
 
 #%%% Visualize starts of long NaN gaps by node
-fig, ax = plt.subplots(len(names)//2, 2)
-for i in range(len(names)):
-    nan_out, nan_starts, _ = measure_nan_gaps(pd.Series(coords[:,i, 0, 0]))
-    print(names[i])
-    ax[i//2, i%2].bar(np.arange(0, np.shape(coords)[0])[nan_starts],nan_out[nan_starts])
-    #ax[i//2, i%2].set_title(names[i])
-plt.show()
+#%%% Individual Plotting Functions
+def nan_gap_spike_graph(my_coords, node_names=None, columns=4):
+    """A function to plot a spike of height gap_length at each position where a NaN gap begins
+    
+    Args:
+        my_coords (float array[,,,]): SLEAP array of size frames x nodes x 2 x tracks
+        node_names (string[]): An optional list of node names. Alternatively uses 1-n.
+        columns (int): The number of columns in the graph grid.
+    """
+    if node_names == None:
+        node_names = np.arange(0,np.shape(my_coords)[1])
+    fig, ax = plt.subplots(math.ceil(len(node_names)/columns), columns)
+    for i in range(len(names)):
+        nan_out, nan_starts, _ = measure_nan_gaps(pd.Series(my_coords[:,i, 0, 0]))
+        print(node_names[i])
+        ax[i//columns, i%columns].bar(np.arange(0, np.shape(my_coords)[0])[nan_starts],nan_out[nan_starts], label=node_names[i])
+        ax[i//columns, i%columns].legend()
+        ax[i//columns, i%columns].set_yscale('log')
+        ax[i//columns, i%columns].set_xlim(0,len(my_coords))
+    plt.show()
+    
+def nan_heatplot(my_coords, node_names=None, columns=2):
+    """A function to plot heatmap of NaN locations by node
+    
+    Args:
+        my_coords (float array[,,,]): SLEAP array of size frames x nodes x 2 x tracks
+        node_names (string[]): An optional list of node names. Alternatively uses 1-n.
+        columns (int): The number of columns in the graph grid.
+    """
+    if node_names == None:
+        node_names = np.arange(0,np.shape(my_coords)[1])
+    fig, ax = plt.subplots(math.ceil(len(node_names)/columns), columns)
+    for i in range(len(node_names)):
+        print(node_names[i])
+        is_nan = np.isnan(my_coords[:,i, 0, 0])
+        nan_x_points = np.arange(0, np.shape(my_coords)[0])[is_nan]
+        ax[i//columns, i%columns].bar(nan_x_points,np.ones(len(nan_x_points)))
+        ax[i//columns, i%columns].set_title(node_names[i])
+        ax[i//columns, i%columns].set_xlim(0,len(my_coords))
+    plt.show()
+    
+def nan_prop(my_coords, node_names=None):
+    """A function to plot proportion of NaNs by node
+    
+    Args:
+        my_coords (float array[,,,]): SLEAP array of size frames x nodes x 2 x tracks
+        node_names (string[]): An optional list of node names. Alternatively uses 1-n.
+    """
+    if node_names == None:
+        node_names = np.arange(0,np.shape(my_coords)[1])
+    prop_nan = []
+    for i in range(len(node_names)):
+        print(node_names[i])
+        nan_out, nan_starts, _ = measure_nan_gaps(pd.Series(my_coords[:,i, 0, 0]))
+        prop_nan_i = np.sum(nan_out) / len(nan_out)
+        prop_nan.append(prop_nan_i)
+    plt.bar(names, prop_nan)
+    plt.show()
+    
+def plot_distr_nan_gaps(my_coords, node_names=None, columns=2):
+    """A function to plot distribution of gap lengths by node
+    
+    Args:
+        my_coords (float array[,,,]): SLEAP array of size frames x nodes x 2 x tracks
+        node_names (string[]): An optional list of node names. Alternatively uses 1-n.
+    """
+    if node_names == None:
+        node_names = np.arange(0,np.shape(my_coords)[1])
+    fig, ax = plt.subplots(math.ceil(len(node_names)/columns), columns)
+    for i in range(len(node_names)):
+        print(node_names[i])
+        nan_out, nan_starts, nan_gap_sizes = measure_nan_gaps(pd.Series(my_coords[:,i, 0, 0]))
+        ax[i//columns, i%columns].hist(nan_gap_sizes,label=node_names[i])
+        ax[i//columns, i%columns].legend()
+        ax[i//columns, i%columns].set_xlim(left=0, right=None)
+    plt.show()
+#%%% Combined Plots
+# Group your arrays into a dictionary
+dataset_dict = {
+    "Raw": coords, 
+    "Thresholded": thresh_coords, 
+    "Interpolated": cube_coords
+}
 
-#%%% NaN heatplot across frames
-fig2, ax2 = plt.subplots(len(names)//2, 2)
-for i in range(len(names)):
-    print(names[i])
-    is_nan = np.isnan(coords[:,i, 0, 0])
-    nan_x_points = np.arange(0, np.shape(coords)[0])[is_nan]
-    ax2[i//2, i%2].bar(nan_x_points,np.ones(len(nan_x_points)))
-    ax2[i//2, i%2].set_title(names[i])
-plt.show()
+def nan_gap_spike_graph_d(coords_dict, node_names=None, columns=4):
+    """A function to plot a spike of height gap_length at each position where a NaN gap begins
+    
+    Args:
+        coords_dict (dict{string:float[,,,]}): dictionary with several SLEAP arrays of size frames x nodes x 2 x tracks
+        node_names (string[]): An optional list of node names. Alternatively uses 1-n.
+        columns (int): The number of columns in the graph grid.
+    """
+    first_coords = list(coords_dict.values())[0]
+    if node_names is None:
+        node_names = np.arange(0, np.shape(first_coords)[1])
+        
+    fig, ax = plt.subplots(math.ceil(len(node_names)/columns), columns, figsize=(15, 8))
+    for i in range(len(node_names)):
+        row, col = i//columns, i%columns
+        for label, my_coords in coords_dict.items():
+            nan_out, nan_starts, _ = measure_nan_gaps(pd.Series(my_coords[:,i, 0, 0]))
+            # alpha=0.5 makes the overlapping bars transparent so you can see all three
+            ax[row, col].bar(np.arange(0, np.shape(my_coords)[0])[nan_starts], nan_out[nan_starts], label=label, alpha=0.5)
+        
+        ax[row, col].set_title(node_names[i])
+        ax[row, col].set_yscale('log')
+        ax[row, col].set_xlim(0, len(first_coords))
+        ax[row, col].legend()
+    fig.suptitle("NaN Gap Starts and Lengths")
+    plt.tight_layout()
+    plt.show()
 
-#%%% Proportion of NaN by node
-prop_nan = []
-for i in range(len(names)):
-    nan_out, nan_starts, _ = measure_nan_gaps(pd.Series(coords[:,i, 0, 0]))
-    prop_nan_i = np.sum(nan_out) / len(nan_out)
-    prop_nan.append(prop_nan_i)
-print(prop_nan)
-plt.bar(names, prop_nan)
-plt.show()
+def nan_heatplot_d(coords_dict, node_names=None, columns=4):
+    """A function to plot heatmap of NaN locations by node
+    
+    Args:
+        coords_dict (dict{string:float[,,,]}): dictionary with several SLEAP arrays of size frames x nodes x 2 x tracks
+        node_names (string[]): An optional list of node names. Alternatively uses 1-n.
+        columns (int): The number of columns in the graph grid.
+    """
+    first_coords = list(coords_dict.values())[0]
+    if node_names is None:
+        node_names = np.arange(0, np.shape(first_coords)[1])
+        
+    fig, ax = plt.subplots(math.ceil(len(node_names)/columns), columns, figsize=(15, 8))
+    for i in range(len(node_names)):
+        row, col = i//columns, i%columns
+        y_offset = 1 # We will stack the heatmaps on the Y axis
+        
+        for label, my_coords in coords_dict.items():
+            is_nan = np.isnan(my_coords[:,i, 0, 0])
+            nan_x_points = np.arange(0, np.shape(my_coords)[0])[is_nan]
+            # Use scatter with vertical lines so they stack cleanly
+            ax[row, col].scatter(nan_x_points, np.ones(len(nan_x_points)) * y_offset, label=label, marker='|')
+            y_offset += 1
+            
+        ax[row, col].set_title(node_names[i])
+        ax[row, col].set_xlim(0, len(first_coords))
+        ax[row, col].set_yticks([1, 2, 3])
+        ax[row, col].set_yticklabels(list(coords_dict.keys()))
+    fig.suptitle("NaNs across video")
+    plt.tight_layout()
+    plt.show()
 
-#%%% Distribution of gap lengths by node
-fig3, ax3 = plt.subplots(len(names)//2, 2)
-for i in range(len(names)):
-    print(names[i])
-    nan_out, nan_starts, nan_gap_sizes = measure_nan_gaps(pd.Series(coords[:,i, 0, 0]))
-    ax3[i//2, i%2].hist(nan_gap_sizes)
-    #ax[i//2, i%2].set_title(names[i])
-plt.show()
+def nan_prop_d(coords_dict, node_names=None):
+    """A function to plot proportion of NaNs by node
+    
+    Args:
+        coords_dict (dict{string:float[,,,]}): dictionary with several SLEAP arrays of size frames x nodes x 2 x tracks
+        node_names (string[]): An optional list of node names. Alternatively uses 1-n.
+    """
+    first_coords = list(coords_dict.values())[0]
+    if node_names is None:
+        node_names = np.arange(0, np.shape(first_coords)[1])
+        
+    df_data = {}
+    for label, my_coords in coords_dict.items():
+        prop_nan = []
+        for i in range(len(node_names)):
+            nan_out, _, _ = measure_nan_gaps(pd.Series(my_coords[:,i, 0, 0]))
+            prop_nan.append(np.sum(nan_out) / len(nan_out))
+        df_data[label] = prop_nan
+        
+    # Pandas handles side-by-side grouped bar charts automatically
+    df = pd.DataFrame(df_data, index=node_names)
+    df.plot(kind="bar", figsize=(12, 5))
+    plt.ylabel("NaN Fraction")
+    plt.show()
+
+def plot_distr_nan_gaps_d(coords_dict, node_names=None, columns=4):
+    """A function to plot distribution of gap lengths by node
+    
+    Args:
+        coords_dict (dict{string:float[,,,]}): dictionary with several SLEAP arrays of size frames x nodes x 2 x tracks
+        node_names (string[]): An optional list of node names. Alternatively uses 1-n.
+        columns (int): The number of columns in the graph grid.
+    """
+    first_coords = list(coords_dict.values())[0]
+    if node_names is None:
+        node_names = np.arange(0, np.shape(first_coords)[1])
+        
+    fig, ax = plt.subplots(math.ceil(len(node_names)/columns), columns, figsize=(15, 8))
+    for i in range(len(node_names)):
+        row, col = i//columns, i%columns
+        hist_data = []
+        labels = []
+        
+        for label, my_coords in coords_dict.items():
+            _, _, nan_gap_sizes = measure_nan_gaps(pd.Series(my_coords[:,i, 0, 0]))
+            hist_data.append(nan_gap_sizes)
+            labels.append(label)
+            
+        # Passing a list of arrays to ax.hist automatically plots them side-by-side
+        ax[row, col].hist(hist_data, label=labels)
+        ax[row, col].set_title(node_names[i])
+        ax[row, col].legend()
+    plt.tight_layout()
+    plt.show()
+
+#%%% Generate Combined Plots
+nan_gap_spike_graph_d(dataset_dict, node_names=names)
+nan_heatplot_d(dataset_dict, node_names=names)
+nan_prop_d(dataset_dict, node_names=names)
+plot_distr_nan_gaps_d(dataset_dict, node_names=names)
+
+#%%% Plotting Spike Graph
+nan_gap_spike_graph(coords, node_names=names)
+nan_gap_spike_graph(thresh_coords, node_names=names)
+nan_gap_spike_graph(cube_coords, node_names=names)
+
+#%%% Plotting Heatmap by node
+nan_heatplot(coords, node_names=names, columns=4)
+nan_heatplot(thresh_coords, node_names=names, columns=4)
+nan_heatplot(cube_coords, node_names=names, columns=4)
+
+#%%% Plotting Proportion of NaNs by Node
+nan_prop(coords, node_names=names)
+nan_prop(thresh_coords, node_names=names)
+nan_prop(cube_coords, node_names=names)
+
+#%%% Plotting Distribution of Gap Lengths by Node
+plot_distr_nan_gaps(coords, node_names=names, columns=4)
+plot_distr_nan_gaps(thresh_coords, node_names=names, columns=4)
+plot_distr_nan_gaps(cube_coords, node_names=names, columns=4)
+
 #%%% Diagnose NaN areas by frequency
 num_nan_per_node = np.sum(np.isnan(coords[:,:,0,0]), axis = 0) #(14,)
 tot_prop_nan = num_nan_per_node/np.shape(coords)[0]
@@ -216,6 +411,14 @@ for i in range(len(x)):
     plt.boxplot(cleaned_all_node_velocity[i][:], positions=[x[i]], tick_labels=[names[i]])
 plt.show()
 
+std_vel = np.nanstd(all_node_velocity, axis=0)
+mean_vel = np.nanmean(all_node_velocity, axis=0)
+median_vel = np.nanmedian(all_node_velocity, axis=0)
+print("Velocity distributions") 
+for i in range(len(names)):
+    print(f"{names[i]}: Mean({mean_vel[i]}) Median({median_vel[i]}) STD({std_vel[i]})")
+
+
 #%%% Observe what various thresholds would do to data
 
 #%%%% Boxplot with threshold
@@ -245,8 +448,12 @@ prop_bins_vel = []
 lower_bound = 0
 while lower_bound < np.shape(all_node_velocity)[0]:
     bin_vels = all_node_velocity[lower_bound:min(lower_bound + bin_length_frames, np.shape(all_node_velocity)[0])] #All nodes c1 coords for c2 frames
-    bin_prop_vel = np.sum(~np.isnan(bin_vels) & (bin_vels > vel_threshold), axis=0) / np.sum(~np.isnan(bin_vels))
-    
+    bin_prop_vel = []
+    #Safeguard if sum is 0
+    if np.sum(~np.isnan(bin_vels)) != 0:
+        bin_prop_vel = np.sum(~np.isnan(bin_vels) & (bin_vels > vel_threshold), axis=0) / np.sum(~np.isnan(bin_vels))
+    else:
+        bin_prop_vel = 0
     if lower_bound == 0:
         print(np.shape(bin_vels))
         print(np.shape(bin_prop_vel))
@@ -268,6 +475,160 @@ plt.imshow(bin_vel_zs, cmap="cividis")
 plt.gca().set_aspect(1/(np.shape(bin_vel_zs)[0] / np.shape(bin_vel_zs)[1]))
 plt.colorbar()
 plt.show()
+
+#%%Z scores and velocity functions (CHECK)
+def analyze_nan_binned_zscores(coords, bin_length_frames=30):
+    """Calculates and plots binned NaN proportion Z-scores across frames."""
+    num_nan_per_node = np.sum(np.isnan(coords[:, :, 0, 0]), axis=0)
+    tot_prop_nan = num_nan_per_node / np.shape(coords)[0]
+    
+    prop_bins = []
+    lower_bound = 0
+    while lower_bound < np.shape(coords)[0]:
+        bin_coords = coords[lower_bound:min(lower_bound + bin_length_frames, np.shape(coords)[0]), :, 0, 0]
+        bin_prop_nan = np.sum(np.isnan(bin_coords), axis=0) / bin_length_frames
+        prop_bins.append(bin_prop_nan)
+        lower_bound += bin_length_frames
+        
+    prop_bins = np.array(prop_bins)
+    std_prop_nan = np.std(prop_bins, axis=0)
+    std_prop_nan = np.where(std_prop_nan == 0, 1e-8, std_prop_nan)  # Prevent division by zero
+    
+    bin_zs = (prop_bins - tot_prop_nan) / std_prop_nan
+    
+    plt.figure(figsize=(8, 6))
+    plt.imshow(bin_zs, cmap="cividis", aspect="auto")
+    plt.gca().set_aspect(1 / (np.shape(bin_zs)[0] / np.shape(bin_zs)[1]))
+    plt.colorbar(label="Z-score")
+    plt.title("NaN Binned Z-Scores")
+    plt.show()
+    return bin_zs
+
+def calc_velocity(coords):
+    """Calculates Euclidean velocity from x and y coordinates."""
+    dx = np.diff(coords[:, :, 0, :], axis=0)
+    dy = np.diff(coords[:, :, 1, :], axis=0)
+    velocities = np.sqrt(dx**2 + dy**2)
+    return np.squeeze(velocities)
+
+def plot_velocity_time_traces(all_node_velocity, node_names=None):
+    """Plots velocity time traces for each node."""
+    if node_names is None:
+        node_names = np.arange(np.shape(all_node_velocity)[1])
+    
+    fig, ax = plt.subplots(len(node_names), 1, figsize=(10, 2 * len(node_names)), sharex=True)
+    if len(node_names) == 1:
+        ax = [ax]
+        
+    for i in range(len(node_names)):
+        ax[i].plot(np.arange(np.shape(all_node_velocity)[0]), all_node_velocity[:, i])
+        ax[i].set_title(node_names[i])
+    plt.tight_layout()
+    plt.show()
+
+def plot_velocity_boxplots(all_node_velocity, node_names=None, vel_threshold=None):
+    """Plots velocity boxplots by node and prints distribution stats."""
+    if node_names is None:
+        node_names = np.arange(np.shape(all_node_velocity)[1])
+        
+    cleaned_velocities = [col[~np.isnan(col)] for col in np.transpose(all_node_velocity)]
+    x = np.arange(np.shape(all_node_velocity)[1])
+    
+    plt.figure(figsize=(10, 5))
+    if vel_threshold is not None:
+        plt.axhline(y=vel_threshold, color="red", linestyle="--", label=f"Threshold ({vel_threshold})")
+        
+    plt.boxplot(cleaned_velocities, positions=x, tick_labels=node_names)
+    if vel_threshold is not None:
+        plt.legend()
+    plt.ylabel("Velocity")
+    plt.title("Velocity Distributions by Node")
+    plt.show()
+    
+    # Print statistics
+    std_vel = np.nanstd(all_node_velocity, axis=0)
+    mean_vel = np.nanmean(all_node_velocity, axis=0)
+    median_vel = np.nanmedian(all_node_velocity, axis=0)
+    
+    print("Velocity distributions:")
+    for i in range(len(node_names)):
+        print(f"{node_names[i]}: Mean({mean_vel[i]:.2f}) Median({median_vel[i]:.2f}) STD({std_vel[i]:.2f})")
+
+def plot_velocity_threshold_proportions(all_node_velocity, node_names=None, vel_threshold=30):
+    """Calculates and plots the proportion of valid velocities exceeding a threshold."""
+    if node_names is None:
+        node_names = np.arange(np.shape(all_node_velocity)[1])
+        
+    cleaned_velocities = [col[~np.isnan(col)] for col in np.transpose(all_node_velocity)]
+    prop_valid_vel = []
+    
+    for col in cleaned_velocities:
+        if len(col) == 0:
+            prop_valid_vel.append(0.0)
+        else:
+            num_above = np.sum(col > vel_threshold)
+            prop_valid_vel.append(num_above / len(col))
+            
+    plt.figure(figsize=(10, 4))
+    plt.bar(node_names, prop_valid_vel)
+    plt.ylabel("Proportion Above Threshold")
+    plt.title(f"Velocity Outliers Removed (Threshold > {vel_threshold})")
+    plt.xticks(rotation=45)
+    plt.show()
+    
+    return prop_valid_vel
+
+def analyze_velocity_outlier_zscores(all_node_velocity, prop_valid_vel, vel_threshold=30, bin_length_frames=30):
+    """Analyzes and plots binned velocity outlier frequency Z-scores."""
+    prop_bins_vel = []
+    lower_bound = 0
+    
+    while lower_bound < np.shape(all_node_velocity)[0]:
+        bin_vels = all_node_velocity[lower_bound:min(lower_bound + bin_length_frames, np.shape(all_node_velocity)[0])]
+        valid_mask = ~np.isnan(bin_vels)
+        denom = np.sum(valid_mask, axis=0)
+        
+        bin_prop_vel = np.where(
+            denom > 0,
+            np.sum(valid_mask & (bin_vels > vel_threshold), axis=0) / denom,
+            0.0
+        )
+        prop_bins_vel.append(bin_prop_vel)
+        lower_bound += bin_length_frames
+        
+    prop_bins_vel = np.array(prop_bins_vel)
+    std_prop_vel = np.std(prop_bins_vel, axis=0)
+    std_prop_vel = np.where(std_prop_vel == 0, 1e-8, std_prop_vel)
+    
+    bin_vel_zs = (prop_bins_vel - np.array(prop_valid_vel)) / std_prop_vel
+    
+    plt.figure(figsize=(8, 6))
+    plt.imshow(bin_vel_zs, cmap="cividis", aspect="auto")
+    plt.gca().set_aspect(1 / (np.shape(bin_vel_zs)[0] / np.shape(bin_vel_zs)[1]))
+    plt.colorbar(label="Z-score")
+    plt.title("Velocity Outlier Binned Z-Scores")
+    plt.show()
+    
+    return bin_vel_zs
+#%% Runs binned zs and velocity funcitons
+# 1. NaN Binned Z-Score Analysis
+bin_zs = analyze_nan_binned_zscores(coords, bin_length_frames=30)
+
+# 2. Velocity Performance Calculation & Time Traces
+all_node_velocity = calc_velocity(coords)
+plot_velocity_time_traces(all_node_velocity, node_names=names)
+
+# 3. Velocity Boxplots
+plot_velocity_boxplots(all_node_velocity, node_names=names)
+
+# 4. Threshold & Proportion Analysis
+vel_threshold = 30
+plot_velocity_boxplots(all_node_velocity, node_names=names, vel_threshold=vel_threshold)
+prop_valid_vel = plot_velocity_threshold_proportions(all_node_velocity, node_names=names, vel_threshold=vel_threshold)
+
+# 5. Velocity Outlier Z-Score Heatmap
+bin_vel_zs = analyze_velocity_outlier_zscores(all_node_velocity, prop_valid_vel, vel_threshold=vel_threshold, bin_length_frames=30)
+
 #%% Purely model evaluation NOT evluation of inference
 import numpy as np
 import pandas as pd

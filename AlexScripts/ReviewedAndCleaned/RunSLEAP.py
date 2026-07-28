@@ -38,7 +38,12 @@ vid_folders = [r"C:\Users\cns-th-lab\TannerVidsRenamed\198\Videos",
                r"C:\Users\cns-th-lab\TannerVidsRenamed\400\Videos",
                r"C:\Users\cns-th-lab\TannerVidsRenamed\402\Videos",
                r"C:\Users\cns-th-lab\TannerVidsRenamed\424\Videos",
-               r"C:\Users\cns-th-lab\TannerVidsRenamed\483\Videos"]
+               r"C:\Users\cns-th-lab\TannerVidsRenamed\483\Videos",
+               r"C:\Users\cns-th-lab\TannerVidsRenamed\234\Videos",
+               #r"C:\Users\cns-th-lab\TannerVidsRenamed\235\Videos",
+               r"C:\Users\cns-th-lab\TannerVidsRenamed\419\Videos",
+               r"C:\Users\cns-th-lab\TannerVidsRenamed\421\Videos",
+               r"C:\Users\cns-th-lab\TannerVidsRenamed\422\Videos",]
 curr_vids = []
 for vid_folder in vid_folders:
     curr_vids = curr_vids + get_file_paths(vid_folder, ".mp4")

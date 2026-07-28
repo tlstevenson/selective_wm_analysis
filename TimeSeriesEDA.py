@@ -12,7 +12,7 @@ import h5py
 import os
 import matplotlib.pyplot as plt
 #%% A way to specify all sess ids
-sess_ids = ["116543"]#,"116498"] #Currently manually specified
+sess_ids = ["116498"]#"116543"]#,"116498"] #Currently manually specified
 #%% A way to get all data from sess_ids
 label_paths = [r"C:\Users\cns-th-lab\TannerVidsRenamed\198\Videos\predictions\260523_198_199x_237x_238x_274x_400x_402x_424x_483x",
                r"C:\Users\cns-th-lab\TannerVidsRenamed\199\Videos\predictions\260523_198_199x_237x_238x_274x_400x_402x_424x_483x",
@@ -191,36 +191,23 @@ print(wm_sess_data.head())
 print(wm_sess_data.columns.tolist())
 print(wm_sess_data.iloc[0])
 #%%
-print(wm_sess_data.iloc[1])
-
-#%%
 print(sess_ids)
 print(bandit_sess_data.head())
 print(bandit_sess_data.columns.tolist())
+#%%Print trial start times (No NaNs)
+times_rel_start = db_access.get_fp_trial_start_ts(sess_ids)[int(sess_ids[0])]
+print(np.shape(times_rel_start))
+print(f"Num NaNs: {np.sum(np.isnan(times_rel_start))}")
+print(times_rel_start)
+#%%Print center poke in times (NaNs for invalid)
+print(len(wm_sess_data["cpoke_in_time"]))
+print(f"Num NaNs: {np.sum(np.isnan(wm_sess_data['cpoke_in_time']))}")
+print(wm_sess_data["cpoke_in_time"].tolist())
 #%%
-
-#for sess_id in sess_ids:
-sess_start = wm_sess_data["starttime"]
-trial_abs_time = wm_sess_data["trialtime"]
-
-print(sess_start[0])
-print(trial_abs_time[0])
-trial_time_rel_start = trial_abs_time - sess_start
-#%%
-print(trial_time_rel_start[0].time().microsecond)
-
-#%%Relative center poke in times with None placeholders for invalid trials
-cpoke_in_times_rel = [(trial_time_rel_start[i] + pd.Timedelta(wm_sess_data["cpoke_in_time"][i], unit = "s")).time()
-                      if not np.isnan(wm_sess_data["cpoke_in_time"][i]) 
-                      else None
-                      for i in range(len(trial_abs_time))]
-print(cpoke_in_times_rel)
-
-#%%Relative center poke in times without None placeholders for invalid trials
-cpoke_in_times_rel = [(trial_time_rel_start[i] + pd.Timedelta(wm_sess_data["cpoke_in_time"][i], unit = "s")).time()
-                      for i in range(len(trial_abs_time))
-                      if not np.isnan(wm_sess_data["cpoke_in_time"][i])]
-print(cpoke_in_times_rel)
+cpoke_in_times_vid = times_rel_start[:-1] + wm_sess_data["cpoke_in_time"].tolist()
+print(f"Num NaNs: {np.sum(np.isnan(cpoke_in_times_vid))}")
+print(cpoke_in_times_vid)
+cpoke_in_times_vid_f = 30 * cpoke_in_times_vid #TODO: Paramterize frame rate at the top
 
 #%%Read video doric times
 from sys_neuro_tools import doric_utils as du
