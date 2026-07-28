@@ -331,7 +331,9 @@ def plot_distr_nan_gaps_d(coords_dict, node_names=None, columns=4):
 #%%% Generate Combined Plots
 nan_gap_spike_graph_d(dataset_dict, node_names=names)
 nan_heatplot_d(dataset_dict, node_names=names)
+#%%
 nan_prop_d(dataset_dict, node_names=names)
+#%%
 plot_distr_nan_gaps_d(dataset_dict, node_names=names)
 
 #%%% Plotting Spike Graph
@@ -478,7 +480,17 @@ plt.show()
 
 #%%Z scores and velocity functions (CHECK)
 def analyze_nan_binned_zscores(coords, bin_length_frames=30):
-    """Calculates and plots binned NaN proportion Z-scores across frames."""
+    """Calculates z scores of (default) 30 frame bins across the video by node.
+    Z scores are relative to the total proportion of NaNs.
+    Values are plotted as a heatmap of z scores
+    
+    Args:
+        coords (float array[,,,]): SLEAP array of size frames x nodes x 2 x tracks
+        bin_length_frames (int): The number of frames in one z score bin
+        
+    Returns:
+        The bin z score values as a 2d array of size nodes x num_bins (or transpose CHECK)
+    """
     num_nan_per_node = np.sum(np.isnan(coords[:, :, 0, 0]), axis=0)
     tot_prop_nan = num_nan_per_node / np.shape(coords)[0]
     
@@ -505,14 +517,26 @@ def analyze_nan_binned_zscores(coords, bin_length_frames=30):
     return bin_zs
 
 def calc_velocity(coords):
-    """Calculates Euclidean velocity from x and y coordinates."""
+    """Calculates Euclidean velocity from x and y coordinates.
+    
+    Args:
+        coords (float array[,,,]): SLEAP array of size frames x nodes x 2 x tracks
+        
+    Returns:
+        An array of velocities of size 3d frames x nodes x 1
+    """
     dx = np.diff(coords[:, :, 0, :], axis=0)
     dy = np.diff(coords[:, :, 1, :], axis=0)
     velocities = np.sqrt(dx**2 + dy**2)
-    return np.squeeze(velocities)
+    return np.squeeze(velocities) #Removes the tracks dimension
 
 def plot_velocity_time_traces(all_node_velocity, node_names=None):
-    """Plots velocity time traces for each node."""
+    """Plots velocity time traces for each node.
+    
+    Args:
+        all_node_velocity (float[,,]): Raw (including NaNs) velocity array [often output of calc_velocity()]
+        node_names (string[]): An optional list of node names. Alternatively uses 1-n.
+    """
     if node_names is None:
         node_names = np.arange(np.shape(all_node_velocity)[1])
     
@@ -527,12 +551,18 @@ def plot_velocity_time_traces(all_node_velocity, node_names=None):
     plt.show()
 
 def plot_velocity_boxplots(all_node_velocity, node_names=None, vel_threshold=None):
-    """Plots velocity boxplots by node and prints distribution stats."""
+    """Plots velocity boxplots by node and prints distribution stats.
+    
+    Args:
+        all_node_velocity (float[,,]): Raw (including NaNs) velocity array [often output of calc_velocity()]
+        node_names (string[]): An optional list of node names. Alternatively uses 1-n.
+        vel_threshold (float): An optional visualization for potential velocity outlier cutoff
+"""
     if node_names is None:
         node_names = np.arange(np.shape(all_node_velocity)[1])
         
     cleaned_velocities = [col[~np.isnan(col)] for col in np.transpose(all_node_velocity)]
-    x = np.arange(np.shape(all_node_velocity)[1])
+    x = np.arange(np.shape(all_node_velocity)[1]) #Use all_node_velocity since cleaned is non-homogenous
     
     plt.figure(figsize=(10, 5))
     if vel_threshold is not None:
@@ -554,20 +584,53 @@ def plot_velocity_boxplots(all_node_velocity, node_names=None, vel_threshold=Non
     for i in range(len(node_names)):
         print(f"{node_names[i]}: Mean({mean_vel[i]:.2f}) Median({median_vel[i]:.2f}) STD({std_vel[i]:.2f})")
 
-def plot_velocity_threshold_proportions(all_node_velocity, node_names=None, vel_threshold=30):
-    """Calculates and plots the proportion of valid velocities exceeding a threshold."""
-    if node_names is None:
-        node_names = np.arange(np.shape(all_node_velocity)[1])
+def clean_velocity(all_node_velocity):
+    """Removes NaNs from velocity for visualization.
+    
+    Args:
+        all_node_velocity (float[,,]): Raw (including NaNs) velocity array [often output of calc_velocity()]
+    
+    Returns:
+        A list of lists for each node with all non-NaN velocities (non-homogenous)
+    """
+    return [col[~np.isnan(col)] for col in np.transpose(all_node_velocity)]
+
+def get_prop_valid_vel(cleaned_velocities, velocity_threshold):
+    """Calculate the proportion of valid velocities still above a threshold.
+    
+    
+    Args:
+        cleaned_velocities (float[][]): A list of lists for each node with all non-NaN velocities (non-homogenous)
+        velocity_threshold (float): The upper bound for valid velocities
         
-    cleaned_velocities = [col[~np.isnan(col)] for col in np.transpose(all_node_velocity)]
+    Returns:
+        Proportion of valid velocities exceeding threshold by node
+    """
+    
     prop_valid_vel = []
     
     for col in cleaned_velocities:
         if len(col) == 0:
             prop_valid_vel.append(0.0)
         else:
-            num_above = np.sum(col > vel_threshold)
+            num_above = np.sum(col > velocity_threshold)
             prop_valid_vel.append(num_above / len(col))
+    return prop_valid_vel
+    
+
+def plot_velocity_threshold_proportions(all_node_velocity, node_names=None, vel_threshold=30):
+    """Pplots the proportion of valid velocities exceeding a threshold.
+    
+    Args:
+        all_node_velocity (float[,,]): Raw (including NaNs) velocity array [often output of calc_velocity()]
+        node_names (string[]): An optional list of node names. Alternatively uses 1-n.
+        vel_threshold (float): An optional visualization for potential velocity outlier cutoff
+    """
+    if node_names is None:
+        node_names = np.arange(np.shape(all_node_velocity)[1])
+        
+    cleaned_velocities = clean_velocity(all_node_velocity)
+    prop_valid_vel = get_prop_valid_vel(cleaned_velocities, vel_threshold)
             
     plt.figure(figsize=(10, 4))
     plt.bar(node_names, prop_valid_vel)
@@ -576,10 +639,19 @@ def plot_velocity_threshold_proportions(all_node_velocity, node_names=None, vel_
     plt.xticks(rotation=45)
     plt.show()
     
-    return prop_valid_vel
 
-def analyze_velocity_outlier_zscores(all_node_velocity, prop_valid_vel, vel_threshold=30, bin_length_frames=30):
-    """Analyzes and plots binned velocity outlier frequency Z-scores."""
+def analyze_velocity_outlier_zscores(all_node_velocity, vel_threshold=30, bin_length_frames=30):
+    """Analyzes and plots binned velocity outlier frequency Z-scores.
+    
+    Args:
+        all_node_velocity (float[,,]): Raw (including NaNs) velocity array [often output of calc_velocity()]
+        
+        node_names (string[]): An optional list of node names. Alternatively uses 1-n.
+        vel_threshold (float): An optional visualization for potential velocity outlier cutoff"""
+    
+    cleaned_velocities = clean_velocity(all_node_velocity)
+    prop_valid_vel = get_prop_valid_vel(cleaned_velocities,vel_threshold)
+    
     prop_bins_vel = []
     lower_bound = 0
     
@@ -614,20 +686,20 @@ def analyze_velocity_outlier_zscores(all_node_velocity, prop_valid_vel, vel_thre
 # 1. NaN Binned Z-Score Analysis
 bin_zs = analyze_nan_binned_zscores(coords, bin_length_frames=30)
 
-# 2. Velocity Performance Calculation & Time Traces
+#%% 2. Velocity Performance Calculation & Time Traces
 all_node_velocity = calc_velocity(coords)
 plot_velocity_time_traces(all_node_velocity, node_names=names)
 
-# 3. Velocity Boxplots
+#%% 3. Velocity Boxplots
 plot_velocity_boxplots(all_node_velocity, node_names=names)
 
-# 4. Threshold & Proportion Analysis
+#%% 4. Threshold & Proportion Analysis
 vel_threshold = 30
 plot_velocity_boxplots(all_node_velocity, node_names=names, vel_threshold=vel_threshold)
-prop_valid_vel = plot_velocity_threshold_proportions(all_node_velocity, node_names=names, vel_threshold=vel_threshold)
+plot_velocity_threshold_proportions(all_node_velocity, node_names=names, vel_threshold=vel_threshold)
 
-# 5. Velocity Outlier Z-Score Heatmap
-bin_vel_zs = analyze_velocity_outlier_zscores(all_node_velocity, prop_valid_vel, vel_threshold=vel_threshold, bin_length_frames=30)
+#%% 5. Velocity Outlier Z-Score Heatmap
+bin_vel_zs = analyze_velocity_outlier_zscores(all_node_velocity, vel_threshold=vel_threshold)
 
 #%% Purely model evaluation NOT evluation of inference
 import numpy as np
