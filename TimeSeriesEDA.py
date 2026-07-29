@@ -253,7 +253,35 @@ plt.xlim(0,1440)
 plt.ylim(1080,0) #Inverted for image
 plt.legend()
 plt.show()
-
+#%% Helper function for extraction of skeleton data by interval
+def pose_in_intervals(frame_timestamps, coords, intervals):
+    """A function that gets a non-homogenous list of coordinates by time intervals.
+    
+    It uses the time since the start from the intervals to find the correct frames
+    in the video and get a list of pose_data for each interval
+    
+    Args:
+        frame_timestamps (float[]): 1d array of timestamps for each frame
+        coords (float[,,,]): frames x nodes x 2 x tracks SLEAP array
+        intervals (List<(float, float)>): intervals in which to get the data
+        
+    Returns:
+        A non-homogenous list of slices corresponding to the intervals."""
+    pose_data_list = []
+    print(np.shape(frame_timestamps))
+    print(np.shape(coords))
+    print(np.shape(intervals))
+    for start_time, end_time in intervals:
+        print(start_time)
+        print(end_time)
+        start_idx = np.searchsorted(frame_timestamps, start_time, side='left')
+        end_idx = np.searchsorted(frame_timestamps, end_time, side='right')
+        
+        # Slice the coordinates array using the found frame indices
+        interval_coords = coords[start_idx:end_idx]
+        pose_data_list.append(interval_coords)
+    
+    return pose_data_list
 #%% Access fp and behavioral data (+ imports)
 from hankslab_db import db_access
 #import doric_utils as du
@@ -274,7 +302,27 @@ bandit_loc_db = bandit_db.LocalDB_BasicRLTasks('twoArmBandit')
 
 wm_sess_data = wm_loc_db.get_behavior_data(sess_ids)
 bandit_sess_data = wm_loc_db.get_behavior_data(sess_ids)
-
+#%%
+def get_trial_end_ts(sess_data):
+    """Get the last state timestamp from a trial to determine its end relative to the start.
+    
+    Args:
+        sess_data(TODO???): Takes a session data from db_access
+    Returns:
+        A list of time deltas relative to the start of the trial indicating relative trial end times.
+    """
+    print(sess_data["parsed_events"][0]["States"])
+    print(type(sess_data["parsed_events"][0]["States"]))
+    trial_end_ts_vect = []
+    for trial in range(len(sess_data["parsed_events"])):
+        max_val = 0
+        for key, value in sess_data["parsed_events"][trial]["States"].items():
+            if value == [None, None]:
+                continue
+            else:
+                max_val = max(max_val, value[1])
+        trial_end_ts_vect.append(max_val)
+    return trial_end_ts_vect
 #%%
 print(sess_ids)
 print(wm_sess_data.head())
@@ -285,27 +333,41 @@ print(sess_ids)
 print(bandit_sess_data.head())
 print(bandit_sess_data.columns.tolist())
 #%%Print trial start times (No NaNs)
-times_rel_start = db_access.get_fp_trial_start_ts(sess_ids)[int(sess_ids[0])]
-print(np.shape(times_rel_start))
-print(f"Num NaNs: {np.sum(np.isnan(times_rel_start))}")
-print(times_rel_start)
+trial_starts_plus_last = db_access.get_fp_trial_start_ts(sess_ids)[int(sess_ids[0])]
+trial_starts = trial_starts_plus_last[:-1]
+trial_ends_rel_trial_start = get_trial_end_ts(wm_sess_data)
+trial_ends = trial_starts + trial_ends_rel_trial_start
+print(np.shape(trial_starts))
+print(np.shape(trial_ends))
+print(f"Num NaNs: {np.sum(np.isnan(trial_starts))}")
+print(f"Num NaNs: {np.sum(np.isnan(trial_ends))}")
 #%%Print center poke in times (NaNs for invalid)
 print(len(wm_sess_data["cpoke_in_time"]))
 print(f"Num NaNs: {np.sum(np.isnan(wm_sess_data['cpoke_in_time']))}")
 print(wm_sess_data["cpoke_in_time"].tolist())
 #%%
-cpoke_in_times_vid = times_rel_start[:-1] + wm_sess_data["cpoke_in_time"].tolist()
+cpoke_in_times_vid = trial_starts + wm_sess_data["cpoke_in_time"].tolist()
 print(f"Num NaNs: {np.sum(np.isnan(cpoke_in_times_vid))}")
 print(cpoke_in_times_vid)
 cpoke_in_times_vid_f = 30 * cpoke_in_times_vid #TODO: Paramterize frame rate at the top
 
 #%%Read video doric times
 from sys_neuro_tools import doric_utils as du
-active_sess_vid_doric = r"C:\Users\cns-th-lab\TannerVidsRenamed\198\Videos\mov_116543.doric"
+active_sess_vid_doric = r"C:\Users\cns-th-lab\TannerVidsRenamed\198\Videos\mov_116498.doric"
 du.h5print(active_sess_vid_doric)
 time_in, time_in_info = du.h5read(active_sess_vid_doric,['DataAcquisition','BehaviorCamera','Video','Series0001','DMK-33UX290','Time']);
 print(time_in)
 print(time_in_info)
-#%%
-print(np.shape(labels_df.iloc[0]["tracks"])[0])
-print(len(time_in))
+#%%Various Intervals
+#%%% Between the end of one and start of next
+intervals = np.transpose(np.stack((trial_ends[:-1], trial_starts[1:])))
+#%%% Between start and end
+intervals = np.transpose(np.stack((trial_ends[:-1], trial_starts[1:])))
+#%%% Between response cue and response poke
+response_cue_abs_time = trial_starts + wm_sess_data["response_cue_time"].tolist()
+response_abs_time = trial_starts + wm_sess_data["response_time"].tolist()
+#%% Use the intervals to slice the pose data
+print(f"Shape of intervals: {np.shape(intervals)}")
+segmented_poses = pose_in_intervals(time_in, labels_df["cubic_interpol_tracks"][0], intervals)
+for segment in segmented_poses:
+    print(np.shape(segment))
