@@ -24,9 +24,19 @@ label_paths = [r"C:\Users\cns-th-lab\TannerVidsRenamed\198\Videos\predictions\26
                r"C:\Users\cns-th-lab\TannerVidsRenamed\424\Videos\predictions\260523_198_199x_237x_238x_274x_400x_402x_424x_483x",
                r"C:\Users\cns-th-lab\TannerVidsRenamed\483\Videos\predictions\260523_198_199x_237x_238x_274x_400x_402x_424x_483x",
                ]
+port_label_paths = [r"C:\Users\cns-th-lab\TannerVidsRenamed\198\Videos\predictions\260716_port_model",
+                    r"C:\Users\cns-th-lab\TannerVidsRenamed\199\Videos\predictions\260716_port_model",
+                    r"C:\Users\cns-th-lab\TannerVidsRenamed\237\Videos\predictions\260716_port_model",
+                    r"C:\Users\cns-th-lab\TannerVidsRenamed\238\Videos\predictions\260716_port_model",
+                    r"C:\Users\cns-th-lab\TannerVidsRenamed\274\Videos\predictions\260716_port_model",
+                    r"C:\Users\cns-th-lab\TannerVidsRenamed\400\Videos\predictions\260716_port_model",
+                    r"C:\Users\cns-th-lab\TannerVidsRenamed\402\Videos\predictions\260716_port_model",
+                    r"C:\Users\cns-th-lab\TannerVidsRenamed\424\Videos\predictions\260716_port_model",
+                    r"C:\Users\cns-th-lab\TannerVidsRenamed\483\Videos\predictions\260716_port_model"
+                    ]
 label_files = []
 mode = "sess" #all, sess, idx
-if mode == "sess":
+if mode == "sess": #Get all files belonging to sess_ids
     label_files = [os.path.join(folder, file) for folder in label_paths for file in os.listdir(folder) if os.path.splitext(file)[1] == ".h5" and os.path.splitext(file)[0] in sess_ids]
     for folder in label_paths:
         for file in os.listdir(folder):
@@ -50,8 +60,10 @@ def ThresholdedPositions(df_row, threshold):
 #%% Extract raw positions
 labels_dict = {"sess": [],
                "scores": [],
-               "tracks": []}
+               "tracks": [],
+               "port_tracks":[]}
 node_names = []
+port_names = []
 for file in label_files:   
     with h5py.File(file, "r") as f:
         # Decode node names
@@ -66,12 +78,37 @@ for file in label_files:
         tracks_coords = np.transpose(f['tracks'][:])
         
         # 4. Set Dictionary Values
-        labels_dict["sess"].append(str.removeprefix(os.path.splitext(os.path.basename(file))[0], "mov_"))
+        my_sess = str.removeprefix(os.path.splitext(os.path.basename(file))[0], "mov_")
+        labels_dict["sess"].append(my_sess)
         labels_dict["scores"].append(scores)
         labels_dict["tracks"].append(tracks_coords)
+        
+        # Get corresponding port file info
+        print("Reset port file name.")
+        port_file = None
+        for port_dir in port_label_paths:
+            for filename in os.listdir(port_dir):
+                if my_sess in filename and ".slp" not in filename:
+                    port_file = os.path.join(port_dir, filename)
+                    print(port_file)
+                    break
+            if port_file != None:
+                break
+        print(port_file)
+        # Read the data into port_names and a column of the df
+        with h5py.File(port_file, "r") as g:
+            print("Getting port names")
+            port_names = [n.decode('utf-8') for n in g['node_names'][:]]
+            print("Getting port tracks")
+            port_tracks_coords = np.transpose(g['tracks'][:])
+            print("Setting port tracks")
+            labels_dict["port_tracks"].append(port_tracks_coords)
+            
 
 labels_df = pd.DataFrame(labels_dict)
 labels_df.set_index('sess')
+#%%
+print(np.shape(np.array(labels_df["port_tracks"][0])))
 
 #%% Filter it
 
@@ -141,29 +178,82 @@ def NodePositionsLocal(row, target_column, right_ortho=True):
     return list(local_locations)
 
 labels_df["rotated_tracks"] = labels_df.apply(lambda row:NodePositionsLocal(row, "cubic_interpol_tracks"), axis=1)
+#%% Calculate head port angles
+def get_angle(origin_pos, p1, p2):
+    v1 = p1-origin_pos
+    v2 = p2 - origin_pos #Port vector
+    
+    v1_n = v1 / np.linalg.norm(v1, axis=1, keepdims=True)
+    v2_n = v2 / np.linalg.norm(v2, axis=1, keepdims=True)
+    print(np.shape(v1_n))
+    print(np.shape(v2_n))
+    
+    # Calculate dot product
+    dot_product = np.sum(v1_n * v2_n, axis=1)
+    print(np.shape(dot_product))
+    
+    # Clip to prevent floating point domain errors
+    clipped_dot = np.clip(dot_product, -1.0, 1.0)
+    
+    return np.degrees(np.arccos(clipped_dot))
+
+nose_idx = node_names.index("nose")
+implant_idx = node_names.index("implant")
+print(np.shape(labels_df["cubic_interpol_tracks"]))
+angles_0 = get_angle(np.array(labels_df["cubic_interpol_tracks"][0])[:,implant_idx,:,0], 
+                   np.array(labels_df["cubic_interpol_tracks"][0])[:,nose_idx,:,0], 
+                   np.array(labels_df["port_tracks"][0])[:,0,:,0])
+angles_1 = get_angle(np.array(labels_df["cubic_interpol_tracks"][0])[:,implant_idx,:,0], 
+                   np.array(labels_df["cubic_interpol_tracks"][0])[:,nose_idx,:,0], 
+                   np.array(labels_df["port_tracks"][0])[:,1,:,0])
+angles_2 = get_angle(np.array(labels_df["cubic_interpol_tracks"][0])[:,implant_idx,:,0], 
+                   np.array(labels_df["cubic_interpol_tracks"][0])[:,nose_idx,:,0], 
+                   np.array(labels_df["port_tracks"][0])[:,2,:,0])
+#TODO: Might be a good idea to add above/below port for nose to be able to tell which direction it's coming from
+#%%
+print(labels_df["port_tracks"][0][0][0])
 #%%
 for n in range(len(node_names)):
     print(n)
+    #Plot body (inverted y to account for image coordinates)
     plt.scatter(labels_df["cubic_interpol_tracks"][0][0][n][0][0], labels_df["cubic_interpol_tracks"][0][0][n][1][0], color="red")
-    plt.scatter(labels_df["rotated_tracks"][0][0][n][0][0], labels_df["rotated_tracks"][0][0][n][1][0], color="blue")
-    #print(np.shape(labels_df["rotated_tracks"][0]))
-    ##print(labels_df["rotated_tracks"][0][0,n,0,0])
-    #print(labels_df["rotated_tracks"][0][0,n,1,0])
-    #plt.scatter(labels_df["rotated_tracks"][0][0,n,0,0], labels_df["rotated_tracks"][0][0,n,1,0], color="blue")
+#Plot ports
+plt.scatter(labels_df["port_tracks"][0][0][0][0][0], labels_df["port_tracks"][0][0][0][1][0], color="purple")
+plt.annotate("Left Port", (labels_df["port_tracks"][0][0][0][0][0], labels_df["port_tracks"][0][0][0][1][0]))
+plt.scatter(labels_df["port_tracks"][0][0][1][0][0], labels_df["port_tracks"][0][0][1][1][0], color="purple")
+plt.annotate("Center Port", (labels_df["port_tracks"][0][0][1][0][0], labels_df["port_tracks"][0][0][1][1][0]))
+plt.scatter(labels_df["port_tracks"][0][0][2][0][0], labels_df["port_tracks"][0][0][2][1][0], color="purple")
+plt.annotate("Right Port", (labels_df["port_tracks"][0][0][2][0][0], labels_df["port_tracks"][0][0][2][1][0]))
+#Plot arrows and write angle for visualization
+nose_x = np.array(labels_df["cubic_interpol_tracks"][0])[0,nose_idx,0,0]
+nose_y = np.array(labels_df["cubic_interpol_tracks"][0])[0,nose_idx,1,0]
+implant_x = np.array(labels_df["cubic_interpol_tracks"][0])[0,implant_idx,0,0]
+implant_y = np.array(labels_df["cubic_interpol_tracks"][0])[0,implant_idx,1,0]
+port_0_x = np.array(labels_df["port_tracks"][0])[0,0,0,0]
+port_0_y = np.array(labels_df["port_tracks"][0])[0,0,1,0]
+port_1_x = np.array(labels_df["port_tracks"][0])[0,1,0,0]
+port_1_y = np.array(labels_df["port_tracks"][0])[0,1,1,0]
+port_2_x = np.array(labels_df["port_tracks"][0])[0,2,0,0]
+port_2_y = np.array(labels_df["port_tracks"][0])[0,2,1,0]
+#Implant-nose
+plt.quiver(implant_x, implant_y, 
+           nose_x-implant_x, nose_y-implant_y,
+           angles='xy', scale_units='xy', scale=1, color='blue')
+#Implant-port_x
+plt.quiver(implant_x, implant_y,
+           port_0_x-implant_x, port_0_y-implant_y,
+           angles='xy', scale_units='xy', scale=1, color='orange', label=angles_0[0])
+plt.quiver(implant_x, implant_y,
+           port_1_x-implant_x, port_1_y-implant_y,
+           angles='xy', scale_units='xy', scale=1, color='yellow', label=angles_1[0])
+plt.quiver(implant_x, implant_y,
+           port_2_x-implant_x, port_2_y-implant_y,
+           angles='xy', scale_units='xy', scale=1, color='green', label=angles_2[0])
+plt.xlim(0,1440)
+plt.ylim(1080,0) #Inverted for image
+plt.legend()
 plt.show()
 
-#%% Port label paths and dataframe assignment
-
-port_label_paths = [r"C:\Users\cns-th-lab\TannerVidsRenamed\198\Videos\predictions\260716_port_model",
-                    r"C:\Users\cns-th-lab\TannerVidsRenamed\199\Videos\predictions\260716_port_model",
-                    r"C:\Users\cns-th-lab\TannerVidsRenamed\237\Videos\predictions\260716_port_model",
-                    r"C:\Users\cns-th-lab\TannerVidsRenamed\238\Videos\predictions\260716_port_model",
-                    r"C:\Users\cns-th-lab\TannerVidsRenamed\274\Videos\predictions\260716_port_model",
-                    r"C:\Users\cns-th-lab\TannerVidsRenamed\400\Videos\predictions\260716_port_model",
-                    r"C:\Users\cns-th-lab\TannerVidsRenamed\402\Videos\predictions\260716_port_model",
-                    r"C:\Users\cns-th-lab\TannerVidsRenamed\424\Videos\predictions\260716_port_model",
-                    r"C:\Users\cns-th-lab\TannerVidsRenamed\483\Videos\predictions\260716_port_model"]
-                    
 #%% Access fp and behavioral data (+ imports)
 from hankslab_db import db_access
 #import doric_utils as du

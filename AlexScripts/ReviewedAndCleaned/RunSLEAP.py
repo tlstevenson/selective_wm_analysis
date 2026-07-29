@@ -38,12 +38,12 @@ vid_folders = [r"C:\Users\cns-th-lab\TannerVidsRenamed\198\Videos",
                r"C:\Users\cns-th-lab\TannerVidsRenamed\400\Videos",
                r"C:\Users\cns-th-lab\TannerVidsRenamed\402\Videos",
                r"C:\Users\cns-th-lab\TannerVidsRenamed\424\Videos",
-               r"C:\Users\cns-th-lab\TannerVidsRenamed\483\Videos",
-               r"C:\Users\cns-th-lab\TannerVidsRenamed\234\Videos",
+               r"C:\Users\cns-th-lab\TannerVidsRenamed\483\Videos"]#,
+               #r"C:\Users\cns-th-lab\TannerVidsRenamed\234\Videos",
                #r"C:\Users\cns-th-lab\TannerVidsRenamed\235\Videos",
-               r"C:\Users\cns-th-lab\TannerVidsRenamed\419\Videos",
-               r"C:\Users\cns-th-lab\TannerVidsRenamed\421\Videos",
-               r"C:\Users\cns-th-lab\TannerVidsRenamed\422\Videos",]
+               #r"C:\Users\cns-th-lab\TannerVidsRenamed\419\Videos",
+               #r"C:\Users\cns-th-lab\TannerVidsRenamed\421\Videos",
+               #r"C:\Users\cns-th-lab\TannerVidsRenamed\422\Videos",]
 curr_vids = []
 for vid_folder in vid_folders:
     curr_vids = curr_vids + get_file_paths(vid_folder, ".mp4")
@@ -165,8 +165,11 @@ def run_inference(video_list, write_path_list, model_path):
 #%%Main execution
 
 #Define model
-centroid_model_loc = r"C:\Users\cns-th-lab\SLEAP_Projects\models\260716_port_model.centroid.n=40"
-centered_model_loc = r"C:\Users\cns-th-lab\SLEAP_Projects\models\260716_port_model.centered_instance.n=40"
+#centroid_model_loc = r"C:\Users\cns-th-lab\SLEAP_Projects\models\260716_port_model.centroid.n=40"
+#centered_model_loc = r"C:\Users\cns-th-lab\SLEAP_Projects\models\260716_port_model.centered_instance.n=40"
+centroid_model_loc = r"C:\Users\cns-th-lab\SLEAP_Projects\models\260523_198_199x_237x_238x_274x_400x_402x_424x_483x.centroid.n=222"
+centered_model_loc = r"C:\Users\cns-th-lab\SLEAP_Projects\models\260523_198_199x_237x_238x_274x_400x_402x_424x_483x.centered_instance.n=222"
+
 centroid_model_name = os.path.basename(centroid_model_loc)
 centered_model_name = os.path.basename(centered_model_loc)
 model_name = os.path.basename(os.path.splitext(os.path.splitext(centroid_model_loc)[0])[0])
@@ -222,7 +225,15 @@ label_folder_paths = [r"C:\Users\cns-th-lab\TannerVidsRenamed\198\Videos\predict
                r"C:\Users\cns-th-lab\TannerVidsRenamed\402\Videos\predictions\260523_198_199x_237x_238x_274x_400x_402x_424x_483x",
                r"C:\Users\cns-th-lab\TannerVidsRenamed\424\Videos\predictions\260523_198_199x_237x_238x_274x_400x_402x_424x_483x",
                r"C:\Users\cns-th-lab\TannerVidsRenamed\483\Videos\predictions\260523_198_199x_237x_238x_274x_400x_402x_424x_483x",
-               ]
+               r"C:\Users\cns-th-lab\TannerVidsRenamed\198\Videos\predictions\260716_port_model",
+               r"C:\Users\cns-th-lab\TannerVidsRenamed\199\Videos\predictions\260716_port_model",
+               r"C:\Users\cns-th-lab\TannerVidsRenamed\237\Videos\predictions\260716_port_model",
+               r"C:\Users\cns-th-lab\TannerVidsRenamed\238\Videos\predictions\260716_port_model",
+               r"C:\Users\cns-th-lab\TannerVidsRenamed\274\Videos\predictions\260716_port_model",
+               r"C:\Users\cns-th-lab\TannerVidsRenamed\400\Videos\predictions\260716_port_model",
+               r"C:\Users\cns-th-lab\TannerVidsRenamed\402\Videos\predictions\260716_port_model",
+               r"C:\Users\cns-th-lab\TannerVidsRenamed\424\Videos\predictions\260716_port_model",
+               r"C:\Users\cns-th-lab\TannerVidsRenamed\483\Videos\predictions\260716_port_model"]
 for folder in label_folder_paths:
     for file in os.listdir(folder):
         file_full_path = os.path.join(folder, file)
