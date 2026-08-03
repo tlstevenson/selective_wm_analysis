@@ -9,6 +9,7 @@ Created on Wed Apr 29 16:56:14 2026
 # -*- coding: utf-8 -*-
 """
 Script 1: Model Selection and Labeling
+Environment: sleappost
 """
 
 #%% Import statements
@@ -17,6 +18,7 @@ import os
 import subprocess
 import sys
 import shutil
+import random
 
 #%% Define traversal function
 def get_file_paths(directory_path, extension="None"):
@@ -27,64 +29,6 @@ def get_file_paths(directory_path, extension="None"):
         return [str(file) for file in path_obj.iterdir() if file.is_file()]
     else:
         return[str(file) for file in path_obj.iterdir() if file.is_file() and file.suffix==extension]
-
-#%% Select new videos by directory
-vid_par_dir = r"C:\Users\cns-th-lab\TannerVidsRenamed"
-vid_folders = [r"C:\Users\cns-th-lab\TannerVidsRenamed\198\Videos",
-               r"C:\Users\cns-th-lab\TannerVidsRenamed\199\Videos",
-               r"C:\Users\cns-th-lab\TannerVidsRenamed\237\Videos",
-               r"C:\Users\cns-th-lab\TannerVidsRenamed\238\Videos",
-               r"C:\Users\cns-th-lab\TannerVidsRenamed\274\Videos",
-               r"C:\Users\cns-th-lab\TannerVidsRenamed\400\Videos",
-               r"C:\Users\cns-th-lab\TannerVidsRenamed\402\Videos",
-               r"C:\Users\cns-th-lab\TannerVidsRenamed\424\Videos",
-               r"C:\Users\cns-th-lab\TannerVidsRenamed\483\Videos"]#,
-               #r"C:\Users\cns-th-lab\TannerVidsRenamed\234\Videos",
-               #r"C:\Users\cns-th-lab\TannerVidsRenamed\235\Videos",
-               #r"C:\Users\cns-th-lab\TannerVidsRenamed\419\Videos",
-               #r"C:\Users\cns-th-lab\TannerVidsRenamed\421\Videos",
-               #r"C:\Users\cns-th-lab\TannerVidsRenamed\422\Videos",]
-curr_vids = []
-for vid_folder in vid_folders:
-    curr_vids = curr_vids + get_file_paths(vid_folder, ".mp4")
-print("Current videos from directories:", curr_vids)
-
-#%% Select new videos by hand
-r"""additional_vids = [r"C:\Users\cns-th-lab\Tanner_Alex_Vids\198\Videos\198.2025-07-28.mov_0001.mp4",
-                   r"C:\Users\cns-th-lab\Tanner_Alex_Vids\198\Videos\198.2025-08-23.mov_0014.mp4",
-                   r"C:\Users\cns-th-lab\Tanner_Alex_Vids\237\Videos\237.2026-03-31.mov_0001.mp4",
-                   r"C:\Users\cns-th-lab\Tanner_Alex_Vids\237\Videos\237.2026-04-03.mov_0004.mp4",
-                   r"C:\Users\cns-th-lab\Tanner_Alex_Vids\199\Videos\199.2025-07-28.mov_0001.mp4",
-                   r"C:\Users\cns-th-lab\Tanner_Alex_Vids\199\Videos\199.2025-08-23.mov_0014.mp4",
-                   r"C:\Users\cns-th-lab\Tanner_Alex_Vids\238\Videos\238.2026-03-31.mov_0001.mp4",
-                   r"C:\Users\cns-th-lab\Tanner_Alex_Vids\238\Videos\238.2026-04-03.mov_0004.mp4"
-                   ]"""
-    
-additional_vids = [r"C:\Users\cns-th-lab\Tanner_Alex_Vids\198\Videos\198.2025-07-28.mov_0001.mp4",
-                   r"C:\Users\cns-th-lab\Tanner_Alex_Vids\199\Videos\199.2025-07-28.mov_0001.mp4",
-                   r"C:\Users\cns-th-lab\Tanner_Alex_Vids\237\Videos\237.2026-03-31.mov_0001.mp4",
-                   r"C:\Users\cns-th-lab\Tanner_Alex_Vids\238\Videos\238.2026-03-31.mov_0001.mp4",
-                   r"C:\Users\cns-th-lab\Tanner_Alex_Vids\274\Videos\274.2025-09-25.mov_0001.mp4",
-                   r"C:\Users\cns-th-lab\Tanner_Alex_Vids\400\Videos\400.2025-09-25.mov_0001.mp4",
-                   r"C:\Users\cns-th-lab\Tanner_Alex_Vids\402\Videos\402.2025-09-25.mov_0001.mp4",
-                   r"C:\Users\cns-th-lab\Tanner_Alex_Vids\424\Videos\424.2026-03-31.mov_0001.mp4",
-                   r"C:\Users\cns-th-lab\Tanner_Alex_Vids\483\Videos\483.2026-04-01.mov_0002.mp4",
-                   r"C:\Users\cns-th-lab\Tanner_Alex_Vids\198\Videos\198.2025-08-23.mov_0014.mp4",
-                   r"C:\Users\cns-th-lab\Tanner_Alex_Vids\199\Videos\199.2025-08-23.mov_0014.mp4",
-                   r"C:\Users\cns-th-lab\Tanner_Alex_Vids\237\Videos\237.2026-04-03.mov_0004.mp4",
-                   r"C:\Users\cns-th-lab\Tanner_Alex_Vids\238\Videos\238.2026-04-03.mov_0004.mp4",
-                   r"C:\Users\cns-th-lab\Tanner_Alex_Vids\274\Videos\274.2025-10-24.mov_0015.mp4",
-                   r"C:\Users\cns-th-lab\Tanner_Alex_Vids\400\Videos\400.2025-10-24.mov_0015.mp4",
-                   r"C:\Users\cns-th-lab\Tanner_Alex_Vids\402\Videos\402.2025-10-24.mov_0015.mp4",
-                   r"C:\Users\cns-th-lab\Tanner_Alex_Vids\424\Videos\424.2026-04-03.mov_0004.mp4",
-                   r"C:\Users\cns-th-lab\Tanner_Alex_Vids\483\Videos\483.2026-04-03.mov_0004.mp4"
-                   ]
-for vid_path in additional_vids:
-    curr_vids.append(vid_path)
-    
-if len(additional_vids) > 0:
-    print("Current videos :")
-    print(curr_vids);
 #%% Set up inference write paths
 def vid_to_slp(path):
     #.mp4 -> .proj.slp
@@ -128,7 +72,7 @@ def run_inference(video_list, write_path_list, model_path):
             centroid_model = model_path[0]
             centered_instance = model_path[1]
             if os.path.exists(centroid_model) and os.path.exists(centered_instance):
-                command = ["sleap", "track", "-i", video_list[i], "-m", centroid_model, "-m", centered_instance, "-o", write_path_list[i]]
+                command = ["sleap", "track", "-i", video_list[i], "-m", centroid_model, "-m", centered_instance, "-o", write_path_list[i], "--max_instances", "1"]
             else:
                 print(f"Error: Could not find model paths. Skipping video {video_list[i]}.")
                 return False
@@ -162,46 +106,41 @@ def run_inference(video_list, write_path_list, model_path):
             return False
     print("\nAll videos processed!")
     return True
-#%%Main execution
-
-#Define model
-#centroid_model_loc = r"C:\Users\cns-th-lab\SLEAP_Projects\models\260716_port_model.centroid.n=40"
-#centered_model_loc = r"C:\Users\cns-th-lab\SLEAP_Projects\models\260716_port_model.centered_instance.n=40"
-centroid_model_loc = r"C:\Users\cns-th-lab\SLEAP_Projects\models\260523_198_199x_237x_238x_274x_400x_402x_424x_483x.centroid.n=222"
-centered_model_loc = r"C:\Users\cns-th-lab\SLEAP_Projects\models\260523_198_199x_237x_238x_274x_400x_402x_424x_483x.centered_instance.n=222"
-
-centroid_model_name = os.path.basename(centroid_model_loc)
-centered_model_name = os.path.basename(centered_model_loc)
-model_name = os.path.basename(os.path.splitext(os.path.splitext(centroid_model_loc)[0])[0])
-par_models_folder = os.path.join(vid_par_dir, "models")
-
-#Define a folder to copy the model to
-centroid_model_folder_loc = os.path.join(vid_par_dir, "models", centroid_model_name)
-centered_model_folder_loc = os.path.join(vid_par_dir, "models", centered_model_name)
-
-#Copy the model to that location
-try:
-    shutil.copytree(centroid_model_loc, centroid_model_folder_loc)
-    shutil.copytree(centered_model_loc, centered_model_folder_loc)
-except Exception as e:
-    print(e)
-    print("Model probably already exists")
-print(f"Centroid model new location: {centroid_model_folder_loc}")
-print(f"Centered model new location: {centered_model_folder_loc}")
-print("Make sure to update these in the program")
-
-#%% Define write paths
-write_paths = []
-for video in curr_vids:
-    try:
-        write_paths.append(os.path.join(os.path.dirname(video), "predictions", model_name, vid_to_slp(os.path.basename(video))))
-    except:
-        print(f"Could not append path for video {video}")
+#%%Copy model to location near prediction path
+def create_write_path(model_location_pairs, vid_par_dir_param):
+    all_write_paths = []
+    for model_location_pair in model_location_pairs:
+        centroid_model_loc, centered_model_loc = model_location_pair
+        centroid_model_name = os.path.basename(centroid_model_loc)
+        centered_model_name = os.path.basename(centered_model_loc)
+        model_name = os.path.basename(os.path.splitext(os.path.splitext(centroid_model_loc)[0])[0])
+    
+        #Define a folder to copy the model to
+        centroid_model_folder_loc = os.path.join(vid_par_dir_param, "models", centroid_model_name)
+        centered_model_folder_loc = os.path.join(vid_par_dir_param, "models", centered_model_name)
+    
+        #Copy the model to that location
+        try:
+            shutil.copytree(centroid_model_loc, centroid_model_folder_loc)
+            shutil.copytree(centered_model_loc, centered_model_folder_loc)
+        except Exception as e:
+            print(e)
+            print("Model probably already exists")
+        print(f"Centroid model new location: {centroid_model_folder_loc}")
+        print(f"Centered model new location: {centered_model_folder_loc}")
+        print("Make sure to update these in the program")
+    
+        #Define write paths
+        write_paths = []
+        for video in curr_vids:
+            try:
+                write_paths.append(os.path.join(os.path.dirname(video), "predictions", model_name, vid_to_slp(os.path.basename(video))))
+            except:
+                print(f"Could not append path for video {video}")
+        all_write_paths.append(write_paths)
+    return all_write_paths
         
-#%% Main execiton
-run_inference(curr_vids, write_paths, [centroid_model_folder_loc, centered_model_folder_loc])
-
-#%% Convertion to analysis h5 files
+#%% Convert sleap projects to analysis h5 files
 def slp_to_analysis_h5(slp_path, h5_path):
     """
     Converts a SLEAP .slp file to a standard analysis .h5 file using sleap-io.
@@ -211,10 +150,112 @@ def slp_to_analysis_h5(slp_path, h5_path):
     
     try:
         if not os.path.exists(h5_path):
+            print(f"Converting {slp_path} to {h5_path}")
             subprocess.run(command, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+        else:
+            print(f"File at location {h5_path} already exists. Skipping.")
     except subprocess.CalledProcessError as e:
         print(e)
     return h5_path
+#%% Main execiton
+#%%% Select new videos by directory
+vid_par_dir = r"C:\Users\cns-th-lab\TannerVidsRenamed"
+vid_folders = [r"C:\Users\cns-th-lab\TannerVidsRenamed\198\Videos",
+               r"C:\Users\cns-th-lab\TannerVidsRenamed\199\Videos",
+               r"C:\Users\cns-th-lab\TannerVidsRenamed\237\Videos",
+               r"C:\Users\cns-th-lab\TannerVidsRenamed\238\Videos",
+               r"C:\Users\cns-th-lab\TannerVidsRenamed\274\Videos",
+               r"C:\Users\cns-th-lab\TannerVidsRenamed\400\Videos",
+               r"C:\Users\cns-th-lab\TannerVidsRenamed\402\Videos",
+               r"C:\Users\cns-th-lab\TannerVidsRenamed\424\Videos",
+               r"C:\Users\cns-th-lab\TannerVidsRenamed\483\Videos",
+               r"C:\Users\cns-th-lab\TannerVidsRenamed\234\Videos",
+               r"C:\Users\cns-th-lab\TannerVidsRenamed\235\Videos",
+               r"C:\Users\cns-th-lab\TannerVidsRenamed\419\Videos",
+               r"C:\Users\cns-th-lab\TannerVidsRenamed\421\Videos",
+               r"C:\Users\cns-th-lab\TannerVidsRenamed\422\Videos"]
+#%%% Select all videos in the video folders
+curr_vids = []
+for vid_folder in vid_folders:
+    curr_vids = curr_vids + get_file_paths(vid_folder, ".mp4")
+print("Current videos from directories:", curr_vids)
+#%%% Select n random videos as test vids from ceach animal
+curr_vids = []
+training_vid_paths = []
+test_vid_paths = []
+training_videos = ["mov_129089.mp4",
+                   "mov_129117.mp4",
+                   "mov_129104.mp4",
+                   "mov_129096.mp4",
+                   "mov_129081.mp4",
+                   "mov_124606.mp4",
+                   "mov_124605.mp4",
+                   "mov_119009.mp4",
+                   "mov_119000.mp4",
+                   "mov_118992.mp4",
+                   "mov_124589.mp4",
+                   "mov_116507.mp4",
+                   "mov_124598.mp4",
+                   "mov_116498.mp4"]
+num_rand_vids = 1
+for vid_folder in vid_folders:
+    folder_vids = get_file_paths(vid_folder, ".mp4")
+    #Add training videos
+    training_video = [video for video in folder_vids if os.path.basename(video) in training_videos]
+    curr_vids = curr_vids + training_video
+    folder_vids.remove(training_video[0])
+    training_vid_paths = training_vid_paths + training_video
+    
+    #Add test videos
+    test_vids_chosen = random.sample(folder_vids, num_rand_vids)
+    curr_vids = curr_vids + test_vids_chosen
+    test_vid_paths = test_vid_paths + test_vids_chosen
+print("Current videos from directories:", curr_vids)
+for video in curr_vids:
+    print(os.path.basename(video))
+print()
+for video in training_vid_paths:
+    print(os.path.basename(video))
+print()
+for video in test_vid_paths:
+    print(os.path.basename(video))
+print()
+#%%% Define model locations
+#In the form of [centroid_model_path, centered_instance_model_path]
+model_locations = [[r"C:\Users\cns-th-lab\SLEAP_Projects\models\260430_182335.centroid.n=11", r"C:\Users\cns-th-lab\SLEAP_Projects\models\260430_183010.centered_instance.n=11"],
+                   [r"C:\Users\cns-th-lab\SLEAP_Projects\models\260502_198_402_237x.centroid.n=92", r"C:\Users\cns-th-lab\SLEAP_Projects\models\260502_198_402_237x.centered_instance.n=92"],
+                   [r"C:\Users\cns-th-lab\SLEAP_Projects\models\260504_198_199x_237x_402.centroid.n=112", r"C:\Users\cns-th-lab\SLEAP_Projects\models\260504_198_199x_237x_402.centered_instance.n=112"],
+                   [r"C:\Users\cns-th-lab\SLEAP_Projects\models\260523_198_199x_237x_238x_274x_400x_402x_424x_483x.centroid.n=222", r"C:\Users\cns-th-lab\SLEAP_Projects\models\260523_198_199x_237x_238x_274x_400x_402x_424x_483x.centered_instance.n=222"],
+                   [r"C:\Users\cns-th-lab\SLEAP_Projects\models\260729_198_199x_234x_237x_238x_274x_400x_402x_424x_483x.centroid.n=243", r"C:\Users\cns-th-lab\SLEAP_Projects\models\260729_198_199x_234x_237x_238x_274x_400x_402x_424x_483x.centered_instance.n=243"],
+                   [r"C:\Users\cns-th-lab\SLEAP_Projects\models\260729_198_199x_234x_237x_238x_274x_400x_402x_419x_424x_483x.centroid.n=263", r"C:\Users\cns-th-lab\SLEAP_Projects\models\260729_198_199x_234x_237x_238x_274x_400x_402x_419x_424x_483x.centered_instance.n=263"],
+                   [r"C:\Users\cns-th-lab\SLEAP_Projects\models\260730_198_199x_234x_237x_238x_274x_400x_402x_419x_421x_424x_483x.centroid.n=283", r"C:\Users\cns-th-lab\SLEAP_Projects\models\260730_198_199x_234x_237x_238x_274x_400x_402x_419x_421x_424x_483x.centered_instance.n=283"],
+                   [r"C:\Users\cns-th-lab\SLEAP_Projects\models\260730_198_199x_234x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x.centroid.n=303", r"C:\Users\cns-th-lab\SLEAP_Projects\models\260730_198_199x_234x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x.centered_instance.n=303"],
+                   [r"C:\Users\cns-th-lab\SLEAP_Projects\models\260731_198_199x_234x_235x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x.centroid.n=323", r"C:\Users\cns-th-lab\SLEAP_Projects\models\260731_198_199x_234x_235x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x.centered_instance.n=323"]]
+model_locations = [model_locations[-(i+1)] for i in range(len(model_locations))] #Inverts models to recent first
+
+#%%% Select new videos by hand
+additional_vids = []
+for vid_path in additional_vids:
+    curr_vids.append(vid_path)
+    
+if len(additional_vids) > 0:
+    print("Current videos :")
+    print(curr_vids);
+#%% Create the write paths
+model_write_paths = create_write_path(model_locations, vid_par_dir)
+print(model_write_paths)
+if len(model_write_paths) != len(model_locations):
+    raise ValueError("Number of models and model write paths do not match")
+
+#%% Run inference and convert to h5 files
+for m_idx in range(len(model_write_paths)):
+    run_inference(curr_vids, model_write_paths[m_idx], model_locations[m_idx])
+    for file in model_write_paths[m_idx]:
+        root, ext = os.path.splitext(file)
+        h5_path_name = f"{root}.h5"
+        slp_to_analysis_h5(file, h5_path_name)
+#%% Convertion to analysis h5 files (DEPRACATED)
+
 
 label_folder_paths = [r"C:\Users\cns-th-lab\TannerVidsRenamed\198\Videos\predictions\260523_198_199x_237x_238x_274x_400x_402x_424x_483x",
                r"C:\Users\cns-th-lab\TannerVidsRenamed\199\Videos\predictions\260523_198_199x_237x_238x_274x_400x_402x_424x_483x",
@@ -240,10 +281,6 @@ for folder in label_folder_paths:
         root, ext = os.path.splitext(file_full_path)
         if ext == ".slp":
             h5_path_name = f"{root}.h5"
-            if not os.path.exists(h5_path_name):
-                print(f"Converting {file_full_path} to {h5_path_name}")
-            else:
-                print(f"File at location {h5_path_name} already exists. Skipping.")
             slp_to_analysis_h5(file_full_path, h5_path_name)
 
 #%% TODO: Edit below if you want to update this to a json config settings file
