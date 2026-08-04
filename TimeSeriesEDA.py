@@ -978,10 +978,12 @@ nan_mask = np.isnan(tracks).reshape(n_frames, n_nodes, -1).any(axis=-1)
 # Set parameters
 window_size = 60 # E.g., 30 frames (1 second if 30fps)
 thresholds = np.linspace(0,window_size,60) # How many NaNs in the window triggers the threshold
+sum_thresholds = np.linspace(0,200, 40)
 
 # --- Path A: Sum across all nodes ---
 convolved_sum = convolve_nans(nan_mask, window_size, sum_nodes=True)
-seqs_sum = extract_thresholded_sequences(convolved_sum, thresholds)
+
+seqs_sum = extract_thresholded_sequences(convolved_sum, sum_thresholds)
 plot_threshold_percentages(seqs_sum)
 
 # --- Path B: Evaluate per node independently ---
@@ -1013,9 +1015,10 @@ plot_convolved_signal(
 )
 #%% Run Prediction Viewer on Bad Nodes
 # Assuming seqs_sum is the dictionary generated in the previous step
-target_threshold = 15
+target_threshold = np.float64(128.2051282051282)
 
 # Get the list of (start, end) tuples for that specific threshold
+print(seqs_sum.keys())
 my_bad_sequences = seqs_sum[target_threshold]["sequences"]
 
 pvsq.RunApp(
