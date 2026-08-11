@@ -1505,7 +1505,8 @@ def generate_metric_table(vid_list, model_simple_name_list, metric_type = "prop_
     prop_nan_table = {"Node": [],
                       "Rat Count": [],
                       "Vid_Status": [],
-                      "Value": []}
+                      "Value": [],
+                      "Length": []}
     
     for v, video in enumerate(vid_list):
         #rat_name = os.path.dirname(os.path.dirname(video))
@@ -1551,6 +1552,7 @@ def generate_metric_table(vid_list, model_simple_name_list, metric_type = "prop_
                     node_nan_mask = np.isnan(coords[:,n,:]).any(axis=1)
                     #print(np.shape(node_nan_mask))
                     prop_nan_table["Value"].append(np.sum(node_nan_mask)/len(node_nan_mask))
+                    prop_nan_table["Length"].append(len(node_nan_mask))
                     
     return prop_nan_table
 
@@ -1569,24 +1571,20 @@ def plot_prop_nan_across_videos(prop_nan_table, vid_type=None):
     #Categories set as above regardless of type
     node_prop_nan_by_node_ord_count = pd.CategoricalDtype(categories=custom_order, ordered=True)
     
-    if vid_type == None:
-        df["Rat Count"] = df["Rat Count"].astype(node_prop_nan_by_node_ord_count)
-    else:
+    if vid_type is not None:
         mask = df["Vid_Status"] == vid_type
-        print(f"Vid Type: {vid_type}")
         df = df[mask]
-        print("Masked df before categorizing")
-        print(df.head())
-        df["Rat Count"] = df["Rat Count"].astype(node_prop_nan_by_node_ord_count)
-        print("Masked df after categorizing")
-        print(df.head())
     
-    print("Masked df head")
-    print(df.head())
-    pivot_df = df.pivot_table(index="Node", columns="Rat Count", values = "Value",observed=False)
-    print("Masked and pivotted head")
-    print(pivot_df.head())
+    df["Rat Count"] = df["Rat Count"].astype(node_prop_nan_by_node_ord_count)
+    df["NaN_Count"] = df["Value"] * df["Length"]
     
+    #TODO: CHECK LOGIC HERE
+    agg_df = df.groupby(["Node", "Rat Count"], observed=False)[["NaN_Count", "Length"]].sum().reset_index()
+    agg_df["proper_avg_prop"] = agg_df["NaN_Count"] / agg_df["Length"]
+    #END CHECK LOGIC
+    
+    pivot_df = agg_df.pivot(index="Node", columns="Rat Count", values = "proper_avg_prop")
+        
     if vid_type == None:
         pivot_df.plot(kind="bar", title="Aggregate Model Performance By Node Across Models", ylabel="Proportion NaNs")
     else:
