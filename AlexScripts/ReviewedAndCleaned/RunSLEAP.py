@@ -196,7 +196,22 @@ training_videos = ["mov_129089.mp4",
                    "mov_124589.mp4",
                    "mov_116507.mp4",
                    "mov_124598.mp4",
-                   "mov_116498.mp4"]
+                   "mov_116498.mp4", #After this these are technically test
+                  ]
+#%% Use a previously generated random set of test sessions
+test_sess_ids = [117512, 116543, 124771, 125171, 119187, 119974, 119234, 124979,
+                 124622, 129126, 129176, 129201, 129178, 129273]
+test_videos = [f"mov_{sess}.mp4" for sess in test_sess_ids]
+for vid_folder in vid_folders:
+    folder_vids = get_file_paths(vid_folder, ".mp4")
+    #Add training videos
+    training_video = [video for video in folder_vids if os.path.basename(video) in training_videos]
+    curr_vids = curr_vids + training_video
+    #Add test video
+    test_video = [video for video in folder_vids if os.path.basename(video) in test_videos]
+    curr_vids = curr_vids + training_video
+    
+#%% Randomly generate test_videos while adding training videos
 num_rand_vids = 1
 for vid_folder in vid_folders:
     folder_vids = get_file_paths(vid_folder, ".mp4")
@@ -210,6 +225,8 @@ for vid_folder in vid_folders:
     test_vids_chosen = random.sample(folder_vids, num_rand_vids)
     curr_vids = curr_vids + test_vids_chosen
     test_vid_paths = test_vid_paths + test_vids_chosen
+    
+#%% Print all current videos to be predicted
 print("Current videos from directories:", curr_vids)
 for video in curr_vids:
     print(os.path.basename(video))
@@ -230,7 +247,8 @@ model_locations = [[r"C:\Users\cns-th-lab\SLEAP_Projects\models\260430_182335.ce
                    [r"C:\Users\cns-th-lab\SLEAP_Projects\models\260729_198_199x_234x_237x_238x_274x_400x_402x_419x_424x_483x.centroid.n=263", r"C:\Users\cns-th-lab\SLEAP_Projects\models\260729_198_199x_234x_237x_238x_274x_400x_402x_419x_424x_483x.centered_instance.n=263"],
                    [r"C:\Users\cns-th-lab\SLEAP_Projects\models\260730_198_199x_234x_237x_238x_274x_400x_402x_419x_421x_424x_483x.centroid.n=283", r"C:\Users\cns-th-lab\SLEAP_Projects\models\260730_198_199x_234x_237x_238x_274x_400x_402x_419x_421x_424x_483x.centered_instance.n=283"],
                    [r"C:\Users\cns-th-lab\SLEAP_Projects\models\260730_198_199x_234x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x.centroid.n=303", r"C:\Users\cns-th-lab\SLEAP_Projects\models\260730_198_199x_234x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x.centered_instance.n=303"],
-                   [r"C:\Users\cns-th-lab\SLEAP_Projects\models\260731_198_199x_234x_235x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x.centroid.n=323", r"C:\Users\cns-th-lab\SLEAP_Projects\models\260731_198_199x_234x_235x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x.centered_instance.n=323"]]
+                   [r"C:\Users\cns-th-lab\SLEAP_Projects\models\260731_198_199x_234x_235x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x.centroid.n=323", r"C:\Users\cns-th-lab\SLEAP_Projects\models\260731_198_199x_234x_235x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x.centered_instance.n=323"],
+                   [r"C:\Users\cns-th-lab\SLEAP_Projects\models\260731_198_199x_234x_235x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x_occin.centroid.n=323", r"C:\Users\cns-th-lab\SLEAP_Projects\models\260731_198_199x_234x_235x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x_occin.centered_instance.n=323"]]
 model_locations = [model_locations[-(i+1)] for i in range(len(model_locations))] #Inverts models to recent first
 
 #%%% Select new videos by hand
@@ -266,7 +284,8 @@ label_folder_paths = [r"C:\Users\cns-th-lab\TannerVidsRenamed\198\Videos\predict
                r"C:\Users\cns-th-lab\TannerVidsRenamed\402\Videos\predictions\260523_198_199x_237x_238x_274x_400x_402x_424x_483x",
                r"C:\Users\cns-th-lab\TannerVidsRenamed\424\Videos\predictions\260523_198_199x_237x_238x_274x_400x_402x_424x_483x",
                r"C:\Users\cns-th-lab\TannerVidsRenamed\483\Videos\predictions\260523_198_199x_237x_238x_274x_400x_402x_424x_483x",
-               r"C:\Users\cns-th-lab\TannerVidsRenamed\198\Videos\predictions\260716_port_model",
+]
+rf"""r"C:\Users\cns-th-lab\TannerVidsRenamed\198\Videos\predictions\260716_port_model",
                r"C:\Users\cns-th-lab\TannerVidsRenamed\199\Videos\predictions\260716_port_model",
                r"C:\Users\cns-th-lab\TannerVidsRenamed\237\Videos\predictions\260716_port_model",
                r"C:\Users\cns-th-lab\TannerVidsRenamed\238\Videos\predictions\260716_port_model",
@@ -274,7 +293,7 @@ label_folder_paths = [r"C:\Users\cns-th-lab\TannerVidsRenamed\198\Videos\predict
                r"C:\Users\cns-th-lab\TannerVidsRenamed\400\Videos\predictions\260716_port_model",
                r"C:\Users\cns-th-lab\TannerVidsRenamed\402\Videos\predictions\260716_port_model",
                r"C:\Users\cns-th-lab\TannerVidsRenamed\424\Videos\predictions\260716_port_model",
-               r"C:\Users\cns-th-lab\TannerVidsRenamed\483\Videos\predictions\260716_port_model"]
+               r"C:\Users\cns-th-lab\TannerVidsRenamed\483\Videos\predictions\260716_port_model"""
 for folder in label_folder_paths:
     for file in os.listdir(folder):
         file_full_path = os.path.join(folder, file)

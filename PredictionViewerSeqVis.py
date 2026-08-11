@@ -1,28 +1,27 @@
 # -*- coding: utf-8 -*-
 """
-Created on Tue Aug  4 11:42:52 2026
-
-@author: cns-th-lab
+Updated Prediction Viewer (Fallback Hierarchy)
 """
 import cv2
-import pandas as pd
 import numpy as np
-import h5py
 
-# --- Extraction Function ---
-def ExtractH5RawData(inference_path):
-    with h5py.File(inference_path, "r") as f:
-        node_names = [n.decode('utf-8') for n in f['node_names'][:]]
-        scores = np.transpose(f['point_scores'][:], (2, 1, 0)) 
-        tracks_coords = np.transpose(f['tracks'][:])
-        return tracks_coords, node_names, scores
-
-# --- Updated RunApp ---
-def RunApp(video_path, inference_path, output_window, fps, bad_sequences=None, transformations=None):
+def RunApp(video_path, tracks_coords, node_names, scores, output_window, fps, bad_sequences=None, transformations=None):
     """
     Args:
-        ...
+        video_path: Path to the video file.
+        
+        tracks_coords: Numpy array of base raw coordinates.
+        
+        node_names: List of strings representing the names of the tracked nodes.
+        
+        scores: Numpy array of prediction scores.
+        
+        output_window: String name of the OpenCV window.
+        
+        fps: Frames per second of the video.
+        
         bad_sequences: A list of tuples containing (start_frame, end_frame).
+        
         transformations: A list of numpy arrays (frames, nodes, 2, 1) or (frames, nodes, 2)
                          representing the time series to overlay.
     """
@@ -31,9 +30,6 @@ def RunApp(video_path, inference_path, output_window, fps, bad_sequences=None, t
     if transformations is None:
         transformations = []
         
-    # Get base raw coordinates
-    tracks_coords, node_names, scores = ExtractH5RawData(inference_path)
-        
     cap = cv2.VideoCapture(video_path)
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     
@@ -41,8 +37,8 @@ def RunApp(video_path, inference_path, output_window, fps, bad_sequences=None, t
     frame_interval = 1
     seq_idx = -1 
     
-    # State tracker for which transformations are currently visible
-    active_transformations = [False] * len(transformations)
+    # State tracker for which transformations are currently visible (can still be toggled)
+    active_transformations = [True] * len(transformations) # Default to True so fallbacks work immediately
     
     # Pre-defined list of distinct BGR colors for up to 10 transformations
     trans_colors = [
@@ -64,14 +60,14 @@ def RunApp(video_path, inference_path, output_window, fps, bad_sequences=None, t
     print("[I]               : Change Interval")
     print("[F]               : Jump to specific Frame")
     print("[S]               : Jump to specific Second")
-    print("[N]               : Jump to Next Bad Sequence")
-    print("[P]               : Jump to Previous Bad Sequence")
+    print("[N]               : Jump to Next Sequence")
+    print("[P]               : Jump to Previous Sequence")
     print("[Q]               : Quit")
     
     if len(transformations) > 0:
-        print("\n--- Transformations ---")
+        print("\n--- Fallback Transformations ---")
         for i in range(min(len(transformations), 10)):
-            print(f"[{i}] : Toggle Series {i} (Color index {i})")
+            print(f"[{i}] : Toggle Fallback Level {i} (Color index {i})")
     print("----------------")
     
     while True:
@@ -81,46 +77,64 @@ def RunApp(video_path, inference_path, output_window, fps, bad_sequences=None, t
         if not ret:
             print("Error: Could not read frame.")
             break
-    
-        # 1. Draw Base Raw Tracking (Green)
+            
+        # Get frame data safely
         try:
             current_pos = tracks_coords[frame_idx]
             current_scores = scores[frame_idx]
+            num_nodes = np.shape(current_pos)[0]
+        except IndexError:
+            current_pos = []
+            current_scores = []
+            num_nodes = len(node_names)
+    
+        # Iterate over each node and draw only the first valid coordinate found in the hierarchy
+        for i in range(num_nodes):
+            node_drawn = False
             
-            for i in range(np.shape(current_pos)[0]):
+            # 1. Try Base Raw Tracking (Green) First
+            try:
                 x, y = current_pos[i, 0], current_pos[i, 1]
-                # Handle potential 4th dimension safely
                 if isinstance(x, np.ndarray): 
                     x, y = x[0], y[0]
                     
                 if not np.isnan(x) and not np.isnan(y) and x > 0 and y > 0:
                     x, y = int(x), int(y)
                     cv2.circle(frame, center=(x, y), radius=5, color=(0, 255, 0), thickness=-1)
-                    cv2.putText(frame, f"{node_names[i]}: {round(current_scores[i][0],2)}", (x + 8, y - 8), 
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 1)
-        except IndexError:
-            pass 
-    
-        # 2. Draw Active Transformations
-        for t_idx, trans_series in enumerate(transformations):
-            if active_transformations[t_idx]:
-                try:
-                    curr_trans = trans_series[frame_idx]
-                    color = trans_colors[t_idx % len(trans_colors)]
                     
-                    for i in range(np.shape(curr_trans)[0]):
-                        x, y = curr_trans[i, 0], curr_trans[i, 1]
-                        
-                        # Handle potential 4th dimension safely
-                        if isinstance(x, np.ndarray):
-                            x, y = x[0], y[0]
+                    # Handle score indexing safely
+                    score_val = current_scores[i][0] if isinstance(current_scores[i], (list, np.ndarray)) else current_scores[i]
+                    cv2.putText(frame, f"{node_names[i]}: {round(score_val,2)}", (x + 8, y - 8), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 1)
+                    node_drawn = True
+            except IndexError:
+                pass 
+                
+            # 2. If Raw Tracking is invalid/missing, fallback to Transformations in order
+            if not node_drawn:
+                for t_idx, trans_series in enumerate(transformations):
+                    if active_transformations[t_idx]:
+                        try:
+                            curr_trans = trans_series[frame_idx]
+                            x, y = curr_trans[i, 0], curr_trans[i, 1]
                             
-                        if not np.isnan(x) and not np.isnan(y) and x > 0 and y > 0:
-                            x, y = int(x), int(y)
-                            # Draw slightly offset so they don't perfectly cover the base tracking
-                            cv2.circle(frame, center=(x + 2, y + 2), radius=5, color=color, thickness=-1)
-                except IndexError:
-                    pass 
+                            # Handle potential 4th dimension safely
+                            if isinstance(x, np.ndarray):
+                                x, y = x[0], y[0]
+                                
+                            if not np.isnan(x) and not np.isnan(y) and x > 0 and y > 0:
+                                x, y = int(x), int(y)
+                                color = trans_colors[t_idx % len(trans_colors)]
+                                cv2.circle(frame, center=(x, y), radius=5, color=color, thickness=-1)
+                                
+                                # Add the label but without a score (interpolations don't have scores usually)
+                                cv2.putText(frame, f"{node_names[i]}", (x + 8, y - 8), 
+                                            cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1)
+                                            
+                                node_drawn = True
+                                break # Stop searching! We found the first valid coordinate.
+                        except IndexError:
+                            pass
     
         # 3. Overlay frame, time, and sequence info
         current_time = frame_idx / fps
@@ -137,11 +151,11 @@ def RunApp(video_path, inference_path, output_window, fps, bad_sequences=None, t
         # 4. Keyboard Navigation
         key = cv2.waitKey(0) & 0xFF
         
-        if key == ord('d') or key == 83: # Next
+        if key == ord('d'): # Next
             if frame_idx < total_frames - frame_interval:
                 frame_idx += frame_interval
                 
-        elif key == ord('a') or key == 81: # Previous
+        elif key == ord('a'): # Previous
             if frame_idx > frame_interval:
                 frame_idx -= frame_interval
                 
@@ -195,7 +209,7 @@ def RunApp(video_path, inference_path, output_window, fps, bad_sequences=None, t
             trans_idx = key - ord('0')
             if trans_idx < len(transformations):
                 active_transformations[trans_idx] = not active_transformations[trans_idx]
-                print(f"Transformation [{trans_idx}] toggled: {active_transformations[trans_idx]}")
+                print(f"Fallback Level [{trans_idx}] toggled: {active_transformations[trans_idx]}")
     
     cap.release()
     cv2.destroyAllWindows()
