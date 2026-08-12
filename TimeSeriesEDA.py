@@ -967,7 +967,8 @@ model_basenames = ["260502_198_402_237x",
                    "260729_198_199x_234x_237x_238x_274x_400x_402x_424x_483x",
                    "260730_198_199x_234x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x",
                    "260730_198_199x_234x_237x_238x_274x_400x_402x_419x_421x_424x_483x",
-                   "260731_198_199x_234x_235x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x"]
+                   "260731_198_199x_234x_235x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x",
+                   "260731_198_199x_234x_235x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x_occin"]
 #260731_198_199x_234x_235x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x_occin
 label_paths = [rf"C:\Users\cns-th-lab\TannerVidsRenamed\{rat}\Videos\predictions\{model_basename}"
                for rat in active_rats
@@ -1343,6 +1344,12 @@ node = "nose"
 node_idx = project_dict["node_names"].index(node)
 interpolated_sequences_node = interpolated_intervals[node]
 
+from scipy.ndimage import gaussian_filter1d
+smoothed_data_1 = gaussian_filter1d(sig_of_interest_post, 1, axis=0)
+smoothed_data_3 = gaussian_filter1d(sig_of_interest_post, 3, axis=0)
+smoothed_data_6 = gaussian_filter1d(sig_of_interest_post, 6, axis=0)
+smoothed_data_12 = gaussian_filter1d(sig_of_interest_post, 12, axis=0)
+
 pvsq.RunApp(
     video_path=first_video_row["vid_path"],
     tracks_coords=sig_of_interest_pre,
@@ -1351,9 +1358,15 @@ pvsq.RunApp(
     output_window=f"Cubic Interpolated Areas: {node}",
     fps=30,
     bad_sequences=interpolated_sequences_node,  # Pass the list here
-    transformations=[sig_of_interest_post],
+    fallbacks = [sig_of_interest_post],
+    transformations=[smoothed_data_1, smoothed_data_3, smoothed_data_6, smoothed_data_12]
 )
 
+#From visual inspection:
+#12 was leading a lot (as it was averaging movement that hadn't happened yet)
+#6 was also still leading considerably
+#3 was not leading except for very high acceleration areas and even then it was within reason
+#1 is practically not smoothed
 #%%%% Interpolate within a certain pixel limit
 def find_qualified_static_gaps(coords, max_flank_dist=50.0):
     """
@@ -1490,20 +1503,24 @@ training_videos = [f"mov_{sess}.mp4" for sess in training_sess_ids]
 test_sess_ids = [117512, 116543, 124771, 125171, 119187, 119974, 119234, 
                  124979, 124622, 129126, 129176, 129201, 129178, 129273]
 test_videos = [f"mov_{sess}.mp4" for sess in test_sess_ids]
-
+#%%
 def generate_metric_table(vid_list, model_simple_name_list, metric_type = "prop_nan"):
     num_rats_in_model = []
     for model in model_simple_name_list:
-        if "_occin" in model or "_port_model" in model:
-            raise ValueError("Function not built to handle additional modifier _occin / _port_model")
-        else:
-            #Format date_rat_rat.modeltype.n=?
-            model_count = os.path.basename(model).count("_")
-            print(model_count)
-            num_rats_in_model.append(model_count)
+        #Format date_rat_rat.modeltype.n=?
+        model_count = os.path.basename(model).count("_")
+        
+        #Current manual exceptions
+        if "_occin" in model :
+            model_count = model_count - 1
+        if "_port_model" in model:
+            model_count = model_count - 2
+        print(model_count)
+        num_rats_in_model.append(model_count)
     
     prop_nan_table = {"Node": [],
                       "Rat Count": [],
+                      "Model":[],
                       "Vid_Status": [],
                       "Value": [],
                       "Length": []}
@@ -1519,12 +1536,12 @@ def generate_metric_table(vid_list, model_simple_name_list, metric_type = "prop_
             #print(model)
             #print(video)
             model_mask = labels_df["model_name"] == model
-            #print(len(labels_df[model_mask]))
-            #print(labels_df[model_mask]["vid_path"])
+            print(len(labels_df[model_mask]))
+            print(labels_df[model_mask]["vid_path"])
             video_mask = labels_df["vid_path"].str.contains(video, na=False)
-            #print(len(labels_df[video_mask]))
-            #print(labels_df[video_mask]["vid_path"])
-            #print(labels_df[model_mask & video_mask]["vid_path"])
+            print(len(labels_df[video_mask]))
+            print(labels_df[video_mask]["vid_path"])
+            print(labels_df[model_mask & video_mask]["vid_path"])
             vid_row_tracks = labels_df[model_mask & video_mask]["tracks"]
             if len(vid_row_tracks) > 1:
                 raise ValueError("vid_row_tracks longer than expected and will not function right")
@@ -1547,6 +1564,7 @@ def generate_metric_table(vid_list, model_simple_name_list, metric_type = "prop_
                 prop_nan_table["Node"].append(node_names[n]) #TODO: Remove dependency on external value node_names
                 
                 prop_nan_table["Rat Count"].append(num_rats_in_model[m])
+                prop_nan_table["Model"].append(model)
                     
                 if metric_type == "prop_nan":
                     node_nan_mask = np.isnan(coords[:,n,:]).any(axis=1)
@@ -1592,6 +1610,8 @@ def plot_prop_nan_across_videos(prop_nan_table, vid_type=None):
     plt.show()
 
 #vid_list = [r"C:\Users\cns-th-lab\TannerVidsRenamed\198\Videos\mov_116498.mp4"]
+#plot_prop_nan_across_videos(generate_metric_table(vid_list, model_list))
+#%%
 model_list = ["260502_198_402_237x",
               "260504_198_199x_237x_402",
               "260523_198_199x_237x_238x_274x_400x_402x_424x_483x",
@@ -1600,11 +1620,53 @@ model_list = ["260502_198_402_237x",
               "260730_198_199x_234x_237x_238x_274x_400x_402x_419x_421x_424x_483x",
               "260730_198_199x_234x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x",
               "260731_198_199x_234x_235x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x"]
-#plot_prop_nan_across_videos(generate_metric_table(vid_list, model_list))
-plot_prop_nan_across_videos(generate_metric_table(test_videos + training_videos, model_list))
-plot_prop_nan_across_videos(generate_metric_table(test_videos + training_videos, model_list), vid_type="r_in_v_in")
-plot_prop_nan_across_videos(generate_metric_table(test_videos + training_videos, model_list), vid_type="r_in_v_out")
-plot_prop_nan_across_videos(generate_metric_table(test_videos + training_videos, model_list), vid_type="r_out_v_out")
+total_metric_table = generate_metric_table(test_videos + training_videos, model_list)
+plot_prop_nan_across_videos(total_metric_table)
+plot_prop_nan_across_videos(total_metric_table, vid_type="r_in_v_in")
+plot_prop_nan_across_videos(total_metric_table, vid_type="r_in_v_out")
+plot_prop_nan_across_videos(total_metric_table, vid_type ="r_out_v_out")
+
+#%%Occluded in analysis
+def plot_prop_nan_occ_v_all(prop_nan_table, vid_type=None):
+    df = pd.DataFrame(prop_nan_table)
+    print()
+    print("This is a new graph")
+    print(df.head())
+    
+    #Custom order manually set by model training methods
+    custom_order = model_list #TODO: Fix global dependency
+    
+    #Categories set as above regardless of type
+    node_prop_nan_by_node_ord_count = pd.CategoricalDtype(categories=custom_order, ordered=True)
+    
+    if vid_type is not None:
+        mask = df["Vid_Status"] == vid_type
+        df = df[mask]
+    
+    df["Model"] = df["Model"].astype(node_prop_nan_by_node_ord_count)
+    df["NaN_Count"] = df["Value"] * df["Length"]
+    
+    #TODO: CHECK LOGIC HERE
+    agg_df = df.groupby(["Node", "Model"], observed=False)[["NaN_Count", "Length"]].sum().reset_index()
+    agg_df["proper_avg_prop"] = agg_df["NaN_Count"] / agg_df["Length"]
+    #END CHECK LOGIC
+    
+    pivot_df = agg_df.pivot(index="Node", columns="Model", values = "proper_avg_prop")
+        
+    if vid_type == None:
+        pivot_df.plot(kind="bar", title="Aggregate Model Performance By Node Visible vs All Nodes", ylabel="Proportion NaNs")
+    else:
+        pivot_df.plot(kind="bar", title=f"Aggregate Model Performance On {vid_type} By Node Visible vs All Nodes", ylabel="Proportion NaNs")        
+    plt.show()
+
+#%%
+model_list = ["260731_198_199x_234x_235x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x",
+              "260731_198_199x_234x_235x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x_occin"]
+total_metric_table = generate_metric_table(test_videos + training_videos, model_list)
+
+plot_prop_nan_occ_v_all(total_metric_table)
+plot_prop_nan_occ_v_all(total_metric_table, vid_type="r_in_v_in")
+plot_prop_nan_occ_v_all(total_metric_table, vid_type="r_in_v_out")
 # %% Single vid angle and local position analysis
 # %%% Clean a video data
 def generate_clean_batches(local_coords_param):

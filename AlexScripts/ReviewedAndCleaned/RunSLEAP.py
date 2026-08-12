@@ -157,7 +157,7 @@ def slp_to_analysis_h5(slp_path, h5_path):
     except subprocess.CalledProcessError as e:
         print(e)
     return h5_path
-#%% Main execiton
+#%% Main execution
 #%%% Select new videos by directory
 vid_par_dir = r"C:\Users\cns-th-lab\TannerVidsRenamed"
 vid_folders = [r"C:\Users\cns-th-lab\TannerVidsRenamed\198\Videos",
@@ -183,6 +183,8 @@ print("Current videos from directories:", curr_vids)
 curr_vids = []
 training_vid_paths = []
 test_vid_paths = []
+training_videos = []
+#%%
 training_videos = ["mov_129089.mp4",
                    "mov_129117.mp4",
                    "mov_129104.mp4",
@@ -210,7 +212,16 @@ for vid_folder in vid_folders:
     #Add test video
     test_video = [video for video in folder_vids if os.path.basename(video) in test_videos]
     curr_vids = curr_vids + training_video
-    
+#%% Add all by session id
+sess_ids = [129089, 129117, 129104, 129096, 129081, 124606, 124605, 
+            119009, 119000, 118992, 124589, 116507, 124598, 116498,
+            117512, 116543, 124771, 125171, 119187, 119974, 119234, 
+            124979, 124622, 129126, 129176, 129201, 129178, 129273]
+all_video_shortnames = [f"mov_{sess}.mp4" for sess in sess_ids]
+for vid_folder in vid_folders:
+    folder_vids = get_file_paths(vid_folder, ".mp4")
+    all_videos = [video for video in folder_vids if os.path.basename(video) in all_video_shortnames]
+    curr_vids = curr_vids + all_videos
 #%% Randomly generate test_videos while adding training videos
 num_rand_vids = 1
 for vid_folder in vid_folders:
@@ -267,10 +278,17 @@ if len(model_write_paths) != len(model_locations):
 
 #%% Run inference and convert to h5 files
 for m_idx in range(len(model_write_paths)):
+    if m_idx == 9:
+        print(model_write_paths)
     run_inference(curr_vids, model_write_paths[m_idx], model_locations[m_idx])
     for file in model_write_paths[m_idx]:
         root, ext = os.path.splitext(file)
         h5_path_name = f"{root}.h5"
+        if m_idx == 9:
+            print(root)
+            print(ext)
+            print(h5_path_name)
+            print()
         slp_to_analysis_h5(file, h5_path_name)
 #%% Convertion to analysis h5 files (DEPRACATED)
 

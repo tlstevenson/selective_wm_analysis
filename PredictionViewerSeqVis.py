@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-Updated Prediction Viewer (Fallback Hierarchy)
+Updated Prediction Viewer (Fallback & Transformation Hierarchy)
 """
 import cv2
 import numpy as np
 
-def RunApp(video_path, tracks_coords, node_names, scores, output_window, fps, bad_sequences=None, transformations=None):
+def RunApp(video_path, tracks_coords, node_names, scores, output_window, fps, bad_sequences=None, fallbacks=None, transformations=None):
     """
     Args:
         video_path: Path to the video file.
@@ -22,11 +22,16 @@ def RunApp(video_path, tracks_coords, node_names, scores, output_window, fps, ba
         
         bad_sequences: A list of tuples containing (start_frame, end_frame).
         
-        transformations: A list of numpy arrays (frames, nodes, 2, 1) or (frames, nodes, 2)
-                         representing the time series to overlay.
+        fallbacks: A list of numpy arrays representing node interpolation 
+                   that is not present in the raw data.
+                   
+        transformations: A list of numpy arrays representing the time series 
+                         to overlay regardless of raw/fallback status.
     """
     if bad_sequences is None:
         bad_sequences = []
+    if fallbacks is None:
+        fallbacks = []
     if transformations is None:
         transformations = []
         
@@ -37,11 +42,12 @@ def RunApp(video_path, tracks_coords, node_names, scores, output_window, fps, ba
     frame_interval = 1
     seq_idx = -1 
     
-    # State tracker for which transformations are currently visible (can still be toggled)
-    active_transformations = [True] * len(transformations) # Default to True so fallbacks work immediately
+    # State trackers for visibility
+    active_fallbacks = [True] * len(fallbacks)
+    active_transformations = [True] * len(transformations)
     
-    # Pre-defined list of distinct BGR colors for up to 10 transformations
-    trans_colors = [
+    # Pre-defined list of distinct BGR colors 
+    palette = [
         (255, 0, 0),    # Blue
         (0, 255, 255),  # Yellow
         (255, 0, 255),  # Magenta
@@ -62,12 +68,18 @@ def RunApp(video_path, tracks_coords, node_names, scores, output_window, fps, ba
     print("[S]               : Jump to specific Second")
     print("[N]               : Jump to Next Sequence")
     print("[P]               : Jump to Previous Sequence")
+    print("[T]               : Toggle a Transformation overlay")
     print("[Q]               : Quit")
     
-    if len(transformations) > 0:
-        print("\n--- Fallback Transformations ---")
-        for i in range(min(len(transformations), 10)):
+    if len(fallbacks) > 0:
+        print("\n--- Fallback Toggles ---")
+        for i in range(min(len(fallbacks), 10)):
             print(f"[{i}] : Toggle Fallback Level {i} (Color index {i})")
+            
+    if len(transformations) > 0:
+        print("\n--- Transformations ---")
+        print(f"Loaded {len(transformations)} transformation overlays. Use [T] to toggle.")
+        
     print("----------------")
     
     while True:
@@ -88,7 +100,6 @@ def RunApp(video_path, tracks_coords, node_names, scores, output_window, fps, ba
             current_scores = []
             num_nodes = len(node_names)
     
-        # Iterate over each node and draw only the first valid coordinate found in the hierarchy
         for i in range(num_nodes):
             node_drawn = False
             
@@ -102,7 +113,6 @@ def RunApp(video_path, tracks_coords, node_names, scores, output_window, fps, ba
                     x, y = int(x), int(y)
                     cv2.circle(frame, center=(x, y), radius=5, color=(0, 255, 0), thickness=-1)
                     
-                    # Handle score indexing safely
                     score_val = current_scores[i][0] if isinstance(current_scores[i], (list, np.ndarray)) else current_scores[i]
                     cv2.putText(frame, f"{node_names[i]}: {round(score_val,2)}", (x + 8, y - 8), 
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 1)
@@ -110,33 +120,51 @@ def RunApp(video_path, tracks_coords, node_names, scores, output_window, fps, ba
             except IndexError:
                 pass 
                 
-            # 2. If Raw Tracking is invalid/missing, fallback to Transformations in order
+            # 2. If Raw Tracking is invalid/missing, fallback in order
             if not node_drawn:
-                for t_idx, trans_series in enumerate(transformations):
-                    if active_transformations[t_idx]:
+                for f_idx, fb_series in enumerate(fallbacks):
+                    if active_fallbacks[f_idx]:
                         try:
-                            curr_trans = trans_series[frame_idx]
-                            x, y = curr_trans[i, 0], curr_trans[i, 1]
+                            curr_fb = fb_series[frame_idx]
+                            x, y = curr_fb[i, 0], curr_fb[i, 1]
                             
-                            # Handle potential 4th dimension safely
                             if isinstance(x, np.ndarray):
                                 x, y = x[0], y[0]
                                 
                             if not np.isnan(x) and not np.isnan(y) and x > 0 and y > 0:
                                 x, y = int(x), int(y)
-                                color = trans_colors[t_idx % len(trans_colors)]
+                                color = palette[f_idx % len(palette)]
                                 cv2.circle(frame, center=(x, y), radius=5, color=color, thickness=-1)
                                 
-                                # Add the label but without a score (interpolations don't have scores usually)
                                 cv2.putText(frame, f"{node_names[i]}", (x + 8, y - 8), 
                                             cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1)
                                             
                                 node_drawn = True
-                                break # Stop searching! We found the first valid coordinate.
+                                break # Stop searching! We found the first valid fallback.
                         except IndexError:
                             pass
+                            
+            # 3. Independent Transformations (Drawn regardless of raw/fallback status)
+            for t_idx, trans_series in enumerate(transformations):
+                if active_transformations[t_idx]:
+                    try:
+                        curr_trans = trans_series[frame_idx]
+                        x, y = curr_trans[i, 0], curr_trans[i, 1]
+                        
+                        if isinstance(x, np.ndarray):
+                            x, y = x[0], y[0]
+                            
+                        if not np.isnan(x) and not np.isnan(y) and x > 0 and y > 0:
+                            x, y = int(x), int(y)
+                            
+                            # Shift the color slightly or use the same palette, drawn as a hollow square
+                            color = palette[(t_idx + 3) % len(palette)] 
+                            cv2.drawMarker(frame, position=(x, y), color=color, 
+                                           markerType=cv2.MARKER_SQUARE, markerSize=10, thickness=2)
+                    except IndexError:
+                        pass
     
-        # 3. Overlay frame, time, and sequence info
+        # 4. Overlay frame, time, and sequence info
         current_time = frame_idx / fps
         cv2.putText(frame, f"Frame: {frame_idx}/{total_frames - 1} | Time: {current_time:.2f}s", 
                     (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
@@ -148,24 +176,24 @@ def RunApp(video_path, tracks_coords, node_names, scores, output_window, fps, ba
 
         cv2.imshow(output_window, frame)
         
-        # 4. Keyboard Navigation
+        # 5. Keyboard Navigation
         key = cv2.waitKey(0) & 0xFF
         
-        if key == ord('d'): # Next
+        if key == ord('d'): 
             if frame_idx < total_frames - frame_interval:
                 frame_idx += frame_interval
                 
-        elif key == ord('a'): # Previous
+        elif key == ord('a'): 
             if frame_idx > frame_interval:
                 frame_idx -= frame_interval
                 
-        elif key == ord('n'): # NEXT SEQUENCE
+        elif key == ord('n'): 
             if len(bad_sequences) > 0:
                 seq_idx = (seq_idx + 1) % len(bad_sequences)
                 frame_idx = bad_sequences[seq_idx][0]
                 print(f"Jumped to Sequence {seq_idx + 1}: Frame {frame_idx}")
 
-        elif key == ord('p'): # PREVIOUS SEQUENCE
+        elif key == ord('p'): 
             if len(bad_sequences) > 0:
                 if seq_idx == -1: 
                     seq_idx = len(bad_sequences) - 1
@@ -201,15 +229,25 @@ def RunApp(video_path, tracks_coords, node_names, scores, output_window, fps, ba
             except ValueError:
                 pass
                 
-        elif key == ord('q'): # Quit
+        elif key == ord('t'):
+            if len(transformations) > 0:
+                try:
+                    t_idx = int(input(f"\nEnter Transformation index to toggle (0 to {len(transformations) - 1}): "))
+                    if 0 <= t_idx < len(transformations):
+                        active_transformations[t_idx] = not active_transformations[t_idx]
+                        print(f"Transformation [{t_idx}] toggled: {active_transformations[t_idx]}")
+                except ValueError:
+                    pass
+
+        elif key == ord('q'): 
             break
             
-        # Dynamically map keys '0' through '9' to the transformation list
+        # Dynamically map keys '0' through '9' to the fallback list
         elif ord('0') <= key <= ord('9'):
-            trans_idx = key - ord('0')
-            if trans_idx < len(transformations):
-                active_transformations[trans_idx] = not active_transformations[trans_idx]
-                print(f"Fallback Level [{trans_idx}] toggled: {active_transformations[trans_idx]}")
+            f_idx = key - ord('0')
+            if f_idx < len(fallbacks):
+                active_fallbacks[f_idx] = not active_fallbacks[f_idx]
+                print(f"Fallback Level [{f_idx}] toggled: {active_fallbacks[f_idx]}")
     
     cap.release()
     cv2.destroyAllWindows()
