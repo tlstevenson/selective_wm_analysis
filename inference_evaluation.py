@@ -21,6 +21,10 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import math
 
+import sleap_io as sio
+import sleap_nn
+#%%
+
 # --- Configuration ---
 VIDEO_PATH = ''#fsui.GetFile("Please select a video file")
 INFERENCE_PATH = fsui.GetFile("Please select the corresponding .h5 path")  # Or .csv
@@ -704,16 +708,24 @@ bin_vel_zs = analyze_velocity_outlier_zscores(all_node_velocity, vel_threshold=v
 #%% Purely model evaluation NOT evluation of inference
 import numpy as np
 import pandas as pd
-import matplotlib as mpl
+#from sleap_nn.evaluation import load_metrics, Evaluator
+
+#BAD PRACTICE
+import os
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+
+#from pathlib import Path
+import torch
+import sleap_nn
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sleap_nn.evaluation import load_metrics, Evaluator
-from pathlib import Path
-import sleap_nn
+import sleap_io as sio
+from IPython.display import display
+
 #%%% Path definitions
 
-model_path = r"C:\Users\cns-th-lab\SLEAP_Projects\models\260523_198_199x_237x_238x_274x_400x_402x_424x_483x.centered_instance.n=222"
-validation_metrics_path = r"C:\Users\cns-th-lab\SLEAP_Projects\models\260523_198_199x_237x_238x_274x_400x_402x_424x_483x.centered_instance.n=222\metrics.val.0.npz"
+model_path = r"C:\Users\cns-th-lab\SLEAP_Projects\models\260502_198_402_237x.centered_instance.n=92"
+validation_metrics_path = r"C:\Users\cns-th-lab\SLEAP_Projects\models\260502_198_402_237x.centered_instance.n=92\metrics.val.0.npz"
 
 #%%% Metrics loading
 metrics = sleap_nn.evaluation.load_metrics(validation_metrics_path)
@@ -725,7 +737,8 @@ print("Error distance (95%):", metrics["distance_metrics"]["p95"])
 
 #%%% Visualize localization error
 plt.figure(figsize=(6, 3), dpi=150, facecolor="w")
-sns.histplot(metrics["distance_metrics"]["dists"].flatten(), binrange=(0, 20), kde=True, kde_kws={"clip": (0, 20)}, stat="probability")
+max_error_dist = 200
+sns.histplot(metrics["distance_metrics"]["dists"].flatten(), binrange=(0, max_error_dist), kde=True, kde_kws={"clip": (0, max_error_dist)}, stat="probability")
 plt.xlabel("Localization error (px)");
 plt.show()
 
@@ -747,21 +760,131 @@ plt.show()
 print("mAP:", metrics["voc_metrics"]["oks_voc.mAP"])
 print("mAR:", metrics["voc_metrics"]["oks_voc.mAR"])
 
-#%%% Can generate more ground truth and reevaluate with the following
-from sleap_nn.predict import run_inference
-import sleap_io as sio
-from sleap_nn.evaluation import Evaluator
+#%%% Model Evaluation on Newest Labels
 
+#base_truth_loc must be a .pkg.slp
+base_truth_loc = r"C:\Users\cns-th-lab\SLEAP_Projects\merged_manual_labels_198_199x_234x_235x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x.pkg.slp"
 #Generate new prediction for ground truth
-new_ground_truth_labels = "test.pkg.slp" #Must be .pkg.slp to include images
-labels_gt = sio.load_slp(new_ground_truth_labels)
-labels_pr = run_inference(data_path=new_ground_truth_labels, model_paths=[model_path])
+model_pair_list = [[r"C:\Users\cns-th-lab\TannerVidsRenamed\models\260502_198_402_237x.centroid.n=92",
+                    r"C:\Users\cns-th-lab\TannerVidsRenamed\models\260502_198_402_237x.centered_instance.n=92"],
+                   [r"C:\Users\cns-th-lab\TannerVidsRenamed\models\260504_198_199x_237x_402.centroid.n=112",
+                    r"C:\Users\cns-th-lab\TannerVidsRenamed\models\260504_198_199x_237x_402.centered_instance.n=112"],
+                   [r"C:\Users\cns-th-lab\TannerVidsRenamed\models\260523_198_199x_237x_238x_274x_400x_402x_424x_483x.centroid.n=222",
+                    r"C:\Users\cns-th-lab\TannerVidsRenamed\models\260523_198_199x_237x_238x_274x_400x_402x_424x_483x.centered_instance.n=222"],
+                   [r"C:\Users\cns-th-lab\TannerVidsRenamed\models\260729_198_199x_234x_237x_238x_274x_400x_402x_424x_483x.centroid.n=243",
+                    r"C:\Users\cns-th-lab\TannerVidsRenamed\models\260729_198_199x_234x_237x_238x_274x_400x_402x_424x_483x.centered_instance.n=243"],
+                   [r"C:\Users\cns-th-lab\TannerVidsRenamed\models\260729_198_199x_234x_237x_238x_274x_400x_402x_419x_424x_483x.centroid.n=263",
+                    r"C:\Users\cns-th-lab\TannerVidsRenamed\models\260729_198_199x_234x_237x_238x_274x_400x_402x_419x_424x_483x.centered_instance.n=263"],
+                   [r"C:\Users\cns-th-lab\TannerVidsRenamed\models\260730_198_199x_234x_237x_238x_274x_400x_402x_419x_421x_424x_483x.centroid.n=283",
+                    r"C:\Users\cns-th-lab\TannerVidsRenamed\models\260730_198_199x_234x_237x_238x_274x_400x_402x_419x_421x_424x_483x.centered_instance.n=283"],
+                   [r"C:\Users\cns-th-lab\TannerVidsRenamed\models\260730_198_199x_234x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x.centroid.n=303",
+                    r"C:\Users\cns-th-lab\TannerVidsRenamed\models\260730_198_199x_234x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x.centered_instance.n=303"],
+                   [r"C:\Users\cns-th-lab\TannerVidsRenamed\models\260731_198_199x_234x_235x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x.centroid.n=323",
+                    r"C:\Users\cns-th-lab\TannerVidsRenamed\models\260731_198_199x_234x_235x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x.centered_instance.n=323"],
+                   [r"C:\Users\cns-th-lab\TannerVidsRenamed\models\260731_198_199x_234x_235x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x_occin.centroid.n=323",
+                    r"C:\Users\cns-th-lab\TannerVidsRenamed\models\260731_198_199x_234x_235x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x_occin.centered_instance.n=323"]
+                   ]
+r"""
+model_pair_list = [[r"C:\Users\cns-th-lab\TannerVidsRenamed\models\260731_198_199x_234x_235x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x.centroid.n=323",
+                    r"C:\Users\cns-th-lab\TannerVidsRenamed\models\260731_198_199x_234x_235x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x.centered_instance.n=323"],
+                   [r"C:\Users\cns-th-lab\TannerVidsRenamed\models\260731_198_199x_234x_235x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x_occin.centroid.n=323",
+                    r"C:\Users\cns-th-lab\TannerVidsRenamed\models\260731_198_199x_234x_235x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x_occin.centered_instance.n=323"]
+                   ]"""
 
-evals = Evaluator(labels_gt, labels_pr)
-metrics = evals.evaluate()
+model_eval_dict = {}
 
-print("Error distance (50%):", metrics["distance_metrics"]["p50"])
-print("Error distance (90%):", metrics["distance_metrics"]["p90"])
-print("Error distance (95%):", metrics["distance_metrics"]["p95"])
-print("mAP:", metrics["voc_metrics"]["oks_voc.mAP"])
-print("mAR:", metrics["voc_metrics"]["oks_voc.mAR"])
+for model_paths in model_pair_list:
+    simple_model_name = os.path.splitext(os.path.splitext(os.path.basename(model_paths[0]))[0])[0]
+    labels_gt = sio.load_slp(base_truth_loc)
+    labels_pr = sleap_nn.predict(base_truth_loc, model_paths=model_paths)
+    
+    evals = sleap_nn.evaluation.Evaluator(labels_gt, labels_pr)
+    metrics = evals.evaluate()
+    model_eval_dict[simple_model_name] = metrics
+
+    print(model_paths)
+    print("Error distance (50%):", metrics["distance_metrics"]["p50"])
+    print("Error distance (90%):", metrics["distance_metrics"]["p90"])
+    print("Error distance (95%):", metrics["distance_metrics"]["p95"])
+    print("mAP:", metrics["voc_metrics"]["oks_voc.mAP"])
+    print("mAR:", metrics["voc_metrics"]["oks_voc.mAR"])
+    print()
+    
+#%% Graphing
+mAP_fig, mAP_ax = plt.subplots()
+mAR_fig, mAR_ax = plt.subplots()
+OKS_fig, OKS_ax = plt.subplots()
+p50_fig, p50_ax = plt.subplots()
+p90_fig, p90_ax = plt.subplots()
+p95_fig, p95_ax = plt.subplots()
+model_rat_count = []
+mAP_list = []
+mAR_list = []
+error_p95 = []
+error_p90 = []
+error_p50 = []
+
+count_underscore = False #Must change to false if you use underscore modifiers
+for key in model_eval_dict:
+    if count_underscore:
+        model_rat_count.append(str(key.count("_")))
+        label_name = f'Rat Count: {model_rat_count[-1]}'
+    else:
+        model_rat_count.append(str(key))
+        label_name = f'Model {key}'
+        
+    metrics = model_eval_dict[key]
+    mAP_list.append(metrics["voc_metrics"]["oks_voc.mAP"])
+    mAR_list.append(metrics["voc_metrics"]["oks_voc.mAR"])
+    error_p95.append(metrics["distance_metrics"]["p95"])
+    error_p90.append(metrics["distance_metrics"]["p90"])
+    error_p50.append(metrics["distance_metrics"]["p50"])
+
+    oks_scores = metrics["voc_metrics"]["oks_voc.match_scores"].flatten()    
+    counts, bin_edges = np.histogram(oks_scores, bins=20, range=(0, 1), density=False)
+    
+    #Find the center point of each bin for the X-axis
+    bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+    
+    OKS_ax.plot(bin_centers, counts, label=label_name, linewidth=2)
+        
+# 1. Format OKS Figure
+OKS_ax.set_title("Object Keypoint Similarity (OKS) Distribution")
+OKS_ax.set_xlabel("Object Keypoint Similarity")
+OKS_ax.set_ylabel("Frequency")
+OKS_ax.legend()
+display(OKS_fig)
+
+# 2. Bar Charts for VOC Metrics
+mAP_ax.bar(model_rat_count, mAP_list, color='steelblue')
+mAP_ax.set_title("Mean Average Precision (mAP)")
+mAP_ax.set_xlabel("Model / Rat Count")
+mAP_ax.set_ylabel("mAP")
+display(mAP_fig)
+
+mAR_ax.bar(model_rat_count, mAR_list, color='mediumseagreen')
+mAR_ax.set_title("Mean Average Recall (mAR)")
+mAR_ax.set_xlabel("Model / Rat Count")
+mAR_ax.set_ylabel("mAR")
+display(mAR_fig)
+
+# 3. Bar Charts for Distance Error Metrics
+p50_ax.bar(model_rat_count, error_p50, color='lightcoral')
+p50_ax.set_title("Distance Error (p50)")
+p50_ax.set_xlabel("Model / Rat Count")
+p50_ax.set_ylabel("Error (pixels)")
+display(p50_fig)
+
+p90_ax.bar(model_rat_count, error_p90, color='indianred')
+p90_ax.set_title("Distance Error (p90)")
+p90_ax.set_xlabel("Model / Rat Count")
+p90_ax.set_ylabel("Error (pixels)")
+display(p90_fig)
+
+p95_ax.bar(model_rat_count, error_p95, color='firebrick')
+p95_ax.set_title("Distance Error (p95)")
+p95_ax.set_xlabel("Model / Rat Count")
+p95_ax.set_ylabel("Error (pixels)")
+display(p95_fig)
+    
+#%% Bar Charts

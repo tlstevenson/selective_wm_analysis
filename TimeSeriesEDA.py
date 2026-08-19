@@ -13,15 +13,15 @@ import os
 import matplotlib.pyplot as plt
 
 # Imports for model training
-from sklearn.ensemble import IsolationForest
-from sklearn.neighbors import KernelDensity
+#from sklearn.ensemble import IsolationForest
+#from sklearn.neighbors import KernelDensity
 
 # Imports for behavioral data
-from hankslab_db import db_access
-from hankslab_db import (
-    tonecatdelayresp_db as wm_db,
-    basicRLtasks_db as bandit_db,
-)
+#from hankslab_db import db_access
+#from hankslab_db import (
+#    tonecatdelayresp_db as wm_db,
+#    basicRLtasks_db as bandit_db,
+#)
 
 # Imports for combination thresholding
 from itertools import combinations
@@ -53,10 +53,14 @@ def get_h5_files_dir(label_dir_paths, sess_ids=[]):
     # Use specific sess_ids provided
     if len(sess_ids) > 0:
         for folder in label_dir_paths:
+            folder_had_h5 = 0
             for file in os.listdir(folder):
                 name, ext = os.path.splitext(file)
                 if ext == ".h5" and int(str.removeprefix(name, "mov_")) in sess_ids:
                     label_files.append(os.path.join(folder, file))
+                    folder_had_h5 = folder_had_h5 + 1
+            if folder_had_h5 < 2:
+                raise ValueError(f"Specified folder {folder} did not have two h5 files with specified sessids")
     # Get all h5 files
     else:
         label_files = [
@@ -123,24 +127,25 @@ def extract_h5_metadata(filepath):
             ],
             "vid_path":"", 
             "sess": "", 
-            "model_name": "",
-            "edge_inds": [[project_dict["node_names"].index(name_1),
-                           project_dict["node_names"].index(name_2)]
-                           for name_1, name_2 in project_dict["edge_names"]]
+            "model_name": ""
         }
+        labels_dict["edge_inds"] = [[labels_dict["node_names"].index(name_1),
+                       labels_dict["node_names"].index(name_2)]
+                       for name_1, name_2 in labels_dict["edge_names"]]
         # Get Video Location 
         # Videos/predictions/model_name/mov_sess.h5 -> Videos/mov_sess.mp4
-        vid_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(file))), os.path.basename(file))
+        vid_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(filepath))), os.path.basename(filepath))
         labels_dict["vid_path"] = os.path.splitext(vid_path)[0] + ".mp4"
 
         # Set Dictionary Values
         my_sess = str.removeprefix(
-            os.path.splitext(os.path.basename(file))[0], "mov_"
+            os.path.splitext(os.path.basename(filepath))[0], "mov_"
         )
         labels_dict["sess"] = my_sess
+        labels_dict["subj_id"] =  os.path.basename(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(filepath)))))
         
         #Set model_name by naming convention where predictions are in folder titled by model
-        labels_dict["model_name"] = os.path.basename(os.path.dirname(file))
+        labels_dict["model_name"] = os.path.basename(os.path.dirname(filepath))
         
         return labels_dict
 
@@ -175,6 +180,7 @@ def extract_h5_data(filepath, target_project_structure={}):
             
     Returns:
         A dictionary with all metadata with scores and tracks converted and attached"""
+    print(filepath)
     with h5py.File(filepath, "r") as f:
         data_dict = extract_h5_metadata(filepath)
         
@@ -187,15 +193,16 @@ def extract_h5_data(filepath, target_project_structure={}):
                 raise LookupError(
                     "Project structure not identical in edges and indexing will fail."
                 )
-
         
         # Get Prediction Scores
         # Raw shape: (tracks, nodes, frames) -> Transposed: (frames, nodes, tracks)
         data_dict["scores"] = np.transpose(f["point_scores"][:], (2, 1, 0))
+        print(np.shape(data_dict["scores"]))
 
         # Get Coordinates
         # Raw shape: (tracks, nodes, 2, frames) -> Transposed: (frames, nodes, 2, tracks)
         data_dict["tracks"] = np.transpose(f["tracks"][:])
+        print(np.shape(data_dict["tracks"]))
         
         return data_dict
     
@@ -373,6 +380,21 @@ def calc_velocity(coords):
     velocities = np.sqrt(dx**2 + dy**2)
     return np.squeeze(velocities)  # Removes the tracks dimension
 
+def calc_percent_missing(video_row, target_col="tracks"):
+    """Calculates the percentage of nodes missing in each frame.
+    
+    Args:
+        video_row (Dataframe.iloc[?]): a row with the key target_col (default "tracks")
+        target_col (string): name of the column used to calculate percent missing
+    
+    Returns:
+        An array (frames,) of percentages for the whole video
+    """
+    positions = np.squeeze(video_row[target_col])
+    is_nan = np.isnan(positions)
+    is_nan = np.any(is_nan, axis=2)
+    percentages = np.sum(is_nan, axis=1)/np.shape(is_nan)[1] * 100
+    return percentages
 
 def calculate_nan_prop_across_thresh(
     video_row, node_names, curr_thresh_methods, all_mask_key_dict
@@ -554,6 +576,36 @@ def extract_thresholded_sequences(convolved_data, thresholds):
     return results
 
 
+def extract_norm_node_metric(dataframe, dataframe_row, base_model_name="260502_198_402_237x", method="ratio"):
+    model_mask = dataframe["model_name"] == base_model_name
+    sess_mask = dataframe["sess"] == dataframe_row["sess"]
+    base_model_row = dataframe[model_mask & sess_mask]
+
+    base_model_nan_mask = np.isnan(base_model_row["tracks"].iloc[0])
+    curr_model_nan_mask = np.isnan(dataframe_row["tracks"])
+    
+    num_nan_base = np.sum(np.any(np.squeeze(base_model_nan_mask), axis=2), axis=0)
+    num_nan_curr = np.sum(np.any(np.squeeze(curr_model_nan_mask), axis=2), axis=0)
+    print(num_nan_base)
+    print(num_nan_curr)
+    print()
+    
+    #Methods of combination
+    if method == "ratio":
+        node_stat = num_nan_curr / num_nan_base
+    if method == "ratio_delta":
+        node_stat = (num_nan_curr-num_nan_base) / num_nan_base
+    elif method == "delta":
+        node_stat = num_nan_curr - num_nan_base
+    elif method == "logit":
+        print("You've gone too far! Try something simpler")
+    
+    print(np.mean(node_stat))
+    print()
+    print()
+    return node_stat
+    
+
 # %% Masking and thresholding functions
 def apply_mask(data, mask, axes=None, fill_value=np.nan):
     """
@@ -568,35 +620,36 @@ def apply_mask(data, mask, axes=None, fill_value=np.nan):
         fill_value (float): The value to insert. Defaults to np.nan.
         
     Returns:
-        np.ndarray: A new array with the masked values replaced.
+        tuple: (The reshaped mask, A new array with the masked values replaced)
     """
-    if axes is None:
-        axes = range(0, len(np.shape(mask)))
-    
-    # Normalize negative axes (e.g., -1 becomes data.ndim - 1)
-    axes = [ax % data.ndim for ax in axes]
-    
-    # Validate that we have the correct number of axes mapped
-    if len(axes) != mask.ndim:
-        raise ValueError(
-            f"Number of specified axes ({len(axes)}) must match "
-            f"the number of dimensions in the mask ({mask.ndim})."
-        )
+    # Only reshape if specific axes were provided. Otherwise, assume the 
+    # mask is already shaped correctly to broadcast against data.
+    if axes is not None:
         
-    # Validate that the dimensions actually match the data's shape
-    for i, ax in enumerate(axes):
-        if mask.shape[i] != data.shape[ax]:
+        # Normalize negative axes (e.g., -1 becomes data.ndim - 1)
+        axes = [ax % data.ndim for ax in axes]
+        
+        # Validate that we have the correct number of axes mapped
+        if len(axes) != mask.ndim:
             raise ValueError(
-                f"Mask dimension {i} (size {mask.shape[i]}) does not match "
-                f"data axis {ax} (size {data.shape[ax]})."
+                f"Number of specified axes ({len(axes)}) must match "
+                f"the number of dimensions in the mask ({mask.ndim})."
             )
             
-    # Build the new shape: 1 for unspecified axes, mask.shape for specified axes
-    target_shape = [1] * data.ndim
-    for i, ax in enumerate(axes):
-        target_shape[ax] = mask.shape[i]
-            
-        # Reshape the mask so NumPy can broadcast it automatically
+        # Validate that the dimensions actually match the data's shape
+        for i, ax in enumerate(axes):
+            if mask.shape[i] != data.shape[ax]:
+                raise ValueError(
+                    f"Mask dimension {i} (size {mask.shape[i]}) does not match "
+                    f"data axis {ax} (size {data.shape[ax]})."
+                )
+                
+        # Build the new shape: 1 for unspecified axes, mask.shape for specified axes
+        target_shape = [1] * data.ndim
+        for i, ax in enumerate(axes):
+            target_shape[ax] = mask.shape[i]
+                
+        # OUTSIDE THE LOOP: Reshape the mask so NumPy can broadcast it automatically
         mask = mask.reshape(target_shape)
         
     # np.where safely handles the broadcasting and creates a new array
@@ -614,7 +667,11 @@ def thresholded_by_score(positions, scores, threshold):
 
     Returns:
         Thresholded positions in the same shape as input and NaN mask"""
+    print(np.shape(positions))
+    print(np.shape(scores))
+    print()
     mask = scores < threshold
+    print(np.shape(mask))
     mask, thresholded_positions = apply_mask(positions, mask, axes=[0,1,3]) #Auto x and y (2)
     return thresholded_positions, mask
 
@@ -1132,12 +1189,14 @@ model_basenames = ["260502_198_402_237x",
 label_paths = [rf"C:\Users\cns-th-lab\TannerVidsRenamed\{rat}\Videos\predictions\{model_basename}"
                for rat in active_rats
                for model_basename in model_basenames]
+print([label_path for label_path in label_paths if "260502_198_402_237x" in label_path])
 port_label_paths = [
     rf"C:\Users\cns-th-lab\TannerVidsRenamed\{rat}\Videos\predictions\260716_port_model"
     for rat in active_rats
 ]
 
 label_files = get_h5_files_dir(label_paths, sess_ids)
+print([os.path.basename(label_file) for label_file in label_files if "116498" in label_file])
 
 #%%%% Extract project wide data
 project_dict = extract_h5_metadata_w_port(label_files[0], port_label_paths)
@@ -1145,13 +1204,14 @@ project_dict = extract_h5_metadata_w_port(label_files[0], port_label_paths)
 labels_dict = {}
 
 for file in label_files:
-   file_data = extract_h5_data(file, target_project_structure=project_dict)
-   for key in file_data:
-       if key not in labels_dict:
-           print("WARNING!!! Adding new key. This is ok at the start but not in middle.")
-           labels_dict[key] = []
-       else:
-           labels_dict[key].append(file_data[key])
+    file_data = extract_h5_data(file, target_project_structure=project_dict)
+    for key in file_data:
+        if key not in labels_dict:
+            print("WARNING!!! Adding new key. This is ok at the start but not in middle.")
+            labels_dict[key] = []
+            labels_dict[key].append(file_data[key])
+        else:
+            labels_dict[key].append(file_data[key])
 
 #Crude check that all collumns added for all videos
 first_col_length = len(labels_dict[next(iter(labels_dict))])
@@ -1161,12 +1221,10 @@ for key in labels_dict:
 
 #Create the dataframe after checking shape
 labels_df = pd.DataFrame(labels_dict)
-labels_df = labels_df.set_index("sess")
 
 #%%%% Add NaN mask for raw data
 labels_df["raw_nan_mask"] = labels_df.apply(lambda row: np.isnan(row["tracks"]),
                                             axis=1)
-
 #%%%% Threshold node labels by prediction scores
 score_thresh = 0.5
 labels_df[["score_thresh_tracks", "score_nan_mask"]] = labels_df.apply(
@@ -1202,7 +1260,7 @@ labels_df["rotated_tracks"] = labels_df.apply(
     axis=1,
 )
 
-#%%%% Isolation Forest Thresholding
+#%%%% Isolation Forest Thresholding (ARBITRARY THRESHOLD)
 labels_df[["iso_thresh_tracks", "iso_nan_mask"]] = labels_df.apply(
     lambda row: calculate_node_outliers(
         row["rotated_tracks"], method="iso", contamination=0.1
@@ -1552,13 +1610,7 @@ pvsq.RunApp(video_path=r"C:\Users\cns-th-lab\TannerVidsRenamed\198\Videos\mov_11
             output_window = "View Smoothing",
             transformations=[smoothed_data_3])
 #%% Presentation Graphs 8/21
-#%%% Proportion of NaNs across Models
-
-prop_nan_table = {"Node": [],
-                  "Model": [],
-                  "Vid_Status": [],
-                  "Value": []}
-
+#%%% Setup test and trining
 curr_vids = []
 training_vid_paths = []
 test_vid_paths = []
@@ -1569,8 +1621,221 @@ training_videos = [f"mov_{sess}.mp4" for sess in training_sess_ids]
 test_sess_ids = [117512, 116543, 124771, 125171, 119187, 119974, 119234, 
                  124979, 124622, 129126, 129176, 129201, 129178, 129273]
 test_videos = [f"mov_{sess}.mp4" for sess in test_sess_ids]
+
+#%%% Skeleton Level
+#%%%% 5 Num Summary Node Scores
+def get_five_num_distr(row):
+    scores = np.squeeze(row["scores"]) #frames x nodes x 
+    return [np.percentile(scores, 0, axis=1), np.percentile(scores, 25,axis=1), np.percentile(scores, 50,axis=1), np.percentile(scores,75,axis=1), np.percentile(scores,100,axis=1)]    
+labels_df["five_num"] = labels_df.apply(lambda row: get_five_num_distr(row), axis=1)
+print(np.shape(labels_df["five_num"].iloc[0][0]))
+
+#%%%% 
+from IPython.display import display
+
+quartile_names = [
+    '0th Percentile (Min)', 
+    '25th Percentile', 
+    '50th Percentile (Median)', 
+    '75th Percentile', 
+    '100th Percentile (Max)'
+]
+
+# Loop through the 5 indices of the lists in the 'five_num' column
+for i in range(5):
+    fig, ax = plt.subplots(figsize=(8, 6))
+    
+    data_to_plot = []
+    model_labels = []
+    
+    # Group by model_name to gather the data
+    for model_name, group in labels_df.groupby('model_name'):
+        # Extract the i-th array from the 'five_num' list for this model
+        # np.concatenate ensures it works even if a model spans multiple rows
+        extracted_arrays = [row[i] for row in group['five_num']]
+        combined_model_data = np.concatenate(extracted_arrays)
+        
+        clean_data = combined_model_data[~np.isnan(combined_model_data)]
+        if len(clean_data)>0:
+            data_to_plot.append(clean_data)
+            model_labels.append(model_name)
+        else:
+            print(f"Warning: {model_name} has no valid data for quartile index {i}")
+        
+    # Generate the boxplot for the i-th quartile
+    print(data_to_plot)
+    box = ax.boxplot(data_to_plot, patch_artist=True)
+    
+    # Styling the boxes
+    for patch in box['boxes']:
+        patch.set_facecolor('#a1c9f4')
+        patch.set_edgecolor('black')
+        patch.set_linewidth(1.2)
+        
+    for median in box['medians']:
+        median.set_color('red')
+        median.set_linewidth(1.5)
+        
+    # Set labels, titles, and grid
+    ax.set_xticks(range(1, len(model_labels) + 1))
+    ax.set_xticklabels(model_labels)
+    ax.set_title(f'{quartile_names[i]} Frame Predicition Score Distribution by Model')
+    ax.set_ylabel('Score')
+    ax.set_xlabel('Model Name')
+    
+    ax.yaxis.grid(True, linestyle='--', alpha=0.6)
+    ax.set_axisbelow(True) 
+    
+    plt.tight_layout()
+    display(fig)
+#%%%% Average Scores
+def get_avg_score(row):
+    scores = np.squeeze(row["scores"]) #frames x nodes x 
+    return np.mean(scores, axis=1)
+labels_df["avg_score"] = labels_df.apply(lambda row: get_avg_score(row), axis=1)
+
+#%%%% 
+# Loop through the 5 indices of the lists in the 'five_num' column
+fig, ax = plt.subplots(figsize=(8, 6))
+
+data_to_plot = []
+model_labels = []
+
+# Group by model_name to gather the data
+for model_name, group in labels_df.groupby('model_name'):
+    # Extract the i-th array from the 'five_num' list for this model
+    # np.concatenate ensures it works even if a model spans multiple rows
+    combined_model_data = np.concatenate(list(group['avg_score']))    
+    clean_data = combined_model_data[~np.isnan(combined_model_data)]
+    if len(clean_data)>0:
+        data_to_plot.append(clean_data)
+        model_labels.append(model_name)
+    else:
+        print(f"Warning: {model_name} has no valid data for quartile index {i}")
+    
+# Generate the boxplot for the average frame scores
+print(data_to_plot)
+box = ax.boxplot(data_to_plot, patch_artist=True)
+
+# Styling the boxes
+for patch in box['boxes']:
+    patch.set_facecolor('#a1c9f4')
+    patch.set_edgecolor('black')
+    patch.set_linewidth(1.2)
+    
+for median in box['medians']:
+    median.set_color('red')
+    median.set_linewidth(1.5)
+    
+# Set labels, titles, and grid
+ax.set_xticks(range(1, len(model_labels) + 1))
+ax.set_xticklabels(model_labels)
+ax.set_title(f'Average Frame Prediction Score Distribution by Model')
+ax.set_ylabel('Score')
+ax.set_xlabel('Model Name')
+
+ax.yaxis.grid(True, linestyle='--', alpha=0.6)
+ax.set_axisbelow(True) 
+
+plt.tight_layout()
+display(fig)
+#%% What percentage of the nodes is being predicted
+
+labels_df["percent_missing"] = labels_df.apply(lambda row: calc_percent_missing(row), axis=1)
+#%%%% Heatmap 15 categories (NaN Percent)
+from matplotlib.colors import LogNorm
+num_nodes = len(project_dict["node_names"])
+
+# Generate explicit labels for all 15 discrete possibilities (0 to 14)
+# Example format: "2/14\n(14.3%)"
+x_labels = [f"{i}/{num_nodes}\n({(i/num_nodes)*100:.1f}%)" for i in range(num_nodes + 1)]
+
+heatmap_data = []
+model_labels = []
+
+# Gather and tally the discrete data
+for model_name, group in labels_df.groupby('model_name'):
+    
+    # Extract the arrays (replace 'nan_pct' with your actual column name)
+    extracted_arrays = list(group['percent_missing'])
+    combined_nan_data = np.concatenate(extracted_arrays)
+    
+    # Safely convert the float percentages back to absolute node counts (0 to 14)
+    # If your column already holds the raw count of NaNs, skip the math and just use .astype(int)
+    nan_counts_per_frame = np.round((combined_nan_data / 100) * num_nodes).astype(int)
+    
+    # bincount perfectly tallies discrete integer arrays. 
+    # minlength=15 ensures we always get 15 columns even if a model never hits 14/14 NaNs.
+    counts = np.bincount(nan_counts_per_frame, minlength=num_nodes + 1)
+    
+    heatmap_data.append(counts)
+    model_labels.append(model_name)
+
+# Convert to 2D matrix
+tiny_number=.1
+heatmap_matrix = np.array(heatmap_data) + tiny_number
+
+# Generate the Matplotlib Heatmap
+fig, ax = plt.subplots(figsize=(14, 6)) # Widened to fit all 15 labels
+
+cax = ax.imshow(heatmap_matrix, cmap='viridis', aspect='auto', norm=LogNorm(vmin=1))
+
+cbar = fig.colorbar(cax)
+cbar.set_label('Number of Frames', rotation=270, labelpad=15)
+
+# Configure axes
+ax.set_yticks(np.arange(len(model_labels)))
+ax.set_yticklabels(model_labels)
+
+ax.set_xticks(np.arange(len(x_labels)))
+ax.set_xticklabels(x_labels, rotation=45, ha='right')
+
+# Annotate each cell
+threshold = heatmap_matrix.max() / 2
+for i in range(len(model_labels)):
+    for j in range(len(x_labels)):
+        # Only print the number if the count is greater than 0 to keep the grid clean
+        if heatmap_matrix[i, j] > 0:
+            text_color = "white" if heatmap_matrix[i, j] < threshold else "black"
+            ax.text(j, i, int(heatmap_matrix[i, j]),
+                    ha="center", va="center", color=text_color, fontsize=6)
+
+ax.set_title('Frame Counts by Missing Nodes and Model')
+ax.set_xlabel('Missing Nodes / Total Nodes')
+ax.set_ylabel('Model Name')
+
+plt.tight_layout()
+display(fig)
+#%%% Node Level
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 #%%
-def generate_metric_table(vid_list, model_simple_name_list, metric_type = "prop_nan"):
+#TODO: Might want to isolate some repetitive behavior into functions
+def generate_metric_table(vid_list, model_simple_name_list):
     num_rats_in_model = []
     for model in model_simple_name_list:
         #Format date_rat_rat.modeltype.n=?
@@ -1584,11 +1849,12 @@ def generate_metric_table(vid_list, model_simple_name_list, metric_type = "prop_
         print(model_count)
         num_rats_in_model.append(model_count)
     
-    prop_nan_table = {"Node": [],
+    metric_table = {"Node": [],
                       "Rat Count": [],
                       "Model":[],
                       "Vid_Status": [],
-                      "Value": [],
+                      "PropNaN": [],
+                      "AvgScore": [],
                       "Length": []}
     
     for v, video in enumerate(vid_list):
@@ -1608,40 +1874,46 @@ def generate_metric_table(vid_list, model_simple_name_list, metric_type = "prop_
             print(len(labels_df[video_mask]))
             print(labels_df[video_mask]["vid_path"])
             print(labels_df[model_mask & video_mask]["vid_path"])
-            vid_row_tracks = labels_df[model_mask & video_mask]["tracks"]
+            vid_row = labels_df[model_mask & video_mask]
+            vid_row_tracks = vid_row["score_thresh_tracks"]
+            vid_row_scores = vid_row["scores"]
             if len(vid_row_tracks) > 1:
                 raise ValueError("vid_row_tracks longer than expected and will not function right")
-            coords = np.squeeze(labels_df[model_mask & video_mask]["tracks"].iloc[0])
+            print(len(vid_row_tracks))
+            print(vid_row_tracks)
+            coords = np.squeeze(vid_row_tracks.iloc[0])
             #print(np.shape(coords))
             for n in range(np.shape(coords)[1]):
                 #Calculate video status
                 if rat_name in model:
                     if np.any([str(training_sess_id) in video for training_sess_id in training_sess_ids]):
                         #Add it to r in v in
-                        prop_nan_table["Vid_Status"].append("r_in_v_in")
+                        metric_table["Vid_Status"].append("r_in_v_in")
                     else:
                         #Add it to r in v out
-                        prop_nan_table["Vid_Status"].append("r_in_v_out")
+                        metric_table["Vid_Status"].append("r_in_v_out")
                 else:
                     #Add it to r out v out
                     print("Added r_out_v_out rat")
-                    prop_nan_table["Vid_Status"].append("r_out_v_out")
+                    metric_table["Vid_Status"].append("r_out_v_out")
                 
-                prop_nan_table["Node"].append(node_names[n]) #TODO: Remove dependency on external value node_names
+                metric_table["Node"].append(vid_row["node_names"].iloc[0][n])
                 
-                prop_nan_table["Rat Count"].append(num_rats_in_model[m])
-                prop_nan_table["Model"].append(model)
+                metric_table["Rat Count"].append(num_rats_in_model[m])
+                metric_table["Model"].append(model)
                     
-                if metric_type == "prop_nan":
-                    node_nan_mask = np.isnan(coords[:,n,:]).any(axis=1)
-                    #print(np.shape(node_nan_mask))
-                    prop_nan_table["Value"].append(np.sum(node_nan_mask)/len(node_nan_mask))
-                    prop_nan_table["Length"].append(len(node_nan_mask))
+                node_nan_mask = np.isnan(coords[:,n,:]).any(axis=1)
+                #print(np.shape(node_nan_mask))
+                metric_table["PropNaN"].append(np.sum(node_nan_mask)/len(node_nan_mask))
+                metric_table["Length"].append(len(node_nan_mask))
+                
+                node_score_slice = vid_row_scores.iloc[0][:,n,0]
+                metric_table["AvgScore"].append(np.nansum(node_score_slice)/len(node_score_slice))
                     
-    return prop_nan_table
+    return metric_table
 
-def plot_prop_nan_across_videos(prop_nan_table, vid_type=None):
-    df = pd.DataFrame(prop_nan_table)
+def plot_metric_across_videos(metric_table, vid_type=None, target_metrics=["AvgScore", "PropNaN"]):
+    df = pd.DataFrame(metric_table)
     print()
     print("This is a new graph")
     print(df.head())
@@ -1653,28 +1925,37 @@ def plot_prop_nan_across_videos(prop_nan_table, vid_type=None):
         custom_order = [3, 4, 9, 10, 11, 12, 13, 14]
     
     #Categories set as above regardless of type
-    node_prop_nan_by_node_ord_count = pd.CategoricalDtype(categories=custom_order, ordered=True)
+    node_metric_by_node_ord_count = pd.CategoricalDtype(categories=custom_order, ordered=True)
     
     if vid_type is not None:
         mask = df["Vid_Status"] == vid_type
         df = df[mask]
     
-    df["Rat Count"] = df["Rat Count"].astype(node_prop_nan_by_node_ord_count)
-    df["NaN_Count"] = df["Value"] * df["Length"]
-    
-    #TODO: CHECK LOGIC HERE
-    agg_df = df.groupby(["Node", "Rat Count"], observed=False)[["NaN_Count", "Length"]].sum().reset_index()
-    agg_df["proper_avg_prop"] = agg_df["NaN_Count"] / agg_df["Length"]
-    #END CHECK LOGIC
-    
-    pivot_df = agg_df.pivot(index="Node", columns="Rat Count", values = "proper_avg_prop")
-        
-    if vid_type == None:
-        pivot_df.plot(kind="bar", title="Aggregate Model Performance By Node Across Models", ylabel="Proportion NaNs")
-    else:
-        pivot_df.plot(kind="bar", title=f"Aggregate Model Performance On {vid_type} By Node Across Models", ylabel="Proportion NaNs")        
-    plt.show()
-
+    df["Rat Count"] = df["Rat Count"].astype(node_metric_by_node_ord_count)
+    if "PropNaN" in target_metrics:
+        df["NaN_Count"] = df["PropNaN"] * df["Length"]
+        agg_df = df.groupby(["Node", "Rat Count"], observed=False)[["NaN_Count", "Length"]].sum().reset_index()
+        agg_df["proper_avg_prop"] = agg_df["NaN_Count"] / agg_df["Length"]
+        pivot_df = agg_df.pivot(index="Node", columns="Rat Count", values="proper_avg_prop")
+        if vid_type == None:
+            pivot_df.plot(kind="bar", title="Aggregate Model Performance By Node Across Models", ylabel="Proportion NaNs")
+        else:
+            pivot_df.plot(kind="bar", title=f"Aggregate Model Performance On {vid_type} By Node Across Models", ylabel="Proportion NaNs")   
+        plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+        plt.tight_layout() 
+        plt.show()
+    if "AvgScore" in target_metrics:
+        df["ScoreSum"] = df["AvgScore"] * df["Length"]
+        agg_df = df.groupby(["Node", "Rat Count"], observed=False)[["ScoreSum", "Length"]].sum().reset_index()
+        agg_df["proper_avg_score"] = agg_df["ScoreSum"] / agg_df["Length"]
+        pivot_df = agg_df.pivot(index="Node", columns="Rat Count", values="proper_avg_score")
+        if vid_type == None:
+            pivot_df.plot(kind="box", title="Aggregate Model Performance By Node Across Models", ylabel="Prediction Score")
+        else:
+            pivot_df.plot(kind="box", title=f"Aggregate Model Performance On {vid_type} By Node Across Models", ylabel="Prediction Score") 
+        plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+        plt.tight_layout() 
+        plt.show()
 #vid_list = [r"C:\Users\cns-th-lab\TannerVidsRenamed\198\Videos\mov_116498.mp4"]
 #plot_prop_nan_across_videos(generate_metric_table(vid_list, model_list))
 #%%
@@ -1685,16 +1966,19 @@ model_list = ["260502_198_402_237x",
               "260729_198_199x_234x_237x_238x_274x_400x_402x_419x_424x_483x",
               "260730_198_199x_234x_237x_238x_274x_400x_402x_419x_421x_424x_483x",
               "260730_198_199x_234x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x",
-              "260731_198_199x_234x_235x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x"]
+              "260731_198_199x_234x_235x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x",
+              "260731_198_199x_234x_235x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x_occin"]
 total_metric_table = generate_metric_table(test_videos + training_videos, model_list)
-plot_prop_nan_across_videos(total_metric_table)
-plot_prop_nan_across_videos(total_metric_table, vid_type="r_in_v_in")
-plot_prop_nan_across_videos(total_metric_table, vid_type="r_in_v_out")
-plot_prop_nan_across_videos(total_metric_table, vid_type ="r_out_v_out")
+#%%
+plot_metric_across_videos(total_metric_table)
+#%%
+plot_metric_across_videos(total_metric_table, vid_type="r_in_v_in")
+plot_metric_across_videos(total_metric_table, vid_type="r_in_v_out")
+plot_metric_across_videos(total_metric_table, vid_type ="r_out_v_out")
 
 #%%Occluded in analysis
-def plot_prop_nan_occ_v_all(prop_nan_table, vid_type=None):
-    df = pd.DataFrame(prop_nan_table)
+def plot_metric_occ_v_all(metric_table, vid_type=None):
+    df = pd.DataFrame(metric_table)
     print()
     print("This is a new graph")
     print(df.head())
@@ -1703,36 +1987,118 @@ def plot_prop_nan_occ_v_all(prop_nan_table, vid_type=None):
     custom_order = model_list #TODO: Fix global dependency
     
     #Categories set as above regardless of type
-    node_prop_nan_by_node_ord_count = pd.CategoricalDtype(categories=custom_order, ordered=True)
+    node_metric_by_node_ord_count = pd.CategoricalDtype(categories=custom_order, ordered=True)
     
     if vid_type is not None:
         mask = df["Vid_Status"] == vid_type
         df = df[mask]
     
-    df["Model"] = df["Model"].astype(node_prop_nan_by_node_ord_count)
-    df["NaN_Count"] = df["Value"] * df["Length"]
+    df["Model"] = df["Model"].astype(node_metric_by_node_ord_count)
+    df["ModelType"] = ["All Labeled (Scrubbing)" 
+                       if "_occin" in df["Model"].iloc[i] 
+                       else "Occluded Unlabeled"
+                       for i in range(len(df["Model"]))]
+    df["NaN_Count"] = df["PropNaN"] * df["Length"]
+    df["ScoreSum"] = df["AvgScore"] * df["Length"]
     
     #TODO: CHECK LOGIC HERE
-    agg_df = df.groupby(["Node", "Model"], observed=False)[["NaN_Count", "Length"]].sum().reset_index()
+    agg_df = df.groupby(["Node", "ModelType"], observed=False)[["NaN_Count", "Length"]].sum().reset_index()
     agg_df["proper_avg_prop"] = agg_df["NaN_Count"] / agg_df["Length"]
-    #END CHECK LOGIC
     
-    pivot_df = agg_df.pivot(index="Node", columns="Model", values = "proper_avg_prop")
-        
+    agg_df_s = df.groupby(["Node", "ModelType"], observed=False)[["ScoreSum", "Length"]].sum().reset_index()
+    agg_df_s["proper_avg_score"] = agg_df_s["ScoreSum"] / agg_df_s["Length"]
+    
+    pivot_df = agg_df.pivot(index="Node", columns="ModelType", values = "proper_avg_prop")
+    pivot_df_s = agg_df_s.pivot(index="Node", columns="ModelType", values="proper_avg_score")
+    
     if vid_type == None:
         pivot_df.plot(kind="bar", title="Aggregate Model Performance By Node Visible vs All Nodes", ylabel="Proportion NaNs")
+        pivot_df_s.plot(kind="bar", title="Aggregate Model Performance By Node Visible vs All Nodes", ylabel="Prediction Score")
+        
     else:
         pivot_df.plot(kind="bar", title=f"Aggregate Model Performance On {vid_type} By Node Visible vs All Nodes", ylabel="Proportion NaNs")        
+        pivot_df_s.plot(kind="bar", title=f"Aggregate Model Performance On {vid_type} By Node Across Models", ylabel="Prediction Score") 
+    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.tight_layout() 
     plt.show()
 
 #%%
 model_list = ["260731_198_199x_234x_235x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x",
               "260731_198_199x_234x_235x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x_occin"]
-total_metric_table = generate_metric_table(test_videos + training_videos, model_list)
+occ_metric_table = generate_metric_table(test_videos + training_videos, model_list)
+#%%
+plot_metric_occ_v_all(occ_metric_table)
+plot_metric_occ_v_all(occ_metric_table, vid_type="r_in_v_in")
+plot_metric_occ_v_all(occ_metric_table, vid_type="r_in_v_out")
 
-plot_prop_nan_occ_v_all(total_metric_table)
-plot_prop_nan_occ_v_all(total_metric_table, vid_type="r_in_v_in")
-plot_prop_nan_occ_v_all(total_metric_table, vid_type="r_in_v_out")
+#%% Where did one model predict well, while another model did not
+first_candidate_row = labels_df[labels_df["model_name"]==model_list[0]].iloc[0]
+second_row = labels_df[labels_df["sess"] == first_candidate_row["sess"] & labels_df["model_name"]==model_list[1]].iloc[0]
+intervals_predicted = find_interpolated_sequences(first_candidate_row["tracks"], second_row["tracks"])
+output_window="Model Comparison"
+fps=30
+pvsq.RunApp(first_candidate_row["vid_path"], 
+            first_candidate_row["tracks"], 
+            first_candidate_row["node_names"], 
+            first_candidate_row["scores"], 
+            output_window, fps)
+#%%
+def plot_percentage_missing_across_models(dataframe):
+    df = {}
+    df = pd.DataFrame(df)
+    # 1. Calculate the number of rats based on the underscore count
+    df['num_rats'] = dataframe['model_name'].str.count('_')
+    df['percent_missing'] = dataframe['percent_missing']
+    
+    # 2. "Explode" the list column so every percentage gets its own row
+    df_exploded = df.explode('percent_missing')
+    print(len(df_exploded))
+    
+    # 3. Ensure the exploded column is treated as a numeric float
+    df_exploded['percent_missing'] = pd.to_numeric(df_exploded['percent_missing'])
+    
+    # 4. Create the boxplot using pandas' built-in matplotlib wrapper
+    fig, ax = plt.subplots(figsize=(10, 6))
+    df_exploded.boxplot(
+        column='percent_missing', 
+        by='num_rats', 
+        ax=ax,
+        patch_artist=True, # Fills the boxes with color
+        medianprops=dict(color='black', linewidth=1.5)
+    )
+    
+    # 5. Format the plot
+    plt.title('Percentage of Missing Nodes vs. Number of Rats')
+    plt.suptitle('') # Pandas automatically adds a secondary title; this removes it for a cleaner look
+    plt.xlabel('Number of Rats (Underscore Count)')
+    plt.ylabel('Percent Missing')
+    
+    # Customize the grid
+    plt.grid(False) # Turn off default grid
+    plt.grid(axis='y', linestyle='--', alpha=0.7) # Add a cleaner horizontal grid
+    
+    plt.show()
+    
+plot_percentage_missing_across_models(labels_df)
+
+#%% Normalized node data investigation
+#%%%Plot boxplot of normalized ratio by node
+#%% Norm NaN ratios by video
+norm_method = "ratio"
+labels_df["skeleton_ratio"] = labels_df.apply(lambda row: extract_norm_node_metric(labels_df, row, method=norm_method),
+                                              axis=1)
+
+ratio_data_setup = np.zeros((len(labels_df), len(labels_df.iloc[0]["node_names"])))
+for i in range(len(labels_df)):
+    ratio_data_setup[i] = labels_df["skeleton_ratio"].iloc[i]
+    
+plt.boxplot(ratio_data_setup, labels=labels_df.iloc[0]["node_names"])
+plt.show()
+#%% Average across nodes and 
+labels_df["skeleton_ratio_avg"] = labels_df.apply(lambda row: np.mean(row["skeleton_ratio"]),
+                                              axis=1)
+labels_df.boxplot(column="skeleton_ratio_avg", by="subj_id",ylabel=norm_method)
+plt.xticks(rotation=90)
 # %% Single vid angle and local position analysis
 # %%% Clean a video data
 def generate_clean_batches(local_coords_param):
