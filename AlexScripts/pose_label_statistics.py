@@ -17,7 +17,7 @@ import math
 from scipy.ndimage import gaussian_filter
 import pandas as pd
 #%%Initial file reading and processing
-hdf5_file_paths = ["/Users/alex/Downloads/postsurgery_all_vid_bulky.012_mov_0013_r.analysis (1).h5"] #ADD FILEPATHS
+hdf5_file_paths = ["path_here"] #ADD FILEPATHS
 processed_dict_list = [0 for i in range(len(hdf5_file_paths))]
 file_labels = [0 for i in range(len(hdf5_file_paths))]
 locations = [0 for i in range(len(hdf5_file_paths))]

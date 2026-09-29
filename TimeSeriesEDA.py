@@ -1186,12 +1186,12 @@ model_basenames = ["260502_198_402_237x",
                    "260731_198_199x_234x_235x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x",
                    "260731_198_199x_234x_235x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x_occin"]
 #260731_198_199x_234x_235x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x_occin
-label_paths = [rf"C:\Users\cns-th-lab\TannerVidsRenamed\{rat}\Videos\predictions\{model_basename}"
+label_paths = ["dynamic_f_string_label_path"
                for rat in active_rats
                for model_basename in model_basenames]
 print([label_path for label_path in label_paths if "260502_198_402_237x" in label_path])
 port_label_paths = [
-    rf"C:\Users\cns-th-lab\TannerVidsRenamed\{rat}\Videos\predictions\260716_port_model"
+    "dynamic_f_string_port_label_path"
     for rat in active_rats
 ]
 
@@ -1603,7 +1603,7 @@ smooothed_data_1 = gaussian_filter1d(raw_coords, 1, axis=0)
 smooothed_data_3 = gaussian_filter1d(raw_coords, 3, axis=0)
 smooothed_data_6 = gaussian_filter1d(raw_coords, 6, axis=0)
 smooothed_data_12 = gaussian_filter1d(raw_coords, 12, axis=0)
-pvsq.RunApp(video_path=r"C:\Users\cns-th-lab\TannerVidsRenamed\198\Videos\mov_116498.mp4",
+pvsq.RunApp(video_path=r"vid_file_path",
             tracks_coords=raw_coords, 
             node_names=node_names, 
             scores=labels_df.iloc[0]["scores"], 
@@ -1614,12 +1614,10 @@ pvsq.RunApp(video_path=r"C:\Users\cns-th-lab\TannerVidsRenamed\198\Videos\mov_11
 curr_vids = []
 training_vid_paths = []
 test_vid_paths = []
-training_sess_ids = [129089, 129117, 129104, 129096, 129081, 124606, 124605, 
-                   119009, 119000, 118992, 124589, 116507, 124598, 116498]
+training_sess_ids = []
 training_videos = [f"mov_{sess}.mp4" for sess in training_sess_ids]
 
-test_sess_ids = [117512, 116543, 124771, 125171, 119187, 119974, 119234, 
-                 124979, 124622, 129126, 129176, 129201, 129178, 129273]
+test_sess_ids = []
 test_videos = [f"mov_{sess}.mp4" for sess in test_sess_ids]
 
 #%%% Skeleton Level
@@ -1994,8 +1992,6 @@ def plot_metric_across_videos(metric_table, vid_type=None, target_metrics=["AvgS
         plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
         plt.tight_layout() 
         plt.show()
-#vid_list = [r"C:\Users\cns-th-lab\TannerVidsRenamed\198\Videos\mov_116498.mp4"]
-#plot_prop_nan_across_videos(generate_metric_table(vid_list, model_list))
 #%%
 model_list = ["260502_198_402_237x",
               "260504_198_199x_237x_402",
@@ -2778,7 +2774,6 @@ import init
 from sys_neuro_tools import doric_utils as du
 
 active_sess_vid_doric = (
-    r"C:\Users\cns-th-lab\TannerVidsRenamed\198\Videos\mov_116498.doric"
 )
 du.h5print(active_sess_vid_doric)
 time_in, time_in_info = du.h5read(

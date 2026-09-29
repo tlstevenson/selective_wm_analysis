@@ -724,8 +724,8 @@ from IPython.display import display
 
 #%%% Path definitions
 
-model_path = r"C:\Users\cns-th-lab\SLEAP_Projects\models\260502_198_402_237x.centered_instance.n=92"
-validation_metrics_path = r"C:\Users\cns-th-lab\SLEAP_Projects\models\260502_198_402_237x.centered_instance.n=92\metrics.val.0.npz"
+model_path = r"model_path"
+validation_metrics_path = r"metrics_path.npz"
 
 #%%% Metrics loading
 metrics = sleap_nn.evaluation.load_metrics(validation_metrics_path)
@@ -765,33 +765,9 @@ print("mAR:", metrics["voc_metrics"]["oks_voc.mAR"])
 #base_truth_loc must be a .pkg.slp
 #base_truth_loc = r"C:\Users\cns-th-lab\SLEAP_Projects\merged_manual_labels_198_199x_234x_235x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x.pkg.slp"
 #Generate new prediction for ground truth
-base_truth_loc = r"C:/Users/cns-th-lab/SLEAP_Projects/merged_manual_labels_198_199x_234x_235x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x_occin.pkg.slp"
-model_pair_list = [[r"C:\Users\cns-th-lab\TannerVidsRenamed\models\260502_198_402_237x.centroid.n=92",
-                    r"C:\Users\cns-th-lab\TannerVidsRenamed\models\260502_198_402_237x.centered_instance.n=92"],
-                   [r"C:\Users\cns-th-lab\TannerVidsRenamed\models\260504_198_199x_237x_402.centroid.n=112",
-                    r"C:\Users\cns-th-lab\TannerVidsRenamed\models\260504_198_199x_237x_402.centered_instance.n=112"],
-                   [r"C:\Users\cns-th-lab\TannerVidsRenamed\models\260523_198_199x_237x_238x_274x_400x_402x_424x_483x.centroid.n=222",
-                    r"C:\Users\cns-th-lab\TannerVidsRenamed\models\260523_198_199x_237x_238x_274x_400x_402x_424x_483x.centered_instance.n=222"],
-                   [r"C:\Users\cns-th-lab\TannerVidsRenamed\models\260729_198_199x_234x_237x_238x_274x_400x_402x_424x_483x.centroid.n=243",
-                    r"C:\Users\cns-th-lab\TannerVidsRenamed\models\260729_198_199x_234x_237x_238x_274x_400x_402x_424x_483x.centered_instance.n=243"],
-                   [r"C:\Users\cns-th-lab\TannerVidsRenamed\models\260729_198_199x_234x_237x_238x_274x_400x_402x_419x_424x_483x.centroid.n=263",
-                    r"C:\Users\cns-th-lab\TannerVidsRenamed\models\260729_198_199x_234x_237x_238x_274x_400x_402x_419x_424x_483x.centered_instance.n=263"],
-                   [r"C:\Users\cns-th-lab\TannerVidsRenamed\models\260730_198_199x_234x_237x_238x_274x_400x_402x_419x_421x_424x_483x.centroid.n=283",
-                    r"C:\Users\cns-th-lab\TannerVidsRenamed\models\260730_198_199x_234x_237x_238x_274x_400x_402x_419x_421x_424x_483x.centered_instance.n=283"],
-                   [r"C:\Users\cns-th-lab\TannerVidsRenamed\models\260730_198_199x_234x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x.centroid.n=303",
-                    r"C:\Users\cns-th-lab\TannerVidsRenamed\models\260730_198_199x_234x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x.centered_instance.n=303"],
-                   [r"C:\Users\cns-th-lab\TannerVidsRenamed\models\260731_198_199x_234x_235x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x.centroid.n=323",
-                    r"C:\Users\cns-th-lab\TannerVidsRenamed\models\260731_198_199x_234x_235x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x.centered_instance.n=323"],
-                   [r"C:\Users\cns-th-lab\TannerVidsRenamed\models\260731_198_199x_234x_235x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x_occin.centroid.n=323",
-                    r"C:\Users\cns-th-lab\TannerVidsRenamed\models\260731_198_199x_234x_235x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x_occin.centered_instance.n=323"]
-                   ]
-r"""
-model_pair_list = [[r"C:\Users\cns-th-lab\TannerVidsRenamed\models\260731_198_199x_234x_235x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x.centroid.n=323",
-                    r"C:\Users\cns-th-lab\TannerVidsRenamed\models\260731_198_199x_234x_235x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x.centered_instance.n=323"],
-                   [r"C:\Users\cns-th-lab\TannerVidsRenamed\models\260731_198_199x_234x_235x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x_occin.centroid.n=323",
-                    r"C:\Users\cns-th-lab\TannerVidsRenamed\models\260731_198_199x_234x_235x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x_occin.centered_instance.n=323"]
-                   ]"""
-
+base_truth_loc = r"base_truth_label_path.pkg.slp"
+model_pair_list = [[r"centroid_path",
+                    r"centered_instance_path"]]
 model_eval_dict = {}
 
 for model_paths in model_pair_list:

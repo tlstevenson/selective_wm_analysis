@@ -31,55 +31,8 @@ def slp_to_analysis_h5(slp_path, h5_path):
 # Define file paths and create analysis h5s directly into a DataFrame
 data = [
     # Model 198_402
-    ["198_402", 198, "in", r"C:/Users/cns-th-lab/SLEAP_Labels_198_402/198/Videos/198.2025-07-28.mov_0001.proj.slp", ""],
-    ["198_402", 198, "out", r"C:\Users\cns-th-lab\SLEAP_Labels_198_402\198\Videos\198.2025-08-23.mov_0014.proj.slp", ""],
-    ["198_402", 199, "out", r"C:\Users\cns-th-lab\SLEAP_Labels_198_402\199\Videos\199.2025-07-28.mov_0001.proj.slp", ""],
-    ["198_402", 199, "out", r"C:\Users\cns-th-lab\SLEAP_Labels_198_402\199\Videos\199.2025-08-23.mov_0014.proj.slp", ""],
-    ["198_402", 237, "out", r"C:\Users\cns-th-lab\SLEAP_Labels_198_402\237\Videos\237.2026-03-31.mov_0001.proj.slp", ""],
-    ["198_402", 237, "out", r"C:\Users\cns-th-lab\SLEAP_Labels_198_402\237\Videos\237.2026-04-03.mov_0004.proj.slp", ""],
-    ["198_402", 238, "out", r"C:\Users\cns-th-lab\SLEAP_Labels_198_402\238\Videos\238.2026-03-31.mov_0001.proj.slp", ""],
-    ["198_402", 238, "out", r"C:\Users\cns-th-lab\SLEAP_Labels_198_402\238\Videos\238.2026-04-03.mov_0004.proj.slp", ""],
-
-    # Model 198_237x_402
-    ["198_237x_402", 198, "in", r"C:\Users\cns-th-lab\SLEAP_Labels_198_237x_402\198\Videos\198.2025-07-28.mov_0001.proj.slp", ""],
-    ["198_237x_402", 198, "out", r"C:\Users\cns-th-lab\SLEAP_Labels_198_237x_402\198\Videos\198.2025-08-23.mov_0014.proj.slp", ""],
-    ["198_237x_402", 199, "out", r"C:\Users\cns-th-lab\SLEAP_Labels_198_237x_402\199\Videos\199.2025-07-28.mov_0001.proj.slp", ""],
-    ["198_237x_402", 199, "out", r"C:\Users\cns-th-lab\SLEAP_Labels_198_237x_402\199\Videos\199.2025-08-23.mov_0014.proj.slp", ""],
-    ["198_237x_402", 237, "in", r"C:\Users\cns-th-lab\SLEAP_Labels_198_237x_402\237\Videos\237.2026-03-31.mov_0001.proj.slp", ""],
-    ["198_237x_402", 237, "out", r"C:\Users\cns-th-lab\SLEAP_Labels_198_237x_402\237\Videos\237.2026-04-03.mov_0004.proj.slp", ""],
-    ["198_237x_402", 238, "out", r"C:\Users\cns-th-lab\SLEAP_Labels_198_237x_402\238\Videos\238.2026-03-31.mov_0001.proj.slp", ""],
-    ["198_237x_402", 238, "out", r"C:\Users\cns-th-lab\SLEAP_Labels_198_237x_402\238\Videos\238.2026-04-03.mov_0004.proj.slp", ""],
-
-    # Model 198_199x_237x_402
-    ["198_199x_237x_402", 198, "in", r"C:/Users/cns-th-lab/SLEAP_Labels_198_199x_237x_402/198/Videos/198.2025-07-28.mov_0001.proj.slp", ""],
-    ["198_199x_237x_402", 198, "out", r"C:\Users\cns-th-lab\SLEAP_Labels_198_199x_237x_402\198\Videos\198.2025-08-23.mov_0014.proj.slp", ""],
-    ["198_199x_237x_402", 199, "in", r"C:\Users\cns-th-lab\SLEAP_Labels_198_199x_237x_402\199\Videos\199.2025-07-28.mov_0001.proj.slp", ""],
-    ["198_199x_237x_402", 199, "out", r"C:\Users\cns-th-lab\SLEAP_Labels_198_199x_237x_402\199\Videos\199.2025-08-23.mov_0014.proj.slp", ""],
-    ["198_199x_237x_402", 237, "in", r"C:\Users\cns-th-lab\SLEAP_Labels_198_199x_237x_402\237\Videos\237.2026-03-31.mov_0001.proj.slp", ""],
-    ["198_199x_237x_402", 237, "out", r"C:\Users\cns-th-lab\SLEAP_Labels_198_199x_237x_402\237\Videos\237.2026-04-03.mov_0004.proj.slp", ""],
-    ["198_199x_237x_402", 238, "out", r"C:\Users\cns-th-lab\SLEAP_Labels_198_199x_237x_402\238\Videos\238.2026-03-31.mov_0001.proj.slp", ""],
-    ["198_199x_237x_402", 238, "out", r"C:\Users\cns-th-lab\SLEAP_Labels_198_199x_237x_402\238\Videos\238.2026-04-03.mov_0004.proj.slp", ""],
-    
-    # Model All
-    ["198_199x_237x_238x_274x_400x_402x_424x_483x", 198, "in", r"C:\Users\cns-th-lab\SLEAP_Labels_198_199x_237x_238x_274x_400x_402x_424x_483x\198\Videos\198.2025-07-28.mov_0001.proj.slp", ""],
-    ["198_199x_237x_238x_274x_400x_402x_424x_483x", 198, "out", r"C:\Users\cns-th-lab\SLEAP_Labels_198_199x_237x_238x_274x_400x_402x_424x_483x\198\Videos\198.2025-08-23.mov_0014.proj.slp", ""],
-    ["198_199x_237x_238x_274x_400x_402x_424x_483x", 199, "in", r"C:\Users\cns-th-lab\SLEAP_Labels_198_199x_237x_238x_274x_400x_402x_424x_483x\199\Videos\199.2025-07-28.mov_0001.proj.slp", ""],
-    ["198_199x_237x_238x_274x_400x_402x_424x_483x", 199, "out", r"C:\Users\cns-th-lab\SLEAP_Labels_198_199x_237x_238x_274x_400x_402x_424x_483x\199\Videos\199.2025-08-23.mov_0014.proj.slp", ""],
-    ["198_199x_237x_238x_274x_400x_402x_424x_483x", 237, "in", r"C:\Users\cns-th-lab\SLEAP_Labels_198_199x_237x_238x_274x_400x_402x_424x_483x\237\Videos\237.2026-03-31.mov_0001.proj.slp", ""],
-    ["198_199x_237x_238x_274x_400x_402x_424x_483x", 237, "out", r"C:\Users\cns-th-lab\SLEAP_Labels_198_199x_237x_238x_274x_400x_402x_424x_483x\237\Videos\237.2026-04-03.mov_0004.proj.slp", ""],
-    ["198_199x_237x_238x_274x_400x_402x_424x_483x", 238, "in", r"C:\Users\cns-th-lab\SLEAP_Labels_198_199x_237x_238x_274x_400x_402x_424x_483x\238\Videos\238.2026-03-31.mov_0001.proj.slp", ""],
-    ["198_199x_237x_238x_274x_400x_402x_424x_483x", 238, "out", r"C:\Users\cns-th-lab\SLEAP_Labels_198_199x_237x_238x_274x_400x_402x_424x_483x\238\Videos\238.2026-04-03.mov_0004.proj.slp", ""],
-    ["198_199x_237x_238x_274x_400x_402x_424x_483x", 274, "in", r"C:\Users\cns-th-lab\SLEAP_Labels_198_199x_237x_238x_274x_400x_402x_424x_483x\274\Videos\274.2025-09-25.mov_0001.proj.slp", ""],
-    ["198_199x_237x_238x_274x_400x_402x_424x_483x", 274, "out", r"C:/Users/cns-th-lab/SLEAP_Labels_198_199x_237x_238x_274x_400x_402x_424x_483x/274/Videos/274.2025-10-24.mov_0015.proj.slp", ""],
-    ["198_199x_237x_238x_274x_400x_402x_424x_483x", 400, "in", r"C:\Users\cns-th-lab\SLEAP_Labels_198_199x_237x_238x_274x_400x_402x_424x_483x\400\Videos\400.2025-09-25.mov_0001.proj.slp", ""],
-    ["198_199x_237x_238x_274x_400x_402x_424x_483x", 400, "out", r"C:\Users\cns-th-lab\SLEAP_Labels_198_199x_237x_238x_274x_400x_402x_424x_483x\400\Videos\400.2025-10-24.mov_0015.proj.slp", ""],
-    ["198_199x_237x_238x_274x_400x_402x_424x_483x", 402, "in", r"C:\Users\cns-th-lab\SLEAP_Labels_198_199x_237x_238x_274x_400x_402x_424x_483x\402\Videos\402.2025-09-25.mov_0001.proj.slp", ""],
-    ["198_199x_237x_238x_274x_400x_402x_424x_483x", 402, "out", r"C:\Users\cns-th-lab\SLEAP_Labels_198_199x_237x_238x_274x_400x_402x_424x_483x\402\Videos\402.2025-10-24.mov_0015.proj.slp", ""],
-    ["198_199x_237x_238x_274x_400x_402x_424x_483x", 424, "in", r"C:\Users\cns-th-lab\SLEAP_Labels_198_199x_237x_238x_274x_400x_402x_424x_483x\424\Videos\424.2026-03-31.mov_0001.proj.slp", ""],
-    ["198_199x_237x_238x_274x_400x_402x_424x_483x", 424, "out", r"C:\Users\cns-th-lab\SLEAP_Labels_198_199x_237x_238x_274x_400x_402x_424x_483x\424\Videos\424.2026-04-03.mov_0004.proj.slp", ""],
-    ["198_199x_237x_238x_274x_400x_402x_424x_483x", 483, "in", r"C:/Users/cns-th-lab/SLEAP_Labels_198_199x_237x_238x_274x_400x_402x_424x_483x/483/Videos/483.2026-04-01.mov_0002.proj.slp", ""],
-    ["198_199x_237x_238x_274x_400x_402x_424x_483x", 483, "out", r"C:\Users\cns-th-lab\SLEAP_Labels_198_199x_237x_238x_274x_400x_402x_424x_483x\483\Videos\483.2026-04-03.mov_0004.proj.slp", ""]
-]
+    ["rat1_rat2_ratn", activeratint, "in/out", "label_file_path"],
+    ["rat1_rat2_ratn", activeratint, "in/out", "label_file_path"]]
 
 df = pd.DataFrame(data, columns=["model", "rat", "incl_train", "slp_path", "h5_path"])
 # Replace the string and assign it to the h5_path column
