@@ -1226,7 +1226,7 @@ labels_df = pd.DataFrame(labels_dict)
 labels_df["raw_nan_mask"] = labels_df.apply(lambda row: np.isnan(row["tracks"]),
                                             axis=1)
 #%%%% Threshold node labels by prediction scores
-score_thresh = 0.5
+score_thresh = 0
 labels_df[["score_thresh_tracks", "score_nan_mask"]] = labels_df.apply(
     lambda row: thresholded_by_score(
         row["tracks"], row["scores"], score_thresh
@@ -1626,7 +1626,10 @@ test_videos = [f"mov_{sess}.mp4" for sess in test_sess_ids]
 #%%%% 5 Num Summary Node Scores
 def get_five_num_distr(row):
     scores = np.squeeze(row["scores"]) #frames x nodes x 
-    return [np.percentile(scores, 0, axis=1), np.percentile(scores, 25,axis=1), np.percentile(scores, 50,axis=1), np.percentile(scores,75,axis=1), np.percentile(scores,100,axis=1)]    
+    valid_mask = ~np.isnan(np.squeeze(row["tracks"])).any(axis=2)
+    scores = np.where(valid_mask, scores, np.nan)
+    print(np.shape(scores))
+    return [np.nanpercentile(scores, 0, axis=1), np.nanpercentile(scores, 25,axis=1), np.nanpercentile(scores, 50,axis=1), np.percentile(scores,75,axis=1), np.percentile(scores,100,axis=1)]    
 labels_df["five_num"] = labels_df.apply(lambda row: get_five_num_distr(row), axis=1)
 print(np.shape(labels_df["five_num"].iloc[0][0]))
 
@@ -1657,10 +1660,16 @@ for i in range(5):
         
         clean_data = combined_model_data[~np.isnan(combined_model_data)]
         if len(clean_data)>0:
+            model_count = os.path.basename(model_name).count("_")
+            #Current manual exceptions
+            if "_occin" in model_name:
+                print(model_name)
+                model_count = model_count - 1
+                model_count = str(model_count) + "_occin"
             data_to_plot.append(clean_data)
-            model_labels.append(model_name)
+            model_labels.append(model_count)
         else:
-            print(f"Warning: {model_name} has no valid data for quartile index {i}")
+            print(f"Warning: {model_name} has no valid data for quartile indexq {i}")
         
     # Generate the boxplot for the i-th quartile
     print(data_to_plot)
@@ -1687,10 +1696,12 @@ for i in range(5):
     ax.set_axisbelow(True) 
     
     plt.tight_layout()
-    display(fig)
+    #display(fig)
 #%%%% Average Scores
 def get_avg_score(row):
     scores = np.squeeze(row["scores"]) #frames x nodes x 
+    valid_mask = ~np.isnan(np.squeeze(row["tracks"])).any(axis=2)
+    scores = scores[valid_mask]
     return np.mean(scores, axis=1)
 labels_df["avg_score"] = labels_df.apply(lambda row: get_avg_score(row), axis=1)
 
@@ -1709,7 +1720,12 @@ for model_name, group in labels_df.groupby('model_name'):
     clean_data = combined_model_data[~np.isnan(combined_model_data)]
     if len(clean_data)>0:
         data_to_plot.append(clean_data)
-        model_labels.append(model_name)
+        model_count = os.path.basename(model_name).count("_")
+        #Current manual exceptions
+        if "_occin" in model_name:
+            model_count = model_count - 1
+        print(model_count)
+        model_labels.append(str(model_count) + "_occin")
     else:
         print(f"Warning: {model_name} has no valid data for quartile index {i}")
     
@@ -1806,6 +1822,28 @@ ax.set_ylabel('Model Name')
 
 plt.tight_layout()
 display(fig)
+
+#%%
+model_1_name = "260731_198_199x_234x_235x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x"
+model_2_name = "260731_198_199x_234x_235x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x_occin"
+video_path = labels_df["vid_path"].iloc[34]
+print(video_path)
+
+vid_mask = labels_df["vid_path"]==video_path
+model_1_mask = labels_df["model_name"] == model_1_name
+model_2_mask = labels_df["model_name"] == model_2_name
+labels_1 = labels_df["tracks"][model_1_mask & vid_mask].iloc[0]
+labels_2 = labels_df["tracks"][model_2_mask & vid_mask].iloc[0]
+scores_1 = labels_df["scores"][model_1_mask & vid_mask].iloc[0]
+
+pvsq.RunApp(video_path,
+            labels_1,
+            project_dict["node_names"],
+            scores_1,
+            output_window="Visible Only vs All Included",
+            fps=30,
+            transformations=[labels_2])
+
 #%%% Node Level
 
 
@@ -1842,12 +1880,14 @@ def generate_metric_table(vid_list, model_simple_name_list):
         model_count = os.path.basename(model).count("_")
         
         #Current manual exceptions
-        if "_occin" in model :
+        if "_occin" in model:
             model_count = model_count - 1
-        if "_port_model" in model:
+            num_rats_in_model.append(str(model_count) + "_occin")
+        elif "_port_model" in model:
             model_count = model_count - 2
-        print(model_count)
-        num_rats_in_model.append(model_count)
+            num_rats_in_model.append(str(model_count) + "_port_model")
+        else:
+            num_rats_in_model.append(str(model_count))
     
     metric_table = {"Node": [],
                       "Rat Count": [],
@@ -1870,9 +1910,7 @@ def generate_metric_table(vid_list, model_simple_name_list):
             model_mask = labels_df["model_name"] == model
             print(len(labels_df[model_mask]))
             print(labels_df[model_mask]["vid_path"])
-            video_mask = labels_df["vid_path"].str.contains(video, na=False)
             print(len(labels_df[video_mask]))
-            print(labels_df[video_mask]["vid_path"])
             print(labels_df[model_mask & video_mask]["vid_path"])
             vid_row = labels_df[model_mask & video_mask]
             vid_row_tracks = vid_row["score_thresh_tracks"]
@@ -1920,9 +1958,9 @@ def plot_metric_across_videos(metric_table, vid_type=None, target_metrics=["AvgS
     
     #Custom order manually set by model training methods
     if vid_type=="r_out_v_out":
-        custom_order = [3, 4, 9, 10, 11, 12, 13]
+        custom_order = ["3", "4", "9", "10", "11", "12", "13"]
     else:
-        custom_order = [3, 4, 9, 10, 11, 12, 13, 14]
+        custom_order =  ["3", "4", "9", "10", "11", "12", "13", "14", "14_occin"]
     
     #Categories set as above regardless of type
     node_metric_by_node_ord_count = pd.CategoricalDtype(categories=custom_order, ordered=True)
@@ -2031,6 +2069,218 @@ plot_metric_occ_v_all(occ_metric_table)
 plot_metric_occ_v_all(occ_metric_table, vid_type="r_in_v_in")
 plot_metric_occ_v_all(occ_metric_table, vid_type="r_in_v_out")
 
+#%% New code
+import seaborn as sns
+
+def extract_tracking_metrics(labels_df):
+    """
+    Extracts NaN proportions and raw scores from the tracking dataframe.
+    """
+    nan_records = []
+    score_dfs = []
+    
+    # Ensure the dataframe is sorted by model_name as requested
+    labels_df = labels_df.sort_values(by="model_name")
+    
+    for index, row in labels_df.iterrows():
+        model = row["model_name"]
+        nodes = row["node_names"]
+        
+        # Safely reshape/squeeze to handle (frames, nodes, 2, 1) and (frames, nodes, 1)
+        # Using reshape to flatten the last dimensions safely in case frames=1
+        tracks = np.array(row["score_thresh_tracks"])
+        scores = np.array(row["scores"])
+        
+        F, N = tracks.shape[0], tracks.shape[1]
+        
+        # Flatten the spatial dimensions to (frames, nodes, 2)
+        tracks = tracks.reshape(F, N, -1)
+        # Flatten the score dimensions to (frames, nodes)
+        scores = scores.reshape(F, N)
+        
+        for n_idx in range(N):
+            node_name = nodes[n_idx]
+            
+            # --- 1. NaN Extraction ---
+            # A node is considered NaN in a frame if any of its coordinates (x or y) are NaN
+            node_tracks = tracks[:, n_idx, :]
+            nan_count = np.sum(np.isnan(node_tracks).any(axis=-1))
+            
+            nan_records.append({
+                "model_name": model,
+                "node": node_name,
+                "nan_count": nan_count,
+                "total_frames": F
+            })
+            
+            # --- 2. Score Extraction (for Violin Plot) ---
+            node_scores = scores[:, n_idx]
+            # Filter out NaNs from scores so they don't break the violin plot density estimation
+            valid_scores = node_scores[~np.isnan(node_scores)]
+            
+            if len(valid_scores) > 0:
+                score_dfs.append(pd.DataFrame({
+                    "model_name": model,
+                    "node": node_name,
+                    "score": valid_scores
+                }))
+
+    # Aggregate NaN data across all videos by model and node
+    nan_df = pd.DataFrame(nan_records)
+    agg_nan_df = nan_df.groupby(["model_name", "node"], as_index=False).sum()
+    agg_nan_df["prop_nan"] = agg_nan_df["nan_count"] / agg_nan_df["total_frames"]
+    
+    # Concatenate all scores into one long-form dataframe
+    full_score_df = pd.concat(score_dfs, ignore_index=True)
+    
+    return agg_nan_df, full_score_df
+
+def plot_metrics(agg_nan_df, full_score_df):
+    """
+    Plots the aggregated NaN proportions and score distributions.
+    """
+    sns.set_theme(style="whitegrid")
+    
+    # --- Plot 1: Proportion of NaNs (Bar Chart) ---
+    plt.figure(figsize=(14, 6))
+    sns.barplot(
+        data=agg_nan_df, 
+        x="node", 
+        y="prop_nan", 
+        hue="model_name"
+    )
+    plt.title("Overall Proportion of NaNs by Node Across All Videos")
+    plt.ylabel("Proportion of NaNs")
+    plt.xlabel("Node")
+    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', title="Model Name")
+    plt.tight_layout()
+    plt.show()
+    
+    # --- Plot 2: Distribution of Scores (Violin Plot) ---
+    plt.figure(figsize=(14, 6))
+    sns.violinplot(
+        data=full_score_df, 
+        x="node", 
+        y="score", 
+        hue="model_name",
+        inner="quartile", # Shows quartiles inside the violin
+        linewidth=1,
+        density_norm="width" # Scales violins to have the same maximum width
+    )
+    plt.title("Distribution of Scores by Node Across All Videos")
+    plt.ylabel("Prediction Score")
+    plt.xlabel("Node")
+    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', title="Model Name")
+    plt.tight_layout()
+    plt.show()
+
+def plot_split_metrics(agg_nan_df, full_score_df, model_14_name):
+    """
+    Generates 4 separate graphs:
+    1 & 2: NaN Bar Chart and Score Boxplot for all models WITHOUT '_occin'
+    3 & 4: NaN Bar Chart and Score Boxplot comparing '_occin' models vs the 14-rat model
+    """
+    sns.set_theme(style="whitegrid")
+    
+    # --- Create Subsets ---
+    # Subset 1: Standard scaling (No _occin models). This naturally includes the 14 rat model.
+    nan_scaling = agg_nan_df[~agg_nan_df["model_name"].str.contains("_occin")]
+    score_scaling = full_score_df[~full_score_df["model_name"].str.contains("_occin")]
+    
+    # Subset 2: Occlusion comparison. ONLY the _occin models AND the baseline 14-rat model.
+    occin_mask_nan = agg_nan_df["model_name"].str.contains("_occin") | (agg_nan_df["model_name"] == model_14_name)
+    occin_mask_score = full_score_df["model_name"].str.contains("_occin") | (full_score_df["model_name"] == model_14_name)
+    
+    nan_occin_comp = agg_nan_df[occin_mask_nan]
+    score_occin_comp = full_score_df[occin_mask_score]
+
+    # ==========================================
+    # GRAPH 1: Scaling - NaN Proportions (Bar Chart)
+    # ==========================================
+    plt.figure(figsize=(14, 6))
+    sns.barplot(
+        data=nan_scaling, 
+        x="node", 
+        y="prop_nan", 
+        hue="model_name"
+    )
+    plt.title("Standard Models: Overall Proportion of NaNs by Node")
+    plt.ylabel("Proportion of NaNs")
+    plt.xlabel("Node")
+    plt.xticks(rotation=45, ha="right") # Rotated node names
+    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', title="Model Name")
+    plt.tight_layout()
+    plt.show()
+    
+    # ==========================================
+    # GRAPH 3: Occlusion - NaN Proportions (Bar Chart)
+    # ==========================================
+    plt.figure(figsize=(14, 6))
+    sns.barplot(
+        data=nan_occin_comp, 
+        x="node", 
+        y="prop_nan", 
+        hue="model_name",
+        palette="Set2" 
+    )
+    plt.title("Occlusion Comparison: Proportion of NaNs by Node")
+    plt.ylabel("Proportion of NaNs")
+    plt.xlabel("Node")
+    plt.xticks(rotation=45, ha="right") # Rotated node names
+    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', title="Model Name")
+    plt.tight_layout()
+    plt.show()
+    
+    
+    """
+    # ==========================================
+    # GRAPH 2: Scaling - Score Distributions (Boxplot)
+    # ==========================================
+    plt.figure(figsize=(14, 6))
+    sns.boxplot(
+        data=score_scaling, 
+        x="node", 
+        y="score", 
+        hue="model_name",
+        linewidth=1,
+        fliersize=2 # Makes outlier dots a bit smaller so they don't clutter the graph
+    )
+    plt.title("Standard Models: Distribution of Scores by Node")
+    plt.ylabel("Prediction Score")
+    plt.xlabel("Node")
+    plt.xticks(rotation=45, ha="right") # Rotated node names
+    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', title="Model Name")
+    plt.tight_layout()
+    plt.show()
+
+    # ==========================================
+    # GRAPH 4: Occlusion - Score Distributions (Boxplot)
+    # ==========================================
+    plt.figure(figsize=(14, 6))
+    sns.boxplot(
+        data=score_occin_comp, 
+        x="node", 
+        y="score", 
+        hue="model_name",
+        linewidth=1,
+        fliersize=2,
+        palette="Set2"
+    )
+    plt.title("Occlusion Comparison: Distribution of Scores by Node")
+    plt.ylabel("Prediction Score")
+    plt.xlabel("Node")
+    plt.xticks(rotation=45, ha="right") # Rotated node names
+    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', title="Model Name")
+    plt.tight_layout()
+    plt.show()"""
+
+#%% --- Example Usage ---
+MODEL_14_NAME = "260731_198_199x_234x_235x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x"
+agg_nan_df, full_score_df = extract_tracking_metrics(labels_df)
+#%%
+plot_split_metrics(agg_nan_df, full_score_df, model_14_name=MODEL_14_NAME)
+
+
 #%% Where did one model predict well, while another model did not
 first_candidate_row = labels_df[labels_df["model_name"]==model_list[0]].iloc[0]
 second_row = labels_df[labels_df["sess"] == first_candidate_row["sess"] & labels_df["model_name"]==model_list[1]].iloc[0]
@@ -2042,6 +2292,7 @@ pvsq.RunApp(first_candidate_row["vid_path"],
             first_candidate_row["node_names"], 
             first_candidate_row["scores"], 
             output_window, fps)
+
 #%%
 def plot_percentage_missing_across_models(dataframe):
     df = {}
@@ -2523,6 +2774,7 @@ cpoke_in_times_vid_f = (
 )  # TODO: Paramterize frame rate at the top
 
 # %%% Read video doric times
+import init
 from sys_neuro_tools import doric_utils as du
 
 active_sess_vid_doric = (

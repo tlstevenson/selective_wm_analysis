@@ -763,8 +763,9 @@ print("mAR:", metrics["voc_metrics"]["oks_voc.mAR"])
 #%%% Model Evaluation on Newest Labels
 
 #base_truth_loc must be a .pkg.slp
-base_truth_loc = r"C:\Users\cns-th-lab\SLEAP_Projects\merged_manual_labels_198_199x_234x_235x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x.pkg.slp"
+#base_truth_loc = r"C:\Users\cns-th-lab\SLEAP_Projects\merged_manual_labels_198_199x_234x_235x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x.pkg.slp"
 #Generate new prediction for ground truth
+base_truth_loc = r"C:/Users/cns-th-lab/SLEAP_Projects/merged_manual_labels_198_199x_234x_235x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x_occin.pkg.slp"
 model_pair_list = [[r"C:\Users\cns-th-lab\TannerVidsRenamed\models\260502_198_402_237x.centroid.n=92",
                     r"C:\Users\cns-th-lab\TannerVidsRenamed\models\260502_198_402_237x.centered_instance.n=92"],
                    [r"C:\Users\cns-th-lab\TannerVidsRenamed\models\260504_198_199x_237x_402.centroid.n=112",
@@ -849,23 +850,28 @@ for key in model_eval_dict:
     OKS_ax.plot(bin_centers, counts, label=label_name, linewidth=2)
         
 # 1. Format OKS Figure
+x_tick_labels = ["3", "4", "9", "10", "11", "12", "13", "14", "14_occin"]
+positions=range(len(x_tick_labels))
 OKS_ax.set_title("Object Keypoint Similarity (OKS) Distribution")
 OKS_ax.set_xlabel("Object Keypoint Similarity")
 OKS_ax.set_ylabel("Frequency")
-OKS_ax.legend()
+#OKS_ax.set_xticks(positions, x_tick_labels)
+OKS_ax.legend(bbox_to_anchor=(1.05, 1.0), loc='upper left')
 display(OKS_fig)
-
+#%%
 # 2. Bar Charts for VOC Metrics
 mAP_ax.bar(model_rat_count, mAP_list, color='steelblue')
 mAP_ax.set_title("Mean Average Precision (mAP)")
 mAP_ax.set_xlabel("Model / Rat Count")
 mAP_ax.set_ylabel("mAP")
+mAP_ax.set_xticks(positions, x_tick_labels)
 display(mAP_fig)
 
 mAR_ax.bar(model_rat_count, mAR_list, color='mediumseagreen')
 mAR_ax.set_title("Mean Average Recall (mAR)")
 mAR_ax.set_xlabel("Model / Rat Count")
 mAR_ax.set_ylabel("mAR")
+mAR_ax.set_xticks(positions, x_tick_labels)
 display(mAR_fig)
 
 # 3. Bar Charts for Distance Error Metrics
@@ -873,18 +879,21 @@ p50_ax.bar(model_rat_count, error_p50, color='lightcoral')
 p50_ax.set_title("Distance Error (p50)")
 p50_ax.set_xlabel("Model / Rat Count")
 p50_ax.set_ylabel("Error (pixels)")
+p50_ax.set_xticks(positions, x_tick_labels)
 display(p50_fig)
 
 p90_ax.bar(model_rat_count, error_p90, color='indianred')
 p90_ax.set_title("Distance Error (p90)")
 p90_ax.set_xlabel("Model / Rat Count")
 p90_ax.set_ylabel("Error (pixels)")
+p90_ax.set_xticks(positions, x_tick_labels)
 display(p90_fig)
 
 p95_ax.bar(model_rat_count, error_p95, color='firebrick')
 p95_ax.set_title("Distance Error (p95)")
 p95_ax.set_xlabel("Model / Rat Count")
 p95_ax.set_ylabel("Error (pixels)")
+p95_ax.set_xticks(positions, x_tick_labels)
 display(p95_fig)
     
 #%% Bar Charts

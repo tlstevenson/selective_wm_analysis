@@ -250,7 +250,7 @@ for video in test_vid_paths:
 print()
 #%%% Define model locations
 #In the form of [centroid_model_path, centered_instance_model_path]
-model_locations = [[r"C:\Users\cns-th-lab\SLEAP_Projects\models\260430_182335.centroid.n=11", r"C:\Users\cns-th-lab\SLEAP_Projects\models\260430_183010.centered_instance.n=11"],
+r"""model_locations = [[r"C:\Users\cns-th-lab\SLEAP_Projects\models\260430_182335.centroid.n=11", r"C:\Users\cns-th-lab\SLEAP_Projects\models\260430_183010.centered_instance.n=11"],
                    [r"C:\Users\cns-th-lab\SLEAP_Projects\models\260502_198_402_237x.centroid.n=92", r"C:\Users\cns-th-lab\SLEAP_Projects\models\260502_198_402_237x.centered_instance.n=92"],
                    [r"C:\Users\cns-th-lab\SLEAP_Projects\models\260504_198_199x_237x_402.centroid.n=112", r"C:\Users\cns-th-lab\SLEAP_Projects\models\260504_198_199x_237x_402.centered_instance.n=112"],
                    [r"C:\Users\cns-th-lab\SLEAP_Projects\models\260523_198_199x_237x_238x_274x_400x_402x_424x_483x.centroid.n=222", r"C:\Users\cns-th-lab\SLEAP_Projects\models\260523_198_199x_237x_238x_274x_400x_402x_424x_483x.centered_instance.n=222"],
@@ -260,6 +260,8 @@ model_locations = [[r"C:\Users\cns-th-lab\SLEAP_Projects\models\260430_182335.ce
                    [r"C:\Users\cns-th-lab\SLEAP_Projects\models\260730_198_199x_234x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x.centroid.n=303", r"C:\Users\cns-th-lab\SLEAP_Projects\models\260730_198_199x_234x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x.centered_instance.n=303"],
                    [r"C:\Users\cns-th-lab\SLEAP_Projects\models\260731_198_199x_234x_235x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x.centroid.n=323", r"C:\Users\cns-th-lab\SLEAP_Projects\models\260731_198_199x_234x_235x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x.centered_instance.n=323"],
                    [r"C:\Users\cns-th-lab\SLEAP_Projects\models\260731_198_199x_234x_235x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x_occin.centroid.n=323", r"C:\Users\cns-th-lab\SLEAP_Projects\models\260731_198_199x_234x_235x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x_occin.centered_instance.n=323"]]
+"""
+model_locations = [[r"C:\Users\cns-th-lab\SLEAP_Projects\models\260731_198_199x_234x_235x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x_occin.centroid.n=323", r"C:\Users\cns-th-lab\SLEAP_Projects\models\260731_198_199x_234x_235x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x_occin.centered_instance.n=323"]]
 model_locations = [model_locations[-(i+1)] for i in range(len(model_locations))] #Inverts models to recent first
 
 #%%% Select new videos by hand

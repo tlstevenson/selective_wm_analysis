@@ -1,0 +1,14 @@
+{
+    "model_mode": "top_down",
+    "base_dir": "C:/Users/cns-th-lab/TannerVidsRenamed",
+    "models": [
+        [
+            "C:/Users/cns-th-lab/TannerVidsRenamed/models/260731_198_199x_234x_235x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x_occin.centroid.n=323",
+            "C:/Users/cns-th-lab/TannerVidsRenamed/models/260731_198_199x_234x_235x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x_occin.centered_instance.n=323"
+        ]
+    ],
+    "directories": [
+        "C:/Users/cns-th-lab/TannerVidsRenamed/198/Videos"
+    ],
+    "videos": []
+}

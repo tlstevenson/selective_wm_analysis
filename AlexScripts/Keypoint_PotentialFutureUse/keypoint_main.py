@@ -1,176 +1,371 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+#%%
+import keypoint_moseq as kpms
+import matplotlib.pyplot as plt
+import os
+
+#%%
+def extract_h5_metadata(filepath):
+    """Transforms the h5 file at filepath into a python dictionary for further use."""
+    with h5py.File(filepath, "r") as f:
+        labels_dict = {
+            "node_names": [n.decode("utf-8") for n in f["node_names"][:]],
+            "edge_names": [
+                [n1.decode("utf-8"), n2.decode("utf-8")]
+                for n1, n2 in f["edge_names"][:]
+            ],
+            "vid_path":"", 
+            "sess": "", 
+            "model_name": ""
+        }
+        labels_dict["edge_inds"] = [[labels_dict["node_names"].index(name_1),
+                       labels_dict["node_names"].index(name_2)]
+                       for name_1, name_2 in labels_dict["edge_names"]]
+        
+        # Get Video Location 
+        vid_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(filepath))), os.path.basename(filepath))
+        labels_dict["vid_path"] = os.path.splitext(vid_path)[0] + ".mp4"
+
+        # Set Dictionary Values
+        my_sess = str.removeprefix(
+            os.path.splitext(os.path.basename(filepath))[0], "mov_"
+        )
+        labels_dict["sess"] = my_sess
+        labels_dict["subj_id"] =  os.path.basename(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(filepath)))))
+        
+        #Set model_name by naming convention where predictions are in folder titled by model
+        labels_dict["model_name"] = os.path.basename(os.path.dirname(filepath))
+        
+        return labels_dict
+
+#%%Setup paths
+keypoint_master_dir = "/Users/cns-th-lab/keypoint_tapus"
+data_config_dir = os.path.join(keypoint_master_dir, "data_config")
+master_video_dir = "/Users/cns-th-lab/TannerVidsRenamed"
+
+#%%Update Config
+kpms.update_config(
+    project_dir,
+    video_dir="dlc_project/videos/",
+    anterior_bodyparts=["nose"],
+    posterior_bodyparts=["spine4"],
+    use_bodyparts=["spine4", "spine3", "spine2", "spine1", "head", "nose", "right ear", "left ear"],
+    fps=30,
+)
+#%%
 
 import sys
 import json
-import os
-import keypoint_moseq as kpms
+import math
+import itertools
+import random
+import h5py
+from pathlib import Path
+from jax_moseq.utils import set_mixed_map_iters
 
-def create_config_template(h5_path, json_path):
-    """Extracts node names from an h5 file and generates a JSON template."""
-    print(f"\nExtracting node names from {h5_path}...")
+
+
+
+def assign_nodes_interactively(bodyparts):
+    """Helper function to prompt the user for node assignments."""
+    print("\n" + "="*50)
+    print("BODYPART ASSIGNMENT")
+    print("="*50)
+    print("For each node, type 'a' for anterior, 'p' for posterior, or press Enter to skip.")
     
-    # We use kpms to load just one file to safely grab the exact bodyparts list
+    anterior_nodes = []
+    posterior_nodes = []
+    
+    for node in bodyparts:
+        while True:
+            choice = input(f"Node '{node}': [a/p/skip] > ").strip().lower()
+            if choice == 'a':
+                anterior_nodes.append(node)
+                break
+            elif choice == 'p':
+                posterior_nodes.append(node)
+                break
+            elif choice == '':
+                break
+            else:
+                print("  Invalid input. Type 'a', 'p', or just press Enter.")
+                
+    return anterior_nodes, posterior_nodes
+
+
+def update_config_nodes(json_filepath):
+    """Reads an existing config, prompts the user to re-assign nodes, and saves it."""
+    with open(json_filepath, 'r') as file:
+        config = json.load(file)
+        
+    bodyparts = config["bodyparts"].get("_AVAILABLE_NODES_REFERENCE", [])
+    if not bodyparts:
+        print("Error: Could not find '_AVAILABLE_NODES_REFERENCE' in the config.")
+        sys.exit(1)
+        
+    print(f"\nRe-assigning nodes for {os.path.basename(json_filepath)}...")
+    ant_nodes, post_nodes = assign_nodes_interactively(bodyparts)
+    
+    config["bodyparts"]["anterior"] = ant_nodes
+    config["bodyparts"]["posterior"] = post_nodes
+    
+    with open(json_filepath, 'w') as file:
+        json.dump(config, file, indent=4)
+        
+    print(f"Config successfully updated: {json_filepath}\n")
+
+
+def create_config_template(h5_paths, config_name):
+    """Generates a sweep-compatible JSON template with interactive node assignment."""
+    os.makedirs(data_config_dir, exist_ok=True)
+    json_path = os.path.join(data_config_dir, f"{config_name}.json")
+    
+    sample_h5 = h5_paths[0]
+    print(f"\nExtracting metadata from {sample_h5}...")
     try:
-        _, _, bodyparts = kpms.load_keypoints(
-            filepath_pattern=[h5_path], 
-            format="sleap", 
-            extension="h5"
-        )
+        metadata = extract_h5_metadata(sample_h5)
+        bodyparts = metadata["node_names"]
     except Exception as e:
-        print(f"Error loading h5 file: {e}")
+        print(f"Error loading h5 file {sample_h5}: {e}")
         sys.exit(1)
 
-    # Build the template dictionary
+    anterior_nodes, posterior_nodes = assign_nodes_interactively(bodyparts)
+
     config_template = {
-        "project_dir": "ENTER_PROJECT_DIRECTORY_HERE",
-        "video_dir": "ENTER_VIDEO_DIRECTORY_HERE",
-        "keypoint_files": [
-            h5_path,
-            "ADD_MORE_FILE_PATHS_HERE.h5"
-        ],
+        "video_dir": master_video_dir,
+        "keypoint_files": h5_paths,
         "bodyparts": {
-            "_AVAILABLE_NODES_REFERENCE": bodyparts,  # Keeping this here so you can copy/paste easily
-            "anterior": [],                           # PASTE ANTERIOR NODES HERE
-            "posterior": [],                          # PASTE POSTERIOR NODES HERE
-            "use": bodyparts                          # Defaults to using all nodes
+            "_AVAILABLE_NODES_REFERENCE": bodyparts,
+            "anterior": anterior_nodes,
+            "posterior": posterior_nodes,
+            "use": bodyparts
         },
-        "parameters": {
+        "base_parameters": {
             "fps": 30,
-            "latent_dim": 7,
             "ar_iters": 50,
-            "ar_kappa": 2000,
             "full_iters": 500,
+            "latent_dim": 7,
+            "ar_kappa": 2000,
             "full_kappa": 10000
+        },
+        "sweep_parameters": {
+            "full_kappa": [5000, 10000, 20000],
+            "latent_dim": [7, 10]
         }
     }
 
-    # Write it to the JSON file
     with open(json_path, 'w') as file:
         json.dump(config_template, file, indent=4)
         
-    print(f"\nSuccess! A configuration template has been saved to '{json_path}'.")
-    print("=======================================================================")
-    print("ACTION REQUIRED:")
-    print("1. Open config.json in a text editor.")
-    print("2. Copy nodes from '_AVAILABLE_NODES_REFERENCE' into 'anterior' and 'posterior'.")
-    print("3. Update your project/video directories and add any other .h5 files.")
-    print("4. Run this script again to execute the pipeline.")
-    print("=======================================================================")
+    print(f"\nSuccess! Config saved to '{json_path}'.")
+    return json_path
+
+
+def generate_all_rat_config():
+    """Scans the directory structure, picks one random video per rat, and creates the config."""
+    videos_base = Path(master_video_dir)
+    
+    if not videos_base.exists():
+        print(f"Error: Base video directory {master_video_dir} does not exist.")
+        sys.exit(1)
+
+    # Force the user to manually specify the prediction model folder name
+    print("\n" + "="*50)
+    print("PREDICTION MODEL SELECTION")
+    print("="*50)
+    print("Example: 260731_198_199x_234x_235x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x_occin")
+    chosen_model = input("Enter the exact name of the prediction model folder:\n> ").strip()
+    
+    if not chosen_model:
+        print("Error: You must specify a model folder name.")
+        sys.exit(1)
+        
+    print(f"\nEnforcing prediction model: {chosen_model}")
+
+    selected_h5_files = []
+    
+    # Select videos ensuring the .h5 comes ONLY from the chosen model
+    for rat_dir in [d for d in videos_base.iterdir() if d.is_dir()]:
+        videos_dir = rat_dir / "Videos"
+        
+        if videos_dir.exists() and videos_dir.is_dir():
+            mp4_files = list(videos_dir.glob("*.mp4"))
+            if mp4_files:
+                random.shuffle(mp4_files)
+                
+                for chosen_mp4 in mp4_files:
+                    sessid = chosen_mp4.stem
+                    
+                    # Point explicitly to the chosen model's directory
+                    target_model_dir = videos_dir / "predictions" / chosen_model
+                    
+                    matched_h5 = None
+                    if target_model_dir.exists():
+                        # Check strictly inside this specific folder
+                        for h5_name in [f"{sessid}.h5", f"mov_{sessid}.h5"]:
+                            potential_h5 = target_model_dir / h5_name
+                            if potential_h5.exists():
+                                matched_h5 = potential_h5
+                                break
+                                
+                    if matched_h5:
+                        selected_h5_files.append(str(matched_h5))
+                        break # Found a valid match for this rat, move to next rat
+    
+    if not selected_h5_files:
+        print(f"Error: Could not find any valid .mp4 / .h5 pairs for model '{chosen_model}'.")
+        print("Please check for typos in the model name.")
+        sys.exit(1)
+        
+    print(f"Randomly selected {len(selected_h5_files)} videos (1 per rat) using model '{chosen_model}'.")
+    return create_config_template(selected_h5_files, "all_rat_data_config")
 
 
 def run_pipeline(json_filepath):
-    """Executes the KPMS pipeline using the parameters in the JSON file."""
-    print(f"Loading configuration from {json_filepath}...")
+    """Executes the KPMS pipeline, looping over parameter grids."""
+    # Safety Check: Intercept missing nodes before running
     with open(json_filepath, 'r') as file:
-        config_data = json.load(file)
+        config = json.load(file)
+        
+    if not config["bodyparts"].get("anterior") or not config["bodyparts"].get("posterior"):
+         print(f"\nNotice: Missing anterior/posterior definitions in {os.path.basename(json_filepath)}.")
+         update_config_nodes(json_filepath)
+         # Reload updated config
+         with open(json_filepath, 'r') as file:
+             config = json.load(file)
 
-    project_dir = config_data["project_dir"]
-    video_dir = config_data["video_dir"]
-    keypoint_files = config_data["keypoint_files"]
-    bp = config_data["bodyparts"]
-    params = config_data["parameters"]
-
-    # Sanity check to make sure the user actually edited the template
-    if project_dir == "ENTER_PROJECT_DIRECTORY_HERE":
-        print("Error: You need to edit the config.json with your actual paths before running the pipeline.")
-        sys.exit(1)
+    print(f"\nLoading configuration from {json_filepath}...")
+    basename = os.path.splitext(os.path.basename(json_filepath))[0]
+    project_dir = os.path.join(keypoint_master_dir, f"{basename}_project")
 
     os.makedirs(project_dir, exist_ok=True)
+    print(f"\n=== Setting up Project: {project_dir} ===")
+    
+    # If the folder exists but config.yml is missing (due to a previous crash), force overwrite
+    config_yml_path = os.path.join(project_dir, "config.yml")
+    force_setup = not os.path.exists(config_yml_path)
+    
+    kpms.setup_project(project_dir, sleap_file=config["keypoint_files"][0], overwrite=force_setup)
 
-    print("Setting up project and updating configuration...")
-    kpms.setup_project(project_dir, sleap_file=keypoint_files[0], overwrite=False)
-
+    bp = config["bodyparts"]
     kpms.update_config(
         project_dir,
-        video_dir=video_dir,
+        video_dir=config["video_dir"],
         anterior_bodyparts=bp["anterior"],
         posterior_bodyparts=bp["posterior"],
         use_bodyparts=bp["use"],
-        fps=params["fps"]
+        fps=config["base_parameters"]["fps"]
     )
-
+    
     get_config = lambda: kpms.load_config(project_dir)
 
-    print(f"Loading keypoints for {len(keypoint_files)} files...")
-    coordinates, confidences, bodyparts = kpms.load_keypoints(
-        filepath_pattern=keypoint_files, 
-        format="sleap",
-        extension='h5'
-    )
-
+    print("Loading keypoints...")
+    coordinates, confidences, _ = kpms.load_keypoints(config["keypoint_files"], format="sleap", extension='h5')
+    
+    num_videos = len(config["keypoint_files"])
+    batch_size = 4
+    num_batches = math.ceil(num_videos / batch_size)
+    print(f"Setting JAX map iterations to {num_batches} ({num_videos} videos, max {batch_size}/batch)...")
+    set_mixed_map_iters(num_batches)
+    
     print("Formatting data...")
     data, metadata = kpms.format_data(coordinates, confidences, **get_config())
 
-    print("Fitting PCA...")
+    print("Fitting global PCA...")
     pca = kpms.fit_pca(**data, **get_config())
     kpms.save_pca(pca, project_dir)
+
+    base_params = config["base_parameters"]
+    sweep_params = config.get("sweep_parameters", {})
     
-    kpms.plot_scree(pca, project_dir=project_dir)
-    kpms.plot_pcs(pca, project_dir=project_dir, **get_config())
+    if not sweep_params:
+        sweep_params = {"dummy": ["dummy"]}
+        
+    keys, values = zip(*sweep_params.items())
+    combinations = [dict(zip(keys, v)) for v in itertools.product(*values)]
 
-    print(f"Initializing model with latent_dim = {params['latent_dim']}...")
-    kpms.update_config(project_dir, latent_dim=params["latent_dim"])
-    model = kpms.init_model(data, pca=pca, **get_config())
+    print(f"\nFound {len(combinations)} parameter combination(s) to test.")
 
-    print(f"Fitting AR HMM for {params['ar_iters']} iterations...")
-    model = kpms.update_hypparams(model, kappa=params["ar_kappa"])
-    model, model_name = kpms.fit_model(
-        model, data, metadata, project_dir, 
-        ar_only=True, 
-        num_iters=params["ar_iters"]
-    )
+    for combo in combinations:
+        current_params = base_params.copy()
+        
+        if "dummy" in combo:
+            model_name = "default_model"
+        else:
+            current_params.update(combo)
+            name_parts = [f"{k}{v}" for k, v in combo.items()]
+            model_name = "_".join(name_parts)
+            
+        print(f"\n--- Training Model: {model_name} ---")
+        print(f"Parameters: {current_params}")
 
-    print(f"Fitting Full Model for {params['full_iters']} iterations...")
-    model, data, metadata, current_iter = kpms.load_checkpoint(
-        project_dir, model_name, iteration=params["ar_iters"]
-    )
+        kpms.update_config(project_dir, latent_dim=current_params["latent_dim"])
+        
+        model = kpms.init_model(data, pca=pca, **get_config())
 
-    model = kpms.update_hypparams(model, kappa=params["full_kappa"])
-    model = kpms.fit_model(
-        model, data, metadata, project_dir, model_name,
-        ar_only=False,
-        start_iter=current_iter,
-        num_iters=current_iter + params["full_iters"]
-    )[0]
+        print(f"Fitting AR HMM ({current_params['ar_iters']} iters)...")
+        model = kpms.update_hypparams(model, kappa=current_params["ar_kappa"])
+        model, _ = kpms.fit_model(
+            model, data, metadata, project_dir, 
+            model_name=model_name, 
+            ar_only=True, 
+            num_iters=current_params["ar_iters"]
+        )
 
-    print("Reindexing syllables and extracting results...")
-    kpms.reindex_syllables_in_checkpoint(project_dir, model_name)
-    model, data, metadata, current_iter = kpms.load_checkpoint(project_dir, model_name)
-    
-    results = kpms.extract_results(model, metadata, project_dir, model_name)
-    kpms.save_results_as_csv(results, project_dir, model_name)
+        print(f"Fitting Full Model ({current_params['full_iters']} iters)...")
+        model, temp_data, temp_meta, current_iter = kpms.load_checkpoint(
+            project_dir, model_name, iteration=current_params["ar_iters"]
+        )
+        model = kpms.update_hypparams(model, kappa=current_params["full_kappa"])
+        model = kpms.fit_model(
+            model, temp_data, temp_meta, project_dir, model_name,
+            ar_only=False,
+            start_iter=current_iter,
+            num_iters=current_iter + current_params["full_iters"]
+        )[0]
 
-    print("Generating plots and grid movies...")
-    kpms.generate_trajectory_plots(coordinates, results, project_dir, model_name, **get_config())
-    kpms.plot_similarity_dendrogram(coordinates, results, project_dir, model_name, **get_config())
-    kpms.generate_grid_movies(results, project_dir, model_name, coordinates=coordinates, **get_config())
+        print("Extracting results and generating media...")
+        kpms.reindex_syllables_in_checkpoint(project_dir, model_name)
+        model, _, _, _ = kpms.load_checkpoint(project_dir, model_name)
+        
+        results = kpms.extract_results(model, metadata, project_dir, model_name)
+        kpms.save_results_as_csv(results, project_dir, model_name)
+        
+        kpms.generate_trajectory_plots(coordinates, results, project_dir, model_name, **get_config())
+        kpms.plot_similarity_dendrogram(coordinates, results, project_dir, model_name, **get_config())
+        kpms.generate_grid_movies(results, project_dir, model_name, coordinates=coordinates, **get_config())
 
-    print("Pipeline completed successfully!")
+    print("\nAll parameter combinations completed successfully!")
+
+
+def check_and_run(target_json):
+    """Helper to ask the user if they want to edit nodes before running an existing config."""
+    if os.path.exists(target_json):
+        edit_choice = input(f"\nFound config: {os.path.basename(target_json)}\nPress 'e' to edit node assignments, or Enter to continue: ").strip().lower()
+        if edit_choice == 'e':
+            update_config_nodes(target_json)
+        run_pipeline(target_json)
+    else:
+        print(f"Error: Config not found at {target_json}")
 
 
 if __name__ == "__main__":
-    # Define standard JSON filename
-    json_path = "ant_pos.json"
-    
-    # Allow overriding json path via command line argument (e.g., `python run_kpms.py my_custom_config.json`)
     if len(sys.argv) > 1:
-        json_path = sys.argv[1]
+        config_arg = sys.argv[1]
+        if not config_arg.endswith('.json'):
+            config_arg += '.json'
+        target_json = os.path.join(data_config_dir, config_arg)
         
-    # Check if the config file exists
-    if not os.path.exists(json_path):
-        print(f"Configuration file '{json_path}' not found.")
-        # Ask the user for a sample .h5 file to build the template
-        h5_file = input("Please enter the full path to a sample .h5 file to extract node names:\n> ").strip()
-        
-        # Clean up path formatting (remove quotes if user dragged-and-dropped file into terminal)
-        h5_file = h5_file.strip('\'"')
-        
-        if os.path.exists(h5_file):
-            create_config_template(h5_file, json_path)
-        else:
-            print("Error: The .h5 file path you provided does not exist. Exiting.")
-            sys.exit(1)
+        check_and_run(target_json)
     else:
-        # If the file exists, execute the main analysis
-        run_pipeline(json_path)
+        default_config_path = os.path.join(data_config_dir, "all_rat_data_config.json")
+        
+        if os.path.exists(default_config_path):
+            check_and_run(default_config_path)
+        else:
+            print("No config specified and 'all_rat_data_config.json' not found.")
+            print("Generating new 'all_rat_data_config.json'...")
+            
+            new_config_path = generate_all_rat_config()
+            run_pipeline(new_config_path)
