@@ -1,10 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Tue Sep 29 10:18:34 2026
-
-@author: cns-th-lab
-"""
-
 import os
 import sys
 import json
@@ -36,7 +29,7 @@ class SleapApp:
     def __init__(self, root):
         self.root = root
         self.root.title("SLEAP Inference Automator")
-        self.root.geometry("800x850")
+        self.root.geometry("800x900")
         
         # Internal state
         self.prefs_file = "sleap_prefs.json"
@@ -98,7 +91,16 @@ class SleapApp:
         # --- EXECUTION & LOGS ---
         run_frame = ttk.Frame(main_frame)
         run_frame.pack(fill=tk.X, pady=10)
-        ttk.Button(run_frame, text="RUN INFERENCE", command=self.start_inference, style="Accent.TButton").pack(fill=tk.X)
+        
+        ttk.Button(run_frame, text="RUN INFERENCE", command=self.start_inference, style="Accent.TButton").pack(fill=tk.X, pady=(0, 10))
+
+        # Progress tracking UI
+        self.status_var = tk.StringVar(value="Ready.")
+        ttk.Label(run_frame, textvariable=self.status_var, font=("Helvetica", 10, "bold")).pack(anchor=tk.W)
+        
+        self.progress_var = tk.DoubleVar(value=0.0)
+        self.progress_bar = ttk.Progressbar(run_frame, variable=self.progress_var, maximum=100)
+        self.progress_bar.pack(fill=tk.X, pady=(2, 0))
 
         log_frame = ttk.LabelFrame(main_frame, text="Console Output", padding="5")
         log_frame.pack(fill=tk.BOTH, expand=True)
@@ -115,6 +117,16 @@ class SleapApp:
             self.log_text.see(tk.END)
             self.log_text.config(state="disabled")
         self.root.after(0, append)
+
+    def update_progress(self, current, total, status_text=None):
+        """Thread-safe update for the progress bar and status text."""
+        def update():
+            if total > 0:
+                percentage = (current / total) * 100
+                self.progress_var.set(percentage)
+            if status_text:
+                self.status_var.set(status_text)
+        self.root.after(0, update)
 
     def browse_base_dir(self):
         dir_path = filedialog.askdirectory(title="Select Base Project Directory")
@@ -275,7 +287,7 @@ class SleapApp:
         except subprocess.CalledProcessError as e:
             self.log(f"H5 Export Error: {e}")
 
-    def run_inference_on_list(self, video_list, write_path_list, model_path):
+    def run_inference_on_list(self, video_list, write_path_list, model_path, progress_callback):
         if not video_list:
             self.log("No videos provided for inference. Skipping.")
             return False
@@ -283,12 +295,14 @@ class SleapApp:
         self.log(f"\nLaunching SLEAP inference on {len(video_list)} videos...\n" + "="*50)
         
         for i in range(len(video_list)):
+            # Update GUI progress bar to show which video is currently being processed
+            progress_callback(i)
+            
             if os.path.exists(write_path_list[i]):
                 self.log(f"{write_path_list[i]} already exists. Skipping inference.")
                 continue
 
             command = []
-            #If else block for different types of SLEAP models
             if len(model_path) == 2: # Top Down
                 centroid, centered = model_path[0], model_path[1]
                 if os.path.exists(centroid) and os.path.exists(centered):
@@ -335,7 +349,8 @@ class SleapApp:
             messagebox.showwarning("Warning", "Please define a Base Project Directory.")
             return
 
-        # Disable button to prevent spamming
+        # Disable button to prevent spamming and reset UI
+        self.update_progress(0, 1, "Initializing...")
         self.log_text.config(state="normal")
         self.log_text.delete(1.0, tk.END)
         self.log_text.config(state="disabled")
@@ -356,22 +371,40 @@ class SleapApp:
             if v not in curr_vids:
                 curr_vids.append(v)
                 
-        self.log(f"Found {len(curr_vids)} total videos to process.")
+        total_videos = len(curr_vids)
+        total_tasks = total_videos * len(self.models)
+        self.log(f"Found {total_videos} total videos to process across {len(self.models)} model sets.")
+
+        if total_tasks == 0:
+            self.update_progress(0, 1, "Finished: No tasks to run.")
+            return
 
         # 2. Setup write paths and copy models
-        self.log("Preparing directories and copying models...")
+        self.update_progress(0, total_tasks, "Copying models and structuring paths...")
         model_write_paths = self.create_write_paths(curr_vids)
 
         if len(model_write_paths) != len(self.models):
             self.log("ERROR: Number of models and model write paths do not match!")
+            self.update_progress(0, 1, "Error occurred. See logs.")
             return
 
         # 3. Run Inference & Export
+        completed_tasks = 0
+        
         for m_idx in range(len(model_write_paths)):
             self.log(f"\n>>> Starting Inference for Model #{m_idx + 1}")
-            self.run_inference_on_list(curr_vids, model_write_paths[m_idx], self.models[m_idx])
+            
+            # Create a callback to update progress per video
+            def progress_callback(vid_idx):
+                current = completed_tasks + vid_idx
+                status = f"Processing Model {m_idx + 1}/{len(self.models)} | Video {vid_idx + 1}/{total_videos}"
+                self.update_progress(current, total_tasks, status)
+
+            self.run_inference_on_list(curr_vids, model_write_paths[m_idx], self.models[m_idx], progress_callback)
+            completed_tasks += total_videos
             
             # Convert to h5
+            self.update_progress(completed_tasks, total_tasks, f"Exporting Model {m_idx + 1} results to .h5...")
             self.log("Converting .slp outputs to analysis .h5...")
             for slp_file in model_write_paths[m_idx]:
                 if os.path.exists(slp_file): # Ensure it successfully generated
@@ -379,6 +412,7 @@ class SleapApp:
                     h5_path_name = f"{root}.h5"
                     self.slp_to_analysis_h5(slp_file, h5_path_name)
                     
+        self.update_progress(total_tasks, total_tasks, "Finished processing all models and videos.")
         self.log("=== PIPELINE COMPLETELY FINISHED ===")
 
 if __name__ == "__main__":
