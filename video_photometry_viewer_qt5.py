@@ -4,7 +4,6 @@ Created on Fri Sep 25 14:34:37 2026
 
 @author: cns-th-lab
 """
-
 import init
 import sys
 import os
@@ -19,7 +18,9 @@ import neurofileread as nfr
 import fp_analysis_helpers as fpah
 from hankslab_db import db_access
 from hankslab_db import basicRLtasks_db as bandit_db
-
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 class DataModel:
     """Interface class that holds and manages all data for the UI."""
@@ -40,6 +41,8 @@ class DataModel:
         
         # List of 5 1D numpy arrays for the 5 plots (1 bottom + 4 side)
         self.time_series = [np.array([]) for _ in range(5)]
+        self.plot_titles = [""] * 5  # <-- Store plot titles here instead of UI elements
+        
         self.tracks = None
         self.scores = None
         self.node_names = []
@@ -68,8 +71,9 @@ class DataModel:
         """Called after on_submit_session successfully finds the files."""        
         # 1. Clear out the old mock data before loading new data
         self.time_series = [np.array([]) for _ in range(5)]
+        self.plot_titles = [""] * 5
         self.ts_timestamps = np.array([])
-        
+            
         # 2. Setup your database connections
         loc_db = bandit_db.LocalDB_BasicRLTasks("twoArmBandit")
         
@@ -95,15 +99,14 @@ class DataModel:
                 print(f"DB Lookup: Session '{self.session_id}' belongs to Subject '{subj_id}'")
                 
                 # Build the exact dictionary structure required
-                subj_sess_dict = {subj_id: [self.session_id]}
-                raw_fp_data, _ = fpah.load_fp_data(
-                    loc_db, 
-                    subj_sess_dict
-                )
+                subj_sess_dict = {subj_id: [int(self.session_id)]}
+                raw_fp_data, _ = fpah.load_fp_data(loc_db, subj_sess_dict)
+                print("Finished loading and continued")
                 
                 # --- THE ULTIMATE FIX ---
                 subj_dict = list(raw_fp_data.values())[0]
                 fp_data = list(subj_dict.values())[0]
+                self.fp_data = fp_data
                 # ------------------------
                 
                 # 3. Extract the high-frequency FP timeline
@@ -111,13 +114,16 @@ class DataModel:
                 
                 # 4. Extract regions and populate the 5 UI time series plots
                 processed_signals = fp_data.get('processed_signals', {})
-                signal_type = 'dFF' 
+                signal_type = 'raw_lig' 
                 
                 plot_idx = 0
+                print(processed_signals.keys())
                 for region in processed_signals.keys():
-                    if plot_idx >= 5:
+                    print(region)
+                    if plot_idx >= 4: #Leave one plot open
                         break 
-                        
+                    if region == "DLS":
+                        print(processed_signals[region].keys())
                     if signal_type in processed_signals[region]:
                         signal_array = processed_signals[region][signal_type]
                         
@@ -126,7 +132,15 @@ class DataModel:
                         else:
                             signal_array = np.array(signal_array)
                             
+                        print(len(signal_array))
+                        print(signal_array)
                         self.time_series[plot_idx] = signal_array
+                        
+                        # --- SET DYNAMIC PLOT TITLE ---
+                        # Store the title in the data model, NOT the UI widget directly
+                        self.plot_titles[plot_idx] = f"{region}: {signal_type}"
+                        # ------------------------------
+                        
                         print(f"Mapped '{region}' ({signal_type}) to Graph {plot_idx+1}")
                         plot_idx += 1
                         
@@ -192,6 +206,10 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.tab2, "Time Series")
         self.tabs.addTab(self.tab3, "Overlay Setting")
 
+        # Must initialize these as None/empty before setup_tab1 populates them
+        self.bottom_plot = None
+        self.side_plots = []
+
         self.setup_tab_session()
         self.setup_tab1()
         self.setup_tab2()
@@ -211,7 +229,7 @@ class MainWindow(QMainWindow):
         title_label.setFont(font)
         
         self.session_input = QLineEdit()
-        self.session_input.setPlaceholderText("e.g. Mouse1_Session3")
+        self.session_input.setPlaceholderText("e.g. 116498")
         self.session_input.setFixedWidth(300)
         self.session_input.setAlignment(Qt.AlignCenter)
         self.session_input.returnPressed.connect(self.on_submit_session)
@@ -355,6 +373,14 @@ class MainWindow(QMainWindow):
         self.position_text_box.setAlignment(Qt.AlignCenter)
         top_layout.addWidget(self.position_text_box, alignment=Qt.AlignHCenter)
         
+        self.btn_show_qc = QPushButton("Show Tracking QC Summary")
+        self.btn_show_qc.clicked.connect(self.show_tracking_summary)
+        top_layout.addWidget(self.btn_show_qc, alignment=Qt.AlignHCenter)
+        
+        self.btn_reset_views = QPushButton("Reset Plot Views")
+        self.btn_reset_views.clicked.connect(self.reset_plot_views)
+        top_layout.addWidget(self.btn_reset_views, alignment=Qt.AlignHCenter)
+        
         layout.addLayout(top_layout)
         layout.addSpacing(30)
         
@@ -371,6 +397,16 @@ class MainWindow(QMainWindow):
         layout.addStretch()
         self.tab3.setLayout(layout)
         
+    def reset_plot_views(self):
+        """Resets all time-series plots to their default auto-scaled view."""
+        if self.bottom_plot is None:
+            return
+            
+        all_plots = [self.bottom_plot] + self.side_plots
+        for plot in all_plots:
+            # Enables auto-ranging for both X and Y axes
+            plot.autoRange()
+    
     def build_dynamic_node_ui(self):
         if not self.data.node_names:
             return
@@ -409,6 +445,9 @@ class MainWindow(QMainWindow):
                 curve.setData([], [])
             return
             
+        # UI controls the titles using data provided by the DataModel
+        all_plot_widgets = [self.bottom_plot] + self.side_plots
+        
         for i, curve in enumerate(self.ts_curves):
             if i < len(self.data.time_series) and len(self.data.time_series[i]) > 0:
                 y_data = self.data.time_series[i]
@@ -416,14 +455,22 @@ class MainWindow(QMainWindow):
                 
                 if len(x_data) == len(y_data):
                     curve.setData(x_data, y_data)
+                    
+                    # --- NEW UI UPDATE LOGIC ---
+                    if hasattr(self.data, 'plot_titles') and i < len(self.data.plot_titles) and self.data.plot_titles[i]:
+                        all_plot_widgets[i].setTitle(self.data.plot_titles[i])
+                    else:
+                        # Fallback default titles
+                        all_plot_widgets[i].setTitle(f"Graph {i + 1}" if i > 0 else "Waveform / Plot (1)")
+                    # ---------------------------
                 else:
                     print(f"Warning: Graph {i+1} mismatch! X: {len(x_data)}, Y: {len(y_data)}")
                     curve.setData([], []) 
             else:
                 curve.setData([], []) 
                 
-        for plot in self.side_plots:
-            plot.setXLink(self.bottom_plot)
+        #for plot in self.side_plots:
+        #    plot.setXLink(self.bottom_plot)
             
         self.display_video_frame(self.data.current_frame_idx)
 
@@ -535,6 +582,64 @@ class MainWindow(QMainWindow):
             line.setValue(snapped_time)
         self._updating_lines = False
 
+    def show_tracking_summary(self):
+        """Generates a Matplotlib popup with 3 macro-level tracking analyses."""
+        if self.data.tracks is None or self.data.scores is None:
+            QMessageBox.warning(self, "No Data", "Please load a valid session first.")
+            return
+
+        coords = self.data.tracks[:, :, :, 0]
+        scores = self.data.scores[:, :, 0]
+        nodes = self.data.node_names
+
+        fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+        fig.suptitle(f"Tracking QC Summary: {self.data.session_id}", fontsize=16, fontweight='bold')
+
+        nan_counts = np.sum(np.isnan(coords[:, :, 0]), axis=0)
+        prop_nans = nan_counts / coords.shape[0]
+        
+        axes[0].bar(nodes, prop_nans, color="steelblue")
+        axes[0].set_title("Proportion of Missing Frames")
+        axes[0].set_ylabel("Proportion (NaNs / Total Frames)")
+        axes[0].tick_params(axis='x', rotation=45)
+
+        all_gap_lengths = []
+        for i in range(len(nodes)):
+            is_nan = np.isnan(coords[:, i, 0])
+            starts = np.where(is_nan & ~np.roll(is_nan, 1))[0]
+            stops = np.where(~is_nan & np.roll(is_nan, 1))[0]
+            
+            if len(is_nan) > 0:
+                if is_nan[0]: starts = np.insert(starts, 0, 0)
+                if is_nan[-1]: stops = np.append(stops, len(is_nan))
+            
+            all_gap_lengths.extend(stops - starts)
+
+        if all_gap_lengths:
+            axes[1].hist(all_gap_lengths, bins=30, color="indianred")
+            axes[1].set_yscale('log')
+        axes[1].set_title("Distribution of Gap Lengths (All Nodes)")
+        axes[1].set_xlabel("Gap Length (Frames)")
+        axes[1].set_ylabel("Frequency (Log Scale)")
+
+        score_records = []
+        for i, node in enumerate(nodes):
+            valid_scores = scores[:, i][~np.isnan(scores[:, i])]
+            for s in valid_scores:
+                score_records.append({"Node": node, "Score": s})
+
+        if score_records:
+            score_df = pd.DataFrame(score_records)
+            sns.violinplot(
+                data=score_df, x="Node", y="Score", ax=axes[2], 
+                inner="quartile", color="mediumseagreen", density_norm="width"
+            )
+        axes[2].set_title("Prediction Confidence Score Distributions")
+        axes[2].set_ylabel("Confidence Score")
+        axes[2].tick_params(axis='x', rotation=45)
+
+        plt.tight_layout()
+        plt.show()
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
