@@ -7,6 +7,7 @@ import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from pathlib import Path
+import cv2  # Added to read video frame counts for strided inference
 
 # --- CORE UTILITY FUNCTIONS ---
 
@@ -374,8 +375,24 @@ class SleapApp:
 
             # Append stride argument if a valid interval is provided
             if stride and stride.isdigit() and int(stride) > 1:
-                # Appends standard frame slice format: 0-10000000:<interval>
-                command.extend(["--frames", f"0-10000000:{stride}"])
+                try:
+                    # Dynamically extract frame count using OpenCV
+                    cap = cv2.VideoCapture(video_list[i])
+                    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                    cap.release()
+                    
+                    if total_frames > 0:
+                        stride_val = int(stride)
+                        # Generate comma-separated list of frames to predict
+                        frames_to_predict = [str(f) for f in range(0, total_frames, stride_val)]
+                        frames_str = ",".join(frames_to_predict)
+                        
+                        self.log(f"Calculated {len(frames_to_predict)} frames to process at stride {stride_val}.")
+                        command.extend(["--frames", frames_str])
+                    else:
+                        self.log(f"Warning: Could not read total frames for {os.path.basename(video_list[i])}. Ignoring stride.")
+                except Exception as e:
+                    self.log(f"Warning: Failed to calculate strided frames: {e}. Ignoring stride.")
 
             try:
                 os.makedirs(os.path.dirname(write_path_list[i]), exist_ok=True)
