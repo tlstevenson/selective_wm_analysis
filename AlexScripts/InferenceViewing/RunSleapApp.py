@@ -29,13 +29,18 @@ class SleapApp:
     def __init__(self, root):
         self.root = root
         self.root.title("SLEAP Inference Automator")
-        self.root.geometry("800x900")
+        self.root.geometry("850x980")
         
         # Internal state
         self.prefs_file = "sleap_prefs.json"
-        self.model_mode = tk.StringVar(value="top_down") # 'single' or 'top_down'
+        self.model_mode = tk.StringVar(value="top_down")       # 'single' or 'top_down' for Standard
+        self.port_model_mode = tk.StringVar(value="top_down")  # 'single' or 'top_down' for Port
         self.base_dir = tk.StringVar()
+        
         self.models = []       # List of lists: [[model1], [cent1, center1], ...]
+        self.port_models = []  # List of lists: [[model1], [cent1, center1], ...]
+        self.port_interval = tk.StringVar(value="1800")
+        
         self.directories = []  # List of video directories
         self.videos = []       # List of individual videos
         
@@ -57,17 +62,17 @@ class SleapApp:
         ttk.Entry(pref_frame, textvariable=self.base_dir, width=50).grid(row=1, column=1, columnspan=2, padx=5)
         ttk.Button(pref_frame, text="Browse", command=self.browse_base_dir).grid(row=1, column=3, padx=5)
 
-        # --- MODEL CONFIGURATION ---
-        model_frame = ttk.LabelFrame(main_frame, text="Model Configuration", padding="5")
+        # --- STANDARD MODEL CONFIGURATION ---
+        model_frame = ttk.LabelFrame(main_frame, text="Standard Model Configuration", padding="5")
         model_frame.pack(fill=tk.BOTH, expand=True, pady=5)
         
         mode_subframe = ttk.Frame(model_frame)
         mode_subframe.pack(fill=tk.X, pady=2)
-        ttk.Label(mode_subframe, text="Inference Mode:").pack(side=tk.LEFT, padx=5)
+        ttk.Label(mode_subframe, text="Standard Mode:").pack(side=tk.LEFT, padx=5)
         ttk.Radiobutton(mode_subframe, text="Single Animal (1 Model)", variable=self.model_mode, value="single", command=self.update_model_listbox).pack(side=tk.LEFT, padx=5)
         ttk.Radiobutton(mode_subframe, text="Top-Down (Centroid + Centered)", variable=self.model_mode, value="top_down", command=self.update_model_listbox).pack(side=tk.LEFT, padx=5)
 
-        self.model_listbox = tk.Listbox(model_frame, height=5)
+        self.model_listbox = tk.Listbox(model_frame, height=3)
         self.model_listbox.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
         btn_frame = ttk.Frame(model_frame)
@@ -75,11 +80,35 @@ class SleapApp:
         ttk.Button(btn_frame, text="Add Model", command=self.add_model).pack(side=tk.LEFT, padx=5)
         ttk.Button(btn_frame, text="Clear Models", command=self.clear_models).pack(side=tk.LEFT, padx=5)
 
+        # --- PORT MODELS CONFIGURATION ---
+        port_frame = ttk.LabelFrame(main_frame, text="Port Models (Strided Inference)", padding="5")
+        port_frame.pack(fill=tk.BOTH, expand=True, pady=5)
+
+        port_mode_subframe = ttk.Frame(port_frame)
+        port_mode_subframe.pack(fill=tk.X, pady=2)
+        ttk.Label(port_mode_subframe, text="Port Mode:").pack(side=tk.LEFT, padx=5)
+        ttk.Radiobutton(port_mode_subframe, text="Single Animal (1 Model)", variable=self.port_model_mode, value="single", command=self.update_port_listbox).pack(side=tk.LEFT, padx=5)
+        ttk.Radiobutton(port_mode_subframe, text="Top-Down (Centroid + Centered)", variable=self.port_model_mode, value="top_down", command=self.update_port_listbox).pack(side=tk.LEFT, padx=5)
+
+        port_controls = ttk.Frame(port_frame)
+        port_controls.pack(fill=tk.X, pady=2)
+        ttk.Label(port_controls, text="Prediction Interval (Frames):").pack(side=tk.LEFT, padx=5)
+        ttk.Entry(port_controls, textvariable=self.port_interval, width=10).pack(side=tk.LEFT, padx=5)
+        ttk.Label(port_controls, text="(e.g., 1800 for 1 min @ 30fps)").pack(side=tk.LEFT, padx=5)
+
+        self.port_listbox = tk.Listbox(port_frame, height=3)
+        self.port_listbox.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        port_btn_frame = ttk.Frame(port_frame)
+        port_btn_frame.pack(fill=tk.X)
+        ttk.Button(port_btn_frame, text="Add Port Model", command=self.add_port_model).pack(side=tk.LEFT, padx=5)
+        ttk.Button(port_btn_frame, text="Clear Port Models", command=self.clear_port_models).pack(side=tk.LEFT, padx=5)
+
         # --- VIDEO CONFIGURATION ---
         vid_frame = ttk.LabelFrame(main_frame, text="Video Sources", padding="5")
         vid_frame.pack(fill=tk.BOTH, expand=True, pady=5)
 
-        self.vid_listbox = tk.Listbox(vid_frame, height=7)
+        self.vid_listbox = tk.Listbox(vid_frame, height=5)
         self.vid_listbox.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
         vid_btn_frame = ttk.Frame(vid_frame)
@@ -105,12 +134,11 @@ class SleapApp:
         log_frame = ttk.LabelFrame(main_frame, text="Console Output", padding="5")
         log_frame.pack(fill=tk.BOTH, expand=True)
         
-        self.log_text = tk.Text(log_frame, height=12, state="disabled", bg="#1e1e1e", fg="#d4d4d4")
+        self.log_text = tk.Text(log_frame, height=10, state="disabled", bg="#1e1e1e", fg="#d4d4d4")
         self.log_text.pack(fill=tk.BOTH, expand=True)
 
     # --- UI UPDATE & LOGGING ---
     def log(self, message):
-        """Thread-safe logging to the UI Text widget."""
         def append():
             self.log_text.config(state="normal")
             self.log_text.insert(tk.END, str(message) + "\n")
@@ -119,7 +147,6 @@ class SleapApp:
         self.root.after(0, append)
 
     def update_progress(self, current, total, status_text=None):
-        """Thread-safe update for the progress bar and status text."""
         def update():
             if total > 0:
                 percentage = (current / total) * 100
@@ -144,12 +171,18 @@ class SleapApp:
                 data = json.load(f)
             
             self.model_mode.set(data.get("model_mode", "top_down"))
+            self.port_model_mode.set(data.get("port_model_mode", "top_down"))
             self.base_dir.set(data.get("base_dir", ""))
+            
             self.models = data.get("models", [])
+            self.port_models = data.get("port_models", [])
+            self.port_interval.set(data.get("port_interval", "1800"))
+            
             self.directories = data.get("directories", [])
             self.videos = data.get("videos", [])
             
             self.update_model_listbox()
+            self.update_port_listbox()
             self.update_vid_listbox()
             if show_msg:
                 self.log(f"Preferences loaded from {self.prefs_file}")
@@ -161,8 +194,11 @@ class SleapApp:
     def save_prefs(self):
         data = {
             "model_mode": self.model_mode.get(),
+            "port_model_mode": self.port_model_mode.get(),
             "base_dir": self.base_dir.get(),
             "models": self.models,
+            "port_models": self.port_models,
+            "port_interval": self.port_interval.get(),
             "directories": self.directories,
             "videos": self.videos
         }
@@ -196,9 +232,38 @@ class SleapApp:
         self.model_listbox.delete(0, tk.END)
         for idx, m in enumerate(self.models):
             if len(m) == 1:
-                self.model_listbox.insert(tk.END, f"Model {idx+1} [Single]: {os.path.basename(m[0])}")
+                self.model_listbox.insert(tk.END, f"Standard {idx+1} [Single]: {os.path.basename(m[0])}")
             else:
-                self.model_listbox.insert(tk.END, f"Model {idx+1} [Top-Down]: Centroid: {os.path.basename(m[0])} | Centered: {os.path.basename(m[1])}")
+                self.model_listbox.insert(tk.END, f"Standard {idx+1} [Top-Down]: Centroid: {os.path.basename(m[0])} | Centered: {os.path.basename(m[1])}")
+
+    def add_port_model(self):
+        if self.port_model_mode.get() == "single":
+            model_path = filedialog.askdirectory(title="Select Port Single Animal Model Directory")
+            if model_path:
+                self.port_models.append([model_path])
+        else:
+            centroid = filedialog.askdirectory(title="Select Port CENTROID Model Directory")
+            if not centroid: return
+            centered = filedialog.askdirectory(title="Select Port CENTERED INSTANCE Model Directory")
+            if not centered: return
+            self.port_models.append([centroid, centered])
+        self.update_port_listbox()
+
+    def clear_port_models(self):
+        self.port_models.clear()
+        self.update_port_listbox()
+
+    def update_port_listbox(self):
+        self.port_listbox.delete(0, tk.END)
+        for idx, m in enumerate(self.port_models):
+            if isinstance(m, str):
+                self.port_models[idx] = [m]
+                m = [m]
+                
+            if len(m) == 1:
+                self.port_listbox.insert(tk.END, f"Port {idx+1} [Single]: {os.path.basename(m[0])}")
+            else:
+                self.port_listbox.insert(tk.END, f"Port {idx+1} [Top-Down]: Centroid: {os.path.basename(m[0])} | Centered: {os.path.basename(m[1])}")
 
     def add_directory(self):
         dir_path = filedialog.askdirectory(title="Select Directory with MP4s")
@@ -228,40 +293,35 @@ class SleapApp:
 
     # --- INFERENCE PIPELINE ---
 
-    def create_write_paths(self, curr_vids):
+    def create_write_paths(self, models_list, curr_vids, base_dir_val):
         """Copies models to the base_dir and returns corresponding write paths for all videos."""
         all_write_paths = []
-        base = self.base_dir.get()
+        base = base_dir_val
         if not base:
             base = os.getcwd() # fallback
 
-        for model_location_pair in self.models:
+        for model_location_pair in models_list:
             write_paths = []
             
             # Copy Models
             if len(model_location_pair) == 2:
                 centroid_loc, centered_loc = model_location_pair
                 model_name = os.path.basename(os.path.splitext(os.path.splitext(centroid_loc)[0])[0])
-                
                 cent_dest = os.path.join(base, "models", os.path.basename(centroid_loc))
                 center_dest = os.path.join(base, "models", os.path.basename(centered_loc))
-                
                 try:
                     shutil.copytree(centroid_loc, cent_dest, dirs_exist_ok=True)
                     shutil.copytree(centered_loc, center_dest, dirs_exist_ok=True)
-                    self.log(f"Copied Top-Down models to {base}/models/")
                 except Exception as e:
-                    self.log(f"Model copy warning: {e}")
-                    
+                    pass # Model probably exists
             elif len(model_location_pair) == 1:
                 single_loc = model_location_pair[0]
                 model_name = os.path.basename(os.path.splitext(os.path.splitext(single_loc)[0])[0])
                 single_dest = os.path.join(base, "models", os.path.basename(single_loc))
                 try:
                     shutil.copytree(single_loc, single_dest, dirs_exist_ok=True)
-                    self.log(f"Copied Single model to {base}/models/")
                 except Exception as e:
-                    self.log(f"Model copy warning: {e}")
+                    pass # Model probably exists
 
             # Define Write Paths
             for video in curr_vids:
@@ -282,20 +342,14 @@ class SleapApp:
             if not os.path.exists(h5_path):
                 self.log(f"Converting {slp_path} to {h5_path}")
                 subprocess.run(command, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
-            else:
-                self.log(f"File {h5_path} already exists. Skipping export.")
         except subprocess.CalledProcessError as e:
             self.log(f"H5 Export Error: {e}")
 
-    def run_inference_on_list(self, video_list, write_path_list, model_path, progress_callback):
+    def run_inference_on_list(self, video_list, write_path_list, model_path, progress_callback, stride=None):
         if not video_list:
-            self.log("No videos provided for inference. Skipping.")
             return False
-
-        self.log(f"\nLaunching SLEAP inference on {len(video_list)} videos...\n" + "="*50)
         
         for i in range(len(video_list)):
-            # Update GUI progress bar to show which video is currently being processed
             progress_callback(i)
             
             if os.path.exists(write_path_list[i]):
@@ -318,11 +372,15 @@ class SleapApp:
                     self.log(f"Error: Could not find model paths. Skipping {video_list[i]}.")
                     continue
 
+            # Append stride argument if a valid interval is provided
+            if stride and stride.isdigit() and int(stride) > 1:
+                # Appends standard frame slice format: 0-10000000:<interval>
+                command.extend(["--frames", f"0-10000000:{stride}"])
+
             try:
                 os.makedirs(os.path.dirname(write_path_list[i]), exist_ok=True)
                 self.log(f"Running command: {' '.join(command)}")
                 
-                # Stream Subprocess Output safely
                 process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
                 for line in process.stdout:
                     self.log(line.strip())
@@ -335,35 +393,38 @@ class SleapApp:
             except Exception as e:
                 self.log(f"Failed to launch subprocess: {e}")
                 
-        self.log("\nAll videos for this model processed!\n")
         return True
 
     def start_inference(self):
-        if not self.models:
-            messagebox.showwarning("Warning", "Please add at least one model before running.")
+        if not self.models and not self.port_models:
+            messagebox.showwarning("Warning", "Please add at least one model (standard or port) before running.")
             return
         if not self.directories and not self.videos:
             messagebox.showwarning("Warning", "Please add at least one directory or video before running.")
             return
-        if not self.base_dir.get():
+        
+        # Extract Tkinter variables in the main thread
+        base_dir_val = self.base_dir.get()
+        port_interval_val = self.port_interval.get()
+        
+        if not base_dir_val:
             messagebox.showwarning("Warning", "Please define a Base Project Directory.")
             return
 
-        # Disable button to prevent spamming and reset UI
         self.update_progress(0, 1, "Initializing...")
         self.log_text.config(state="normal")
         self.log_text.delete(1.0, tk.END)
         self.log_text.config(state="disabled")
         
-        # Run in thread
-        thread = threading.Thread(target=self.inference_thread_worker)
+        # Pass the extracted strings into the thread
+        thread = threading.Thread(target=self.inference_thread_worker, args=(base_dir_val, port_interval_val))
         thread.daemon = True
         thread.start()
 
-    def inference_thread_worker(self):
+    def inference_thread_worker(self, base_dir_val, port_interval_val):
         self.log("--- Starting Pipeline ---")
         
-        # 1. Collect all videos
+        # 1. Collect videos
         curr_vids = []
         for d in self.directories:
             curr_vids.extend(get_file_paths(d, ".mp4"))
@@ -372,48 +433,62 @@ class SleapApp:
                 curr_vids.append(v)
                 
         total_videos = len(curr_vids)
-        total_tasks = total_videos * len(self.models)
-        self.log(f"Found {total_videos} total videos to process across {len(self.models)} model sets.")
+        total_models = len(self.models) + len(self.port_models)
+        total_tasks = total_videos * total_models
+        
+        self.log(f"Found {total_videos} videos to process across {total_models} total model sets.")
 
         if total_tasks == 0:
             self.update_progress(0, 1, "Finished: No tasks to run.")
             return
 
-        # 2. Setup write paths and copy models
-        self.update_progress(0, total_tasks, "Copying models and structuring paths...")
-        model_write_paths = self.create_write_paths(curr_vids)
-
-        if len(model_write_paths) != len(self.models):
-            self.log("ERROR: Number of models and model write paths do not match!")
-            self.update_progress(0, 1, "Error occurred. See logs.")
-            return
-
-        # 3. Run Inference & Export
         completed_tasks = 0
-        
-        for m_idx in range(len(model_write_paths)):
-            self.log(f"\n>>> Starting Inference for Model #{m_idx + 1}")
-            
-            # Create a callback to update progress per video
-            def progress_callback(vid_idx):
-                current = completed_tasks + vid_idx
-                status = f"Processing Model {m_idx + 1}/{len(self.models)} | Video {vid_idx + 1}/{total_videos}"
-                self.update_progress(current, total_tasks, status)
 
-            self.run_inference_on_list(curr_vids, model_write_paths[m_idx], self.models[m_idx], progress_callback)
-            completed_tasks += total_videos
+        # --- 2. RUN STANDARD MODELS ---
+        if self.models:
+            self.log("\n[PHASE 1] Processing Standard Models...")
+            model_write_paths = self.create_write_paths(self.models, curr_vids, base_dir_val)
+
+            for m_idx in range(len(model_write_paths)):
+                self.log(f"\n>>> Inference for Standard Model #{m_idx + 1}")
+                
+                def progress_callback(vid_idx, m=m_idx):
+                    current = completed_tasks + vid_idx
+                    self.update_progress(current, total_tasks, f"Standard Model {m + 1}/{len(self.models)} | Video {vid_idx + 1}/{total_videos}")
+
+                self.run_inference_on_list(curr_vids, model_write_paths[m_idx], self.models[m_idx], progress_callback, stride=None)
+                completed_tasks += total_videos
+                
+                self.update_progress(completed_tasks, total_tasks, f"Exporting Standard Model {m_idx + 1} to .h5...")
+                for slp_file in model_write_paths[m_idx]:
+                    if os.path.exists(slp_file):
+                        root, _ = os.path.splitext(slp_file)
+                        self.slp_to_analysis_h5(slp_file, f"{root}.h5")
+
+        # --- 3. RUN PORT MODELS ---
+        if self.port_models:
+            self.log(f"\n[PHASE 2] Processing Port Models (Interval: {port_interval_val})...")
             
-            # Convert to h5
-            self.update_progress(completed_tasks, total_tasks, f"Exporting Model {m_idx + 1} results to .h5...")
-            self.log("Converting .slp outputs to analysis .h5...")
-            for slp_file in model_write_paths[m_idx]:
-                if os.path.exists(slp_file): # Ensure it successfully generated
-                    root, ext = os.path.splitext(slp_file)
-                    h5_path_name = f"{root}.h5"
-                    self.slp_to_analysis_h5(slp_file, h5_path_name)
+            port_write_paths = self.create_write_paths(self.port_models, curr_vids, base_dir_val)
+
+            for p_idx in range(len(port_write_paths)):
+                self.log(f"\n>>> Inference for Port Model #{p_idx + 1}")
+                
+                def port_progress_callback(vid_idx, p=p_idx):
+                    current = completed_tasks + vid_idx
+                    self.update_progress(current, total_tasks, f"Port Model {p + 1}/{len(self.port_models)} | Video {vid_idx + 1}/{total_videos}")
+
+                self.run_inference_on_list(curr_vids, port_write_paths[p_idx], self.port_models[p_idx], port_progress_callback, stride=port_interval_val)
+                completed_tasks += total_videos
+
+                self.update_progress(completed_tasks, total_tasks, f"Exporting Port Model {p_idx + 1} to .h5...")
+                for slp_file in port_write_paths[p_idx]:
+                    if os.path.exists(slp_file):
+                        root, _ = os.path.splitext(slp_file)
+                        self.slp_to_analysis_h5(slp_file, f"{root}.h5")
                     
         self.update_progress(total_tasks, total_tasks, "Finished processing all models and videos.")
-        self.log("=== PIPELINE COMPLETELY FINISHED ===")
+        self.log("\n=== PIPELINE COMPLETELY FINISHED ===")
 
 if __name__ == "__main__":
     root = tk.Tk()

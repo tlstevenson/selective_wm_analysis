@@ -1,5 +1,6 @@
 {
     "model_mode": "top_down",
+    "port_model_mode": "top_down",
     "base_dir": "C:/Users/cns-th-lab/TannerVidsRenamed",
     "models": [
         [
@@ -7,8 +8,28 @@
             "C:/Users/cns-th-lab/TannerVidsRenamed/models/260731_198_199x_234x_235x_237x_238x_274x_400x_402x_419x_421x_422x_424x_483x_occin.centered_instance.n=323"
         ]
     ],
+    "port_models": [
+        [
+            "C:/Users/cns-th-lab/SLEAP_Projects/models/260716_port_model.centroid.n=40",
+            "C:/Users/cns-th-lab/SLEAP_Projects/models/260716_port_model.centered_instance.n=40"
+        ]
+    ],
+    "port_interval": "1800",
     "directories": [
-        "C:/Users/cns-th-lab/TannerVidsRenamed/198/Videos"
+        "C:/Users/cns-th-lab/TannerVidsRenamed/198/Videos",
+        "C:/Users/cns-th-lab/TannerVidsRenamed/199/Videos",
+        "C:/Users/cns-th-lab/TannerVidsRenamed/234/Videos",
+        "C:/Users/cns-th-lab/TannerVidsRenamed/235/Videos",
+        "C:/Users/cns-th-lab/TannerVidsRenamed/237/Videos",
+        "C:/Users/cns-th-lab/TannerVidsRenamed/238/Videos",
+        "C:/Users/cns-th-lab/TannerVidsRenamed/274/Videos",
+        "C:/Users/cns-th-lab/TannerVidsRenamed/400/Videos",
+        "C:/Users/cns-th-lab/TannerVidsRenamed/402/Videos",
+        "C:/Users/cns-th-lab/TannerVidsRenamed/419/Videos",
+        "C:/Users/cns-th-lab/TannerVidsRenamed/421/Videos",
+        "C:/Users/cns-th-lab/TannerVidsRenamed/422/Videos",
+        "C:/Users/cns-th-lab/TannerVidsRenamed/424/Videos",
+        "C:/Users/cns-th-lab/TannerVidsRenamed/483/Videos"
     ],
     "videos": []
 }
