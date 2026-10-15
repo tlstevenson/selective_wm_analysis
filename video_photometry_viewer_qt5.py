@@ -1,17 +1,13 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Fri Sep 25 14:34:37 2026
-
-@author: cns-th-lab
-"""
 import init
 import sys
 import os
 import cv2
+import csv # NEW IMPORT
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QTabWidget, 
                              QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, 
-                             QPushButton, QLineEdit, QCheckBox, QMessageBox)
-from PyQt5.QtCore import Qt
+                             QPushButton, QLineEdit, QCheckBox, QMessageBox,
+                             QComboBox, QDialog, QFormLayout, QDialogButtonBox) # NEW IMPORTS
+from PyQt5.QtCore import Qt, QTimer
 import pyqtgraph as pg
 import numpy as np
 import neurofileread as nfr
@@ -41,7 +37,7 @@ class DataModel:
         
         # List of 5 1D numpy arrays for the 5 plots (1 bottom + 4 side)
         self.time_series = [np.array([]) for _ in range(5)]
-        self.plot_titles = [""] * 5  # <-- Store plot titles here instead of UI elements
+        self.plot_titles = [""] * 5  
         
         self.tracks = None
         self.scores = None
@@ -69,12 +65,10 @@ class DataModel:
     
     def load_real_session_data(self):
         """Called after on_submit_session successfully finds the files."""        
-        # 1. Clear out the old mock data before loading new data
         self.time_series = [np.array([]) for _ in range(5)]
         self.plot_titles = [""] * 5
         self.ts_timestamps = np.array([])
             
-        # 2. Setup your database connections
         loc_db = bandit_db.LocalDB_BasicRLTasks("twoArmBandit")
         
         if self.video_path:
@@ -91,28 +85,21 @@ class DataModel:
             self.scores = h5_data.get("scores")
             self.node_names = h5_data.get("node_names", [])
 
-        # 3. Use the DB to find the subj_id and build the dictionary
         if self.session_id:
             try:
-                # Query the database with the user's input
                 subj_id = db_access.get_sess_subj_id(self.session_id)
                 print(f"DB Lookup: Session '{self.session_id}' belongs to Subject '{subj_id}'")
                 
-                # Build the exact dictionary structure required
                 subj_sess_dict = {subj_id: [int(self.session_id)]}
                 raw_fp_data, _ = fpah.load_fp_data(loc_db, subj_sess_dict)
                 print("Finished loading and continued")
                 
-                # --- THE ULTIMATE FIX ---
                 subj_dict = list(raw_fp_data.values())[0]
                 fp_data = list(subj_dict.values())[0]
                 self.fp_data = fp_data
-                # ------------------------
                 
-                # 3. Extract the high-frequency FP timeline
                 self.ts_timestamps = fp_data['time']
                 
-                # 4. Extract regions and populate the 5 UI time series plots
                 processed_signals = fp_data.get('processed_signals', {})
                 signal_type = 'raw_lig' 
                 
@@ -120,7 +107,7 @@ class DataModel:
                 print(processed_signals.keys())
                 for region in processed_signals.keys():
                     print(region)
-                    if plot_idx >= 4: #Leave one plot open
+                    if plot_idx >= 4:
                         break 
                     if region == "DLS":
                         print(processed_signals[region].keys())
@@ -136,10 +123,7 @@ class DataModel:
                         print(signal_array)
                         self.time_series[plot_idx] = signal_array
                         
-                        # --- SET DYNAMIC PLOT TITLE ---
-                        # Store the title in the data model, NOT the UI widget directly
                         self.plot_titles[plot_idx] = f"{region}: {signal_type}"
-                        # ------------------------------
                         
                         print(f"Mapped '{region}' ({signal_type}) to Graph {plot_idx+1}")
                         plot_idx += 1
@@ -149,7 +133,6 @@ class DataModel:
                 print(f"Failed to fetch FP data: {repr(e)}")
                 traceback.print_exc()
                 
-        # Ensure fallback happens whether try block succeeds or fails
         if len(self.ts_timestamps) == 0:
             print("Using video timestamps as fallback for UI.")
             self.ts_timestamps = self.video_timestamps
@@ -166,7 +149,6 @@ class DataModel:
         self.get_frame(0)
 
     def get_frame(self, idx):
-        """Retrieves a real video frame, or falls back to static placeholder."""
         self.current_frame_idx = idx
         
         if self.cap is not None and self.cap.isOpened():
@@ -177,6 +159,54 @@ class DataModel:
                 
         return np.random.randint(0, 255, (300, 400), dtype=np.uint8)
 
+# --- NEW ANNOTATION DIALOG ---
+class EventAnnotationDialog(QDialog):
+    """Popup window to log a new event."""
+    def __init__(self, parent, frame_idx, ts_idx, available_tags):
+        super().__init__(parent)
+        self.setWindowTitle("Log Event")
+        self.resize(300, 200)
+        
+        self.frame_idx = frame_idx
+        self.ts_idx = ts_idx
+        self.available_tags = available_tags
+        self.selected_tag = None
+        
+        layout = QFormLayout()
+        
+        self.frame_label = QLabel(str(frame_idx))
+        self.ts_label = QLabel(str(ts_idx))
+        layout.addRow("Video Frame:", self.frame_label)
+        layout.addRow("Photometry Index:", self.ts_label)
+        
+        self.tag_dropdown = QComboBox()
+        self.tag_dropdown.addItems(self.available_tags)
+        self.tag_dropdown.setEditable(True) # Allow user to type new tags
+        layout.addRow("Tag:", self.tag_dropdown)
+        
+        self.sub_id_input = QLineEdit()
+        layout.addRow("Sub-identifier:", self.sub_id_input)
+        
+        self.notes_input = QLineEdit()
+        layout.addRow("Notes:", self.notes_input)
+        
+        self.button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        self.button_box.accepted.connect(self.accept)
+        self.button_box.rejected.connect(self.reject)
+        layout.addWidget(self.button_box)
+        
+        self.setLayout(layout)
+        
+    def get_data(self):
+        """Returns the data entered in the dialog."""
+        return {
+            "frame_index": self.frame_idx,
+            "photometry_index": self.ts_idx,
+            "tag": self.tag_dropdown.currentText().strip(),
+            "sub_id": self.sub_id_input.text().strip(),
+            "notes": self.notes_input.text().strip()
+        }
+# -----------------------------
 
 class MainWindow(QMainWindow):
     def __init__(self, base_video_dir, base_hdf5_dir, base_doric_dir):
@@ -192,6 +222,15 @@ class MainWindow(QMainWindow):
         self.lines = []
         self._updating_lines = False
         self.ts_curves = [] 
+        
+        # Playback variables
+        self.is_playing = False
+        self.playback_timer = QTimer()
+        self.playback_timer.timeout.connect(self.next_frame_auto)
+        
+        # Annotation variables
+        self.annotation_tags = ["poke"]
+        self.annotations_df = None
 
         self.tabs = QTabWidget()
         self.setCentralWidget(self.tabs)
@@ -206,7 +245,6 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.tab2, "Time Series")
         self.tabs.addTab(self.tab3, "Overlay Setting")
 
-        # Must initialize these as None/empty before setup_tab1 populates them
         self.bottom_plot = None
         self.side_plots = []
 
@@ -259,7 +297,6 @@ class MainWindow(QMainWindow):
         
         mp4_path = self.data.find_file_by_session(self.base_video_dir, session_id, ".mp4")
         
-        # Allow both .h5 and .hdf5 endings
         hdf5_path = self.data.find_file_by_session(self.base_hdf5_dir, session_id, ".hdf5")
         if hdf5_path is None:
             hdf5_path = self.data.find_file_by_session(self.base_hdf5_dir, session_id, ".h5")
@@ -280,15 +317,96 @@ class MainWindow(QMainWindow):
             self.data.hdf5_path = hdf5_path
             self.data.doric_path = doric_path
             
+            # --- NEW ANNOTATION LOAD ---
+            self.load_annotations()
+            # ---------------------------
+            
             QMessageBox.information(self, "Success", f"All files located for session '{session_id}'.")
             
             self.data.load_real_session_data()
             self.refresh_plots_from_model()
             self.setFocus() 
 
+    # --- NEW ANNOTATION LOGIC ---
+    def get_annotation_csv_path(self):
+        """Generates the save path for the CSV next to the video file."""
+        if not self.data.video_path:
+            return None
+        video_dir = os.path.dirname(self.data.video_path)
+        return os.path.join(video_dir, f"{self.data.session_id}_annotations.csv")
+
+    def load_annotations(self):
+        """Loads existing annotations from CSV if they exist, to populate dropdown."""
+        csv_path = self.get_annotation_csv_path()
+        if csv_path and os.path.exists(csv_path):
+            try:
+                self.annotations_df = pd.read_csv(csv_path)
+                # Update available tags based on previous entries
+                existing_tags = self.annotations_df["tag"].dropna().unique().tolist()
+                for t in existing_tags:
+                    if t not in self.annotation_tags:
+                        self.annotation_tags.append(t)
+            except Exception as e:
+                print(f"Error loading annotations: {e}")
+                self.annotations_df = pd.DataFrame(columns=["frame_index", "photometry_index", "tag", "sub_id", "notes"])
+        else:
+            self.annotations_df = pd.DataFrame(columns=["frame_index", "photometry_index", "tag", "sub_id", "notes"])
+
+    def add_annotation(self):
+        """Triggers the popup to add an annotation for the current frame."""
+        if len(self.data.video_timestamps) == 0:
+            QMessageBox.warning(self, "No Data", "Load a session first.")
+            return
+            
+        frame_idx = self.data.current_frame_idx
+        
+        # Find nearest photometry index
+        video_time = self.data.video_timestamps[frame_idx]
+        ts_idx = 0
+        if len(self.data.ts_timestamps) > 0:
+            idx = np.searchsorted(self.data.ts_timestamps, video_time)
+            if idx == 0:
+                ts_idx = 0
+            elif idx == len(self.data.ts_timestamps):
+                ts_idx = idx - 1
+            else:
+                left_diff = video_time - self.data.ts_timestamps[idx - 1]
+                right_diff = self.data.ts_timestamps[idx] - video_time
+                ts_idx = idx - 1 if left_diff < right_diff else idx
+        else:
+            ts_idx = frame_idx # Fallback
+
+        dialog = EventAnnotationDialog(self, frame_idx, ts_idx, self.annotation_tags)
+        if dialog.exec_():
+            new_data = dialog.get_data()
+            
+            # If the user typed a new tag, add it to our tracking list
+            if new_data["tag"] and new_data["tag"] not in self.annotation_tags:
+                self.annotation_tags.append(new_data["tag"])
+            
+            # Save to dataframe
+            new_row = pd.DataFrame([new_data])
+            if self.annotations_df.empty:
+                self.annotations_df = new_row
+            else:
+                self.annotations_df = pd.concat([self.annotations_df, new_row], ignore_index=True)
+                
+            # Save to CSV immediately
+            csv_path = self.get_annotation_csv_path()
+            if csv_path:
+                try:
+                    self.annotations_df.to_csv(csv_path, index=False)
+                    print(f"Saved annotation to {csv_path}")
+                except Exception as e:
+                    QMessageBox.critical(self, "Save Error", f"Could not save annotations: {e}")
+    # ----------------------------
+
     def setup_tab1(self):
         layout = QVBoxLayout()
         top_layout = QHBoxLayout()
+        
+        # Video Container Layout
+        video_layout = QVBoxLayout()
         
         self.main_plot = pg.PlotWidget(title="Video / Main Display")
         self.main_plot.setAspectLocked(True)
@@ -305,7 +423,25 @@ class MainWindow(QMainWindow):
         )
         self.main_plot.addItem(self.pose_scatter)
         
-        top_layout.addWidget(self.main_plot, stretch=3)
+        btn_controls_layout = QHBoxLayout()
+        
+        self.btn_play_pause = QPushButton("Play")
+        self.btn_play_pause.clicked.connect(self.toggle_playback)
+        self.btn_play_pause.setToolTip("Press Spacebar to toggle play/pause")
+        
+        # --- NEW ANNOTATION BUTTON ---
+        self.btn_annotate = QPushButton("Add Event Tag")
+        self.btn_annotate.clicked.connect(self.add_annotation)
+        self.btn_annotate.setToolTip("Press 'A' to quickly add a tag to this frame")
+        # -----------------------------
+        
+        btn_controls_layout.addWidget(self.btn_play_pause)
+        btn_controls_layout.addWidget(self.btn_annotate)
+        
+        video_layout.addWidget(self.main_plot, stretch=1)
+        video_layout.addLayout(btn_controls_layout)
+        
+        top_layout.addLayout(video_layout, stretch=3)
         
         side_plots_layout = QVBoxLayout()
         self.side_plots = []
@@ -398,13 +534,11 @@ class MainWindow(QMainWindow):
         self.tab3.setLayout(layout)
         
     def reset_plot_views(self):
-        """Resets all time-series plots to their default auto-scaled view."""
         if self.bottom_plot is None:
             return
             
         all_plots = [self.bottom_plot] + self.side_plots
         for plot in all_plots:
-            # Enables auto-ranging for both X and Y axes
             plot.autoRange()
     
     def build_dynamic_node_ui(self):
@@ -445,7 +579,6 @@ class MainWindow(QMainWindow):
                 curve.setData([], [])
             return
             
-        # UI controls the titles using data provided by the DataModel
         all_plot_widgets = [self.bottom_plot] + self.side_plots
         
         for i, curve in enumerate(self.ts_curves):
@@ -456,23 +589,43 @@ class MainWindow(QMainWindow):
                 if len(x_data) == len(y_data):
                     curve.setData(x_data, y_data)
                     
-                    # --- NEW UI UPDATE LOGIC ---
                     if hasattr(self.data, 'plot_titles') and i < len(self.data.plot_titles) and self.data.plot_titles[i]:
                         all_plot_widgets[i].setTitle(self.data.plot_titles[i])
                     else:
-                        # Fallback default titles
                         all_plot_widgets[i].setTitle(f"Graph {i + 1}" if i > 0 else "Waveform / Plot (1)")
-                    # ---------------------------
                 else:
                     print(f"Warning: Graph {i+1} mismatch! X: {len(x_data)}, Y: {len(y_data)}")
                     curve.setData([], []) 
             else:
                 curve.setData([], []) 
                 
-        #for plot in self.side_plots:
-        #    plot.setXLink(self.bottom_plot)
-            
         self.display_video_frame(self.data.current_frame_idx)
+
+    # --- PLAYBACK METHODS ---
+    def toggle_playback(self):
+        if len(self.data.video_timestamps) == 0:
+            return
+            
+        self.is_playing = not self.is_playing
+        
+        if self.is_playing:
+            self.btn_play_pause.setText("Pause")
+            fps = 30
+            if self.data.cap is not None and self.data.cap.isOpened():
+                cap_fps = self.data.cap.get(cv2.CAP_PROP_FPS)
+                if cap_fps > 0 and not np.isnan(cap_fps):
+                    fps = cap_fps
+            self.playback_timer.start(int(1000 / fps))
+        else:
+            self.btn_play_pause.setText("Play")
+            self.playback_timer.stop()
+
+    def next_frame_auto(self):
+        if self.data.current_frame_idx >= len(self.data.video_timestamps) - 1:
+            self.toggle_playback()
+            return
+        self.step_frame(1)
+    # ------------------------
 
     def on_line_dragged(self, source_line):
         if self._updating_lines or len(self.data.video_timestamps) == 0:
@@ -550,6 +703,12 @@ class MainWindow(QMainWindow):
             self.step_frame(1)
         elif event.key() == Qt.Key_Left:
             self.step_frame(-1)
+        elif event.key() == Qt.Key_Space:
+            self.toggle_playback()
+        # --- NEW ANNOTATION HOTKEY ---
+        elif event.key() == Qt.Key_A:
+            self.add_annotation()
+        # -----------------------------
         else:
             super().keyPressEvent(event)
 
@@ -583,7 +742,6 @@ class MainWindow(QMainWindow):
         self._updating_lines = False
 
     def show_tracking_summary(self):
-        """Generates a Matplotlib popup with 3 macro-level tracking analyses."""
         if self.data.tracks is None or self.data.scores is None:
             QMessageBox.warning(self, "No Data", "Please load a valid session first.")
             return

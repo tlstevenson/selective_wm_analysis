@@ -66,9 +66,13 @@ def extract_h5_metadata(filepath):
         labels_dict["model_name"] = os.path.basename(os.path.dirname(filepath))
         return labels_dict
 
-def extract_h5_metadata_w_port(filepath, port_label_dirs):
-    port_m_dict = extract_h5_metadata(filepath)
+def extract_h5_metadata_w_port(filepath, port_label_dirs): #TODO: Depracate this
     port_file = get_port_file(filepath, port_label_dirs)
+    ans = extract_h5_data_w_port_f(filepath, port_file)
+    return ans
+
+def extract_h5_metadata_w_port_f(filepath, port_file):
+    port_m_dict = extract_h5_metadata(filepath)
     if port_file == None:
         raise ValueError("WARNING!!! Port file not found")
     elif not os.path.exists(port_file):
@@ -92,9 +96,14 @@ def extract_h5_data(filepath, target_project_structure={}):
         data_dict["tracks"] = np.transpose(f["tracks"][:])
         return data_dict
 
-def extract_h5_data_w_port(filepath, port_label_dirs, target_project_structure={}):
-    port_data_dict = extract_h5_data(filepath, target_project_structure)
+def extract_h5_data_w_port(filepath, port_label_dirs, target_project_structure={}): #TODO: Depracate
     port_file = get_port_file(filepath, port_label_dirs)
+    ans = extract_h5_data_w_port_f(filepath, port_file, target_project_structure=target_project_structure)
+    return ans
+    
+            
+def extract_h5_data_w_port_f(filepath, port_file, target_project_structure={}):
+    port_data_dict = extract_h5_data(filepath, target_project_structure)
     try:
         if port_file == None:
             port_data_dict["port_tracks"] = [] # Fixed from labels_dict
