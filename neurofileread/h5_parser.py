@@ -8,6 +8,7 @@ Created on Fri Sep 25 14:31:00 2026
 import os
 import h5py
 import numpy as np
+import pandas as pd
 
 def get_h5_files_dir(label_dir_paths, sess_ids=[]):
     for path in label_dir_paths:
@@ -120,3 +121,107 @@ def extract_h5_data_w_port_f(filepath, port_file, target_project_structure={}):
         print(e)
         if port_file == None:
             raise ValueError("No port file found at specified locations!!!")
+            
+def rat_file_paths_by_sess(sess_ids, par_dir, model_basename):
+    label_paths = [] #Location of all rat .h5 files for given session ids
+    rat_folders = [f for f in os.listdir(par_dir) if os.path.isdir(os.path.join(par_dir, f))]
+
+    for sess_id in sess_ids:
+        found_prediction_rat = False
+        for rat_folder in rat_folders:
+            prediction_path_rat = os.path.join(par_dir, rat_folder, r"Videos\predictions", model_basename, f"mov_{sess_id}.h5")
+
+            #Mark whether port and rat files exist
+            if os.path.exists(prediction_path_rat):
+                found_prediction_rat = True
+                label_paths.append(prediction_path_rat)
+                break
+        
+        #Raise an error if any sepcified session does not have a prediction
+        if not found_prediction_rat:
+            raise FileExistsError(f"Rat prediction files not found for session id: {sess_id}")
+            
+    return label_paths
+            
+def port_file_paths_by_sess(sess_ids, par_dir, port_model_basename):
+    port_label_paths = [] #Location of all port .h5 files for given session ids
+    rat_folders = [f for f in os.listdir(par_dir) if os.path.isdir(os.path.join(par_dir, f))]
+
+    for sess_id in sess_ids:
+        found_prediction_port = False
+        for rat_folder in rat_folders:
+            prediction_path_port = os.path.join(par_dir, rat_folder, r"Videos\predictions", port_model_basename, f"mov_{sess_id}.h5")
+            
+            if os.path.exists(prediction_path_port):
+                found_prediction_port = True
+                port_label_paths.append(prediction_path_port)
+                break
+        
+        #Raise an error if any sepcified session does not have a prediction
+        if not found_prediction_port:
+            raise FileExistsError(f"Rat and port prediction files not found for session id: {sess_id}")
+    return port_label_paths
+            
+def rat_port_file_paths_by_sess(sess_ids, par_dir, model_basename, port_model_basename):
+    port_label_paths = [] #Location of all port .h5 files for given session ids
+    label_paths = [] #Location of all rat .h5 files for given session ids
+    rat_folders = [f for f in os.listdir(par_dir) if os.path.isdir(os.path.join(par_dir, f))]
+
+    for sess_id in sess_ids:
+        found_prediction_rat = False
+        found_prediction_port = False
+        for rat_folder in rat_folders:
+            prediction_path_rat = os.path.join(par_dir, rat_folder, r"Videos\predictions", model_basename, f"mov_{sess_id}.h5")
+            print(prediction_path_rat)
+            prediction_path_port = os.path.join(par_dir, rat_folder, r"Videos\predictions", port_model_basename, f"mov_{sess_id}.h5")
+            
+            #Mark whether port and rat files exist
+            if os.path.exists(prediction_path_rat):
+                found_prediction_rat = True
+            
+            if os.path.exists(prediction_path_port):
+                found_prediction_port = True
+            
+            #Add both port and rat files only if both exist 
+            if found_prediction_port and found_prediction_rat:
+                label_paths.append(prediction_path_rat)
+                port_label_paths.append(prediction_path_port)
+                break
+            elif found_prediction_port or found_prediction_rat:
+                error_msg = """One of the following files was not found.
+                                Rat file at path {prediction_path_rat}: {found_prediction_rat}
+                                Port file at path {prediction_path_port}: {found_prediction_port}"""
+                raise FileExistsError(error_msg)
+            else:
+                continue
+        
+        #Raise an error if any sepcified session does not have a prediction
+        if not (found_prediction_rat and found_prediction_port):
+            raise FileExistsError(f"Rat and port prediction files not found for session id: {sess_id}")
+    return label_paths, port_label_paths
+
+def generate_sleap_dataframe_f(rat_label_paths, port_label_paths):
+    #Project data (should be shared across all .h5 files analyzed)
+    project_dict = extract_h5_metadata_w_port_f(rat_label_paths[0], port_label_paths[0]) #TODO: May break as second parameter may need to be a list
+    
+    labels_dict = {} #Label data by session id
+    idx = 0
+    for file_idx in range(len(rat_label_paths)):
+        comb_file_data = extract_h5_data_w_port_f(rat_label_paths[file_idx], port_label_paths[file_idx], target_project_structure=project_dict)
+        for key in comb_file_data:
+            if key not in labels_dict:
+                print(f"WARNING!!! Adding new key {key}. This is ok at the start but not in middle.")
+                labels_dict[key] = []
+                labels_dict[key].append(comb_file_data[key])
+            else:
+                labels_dict[key].append(comb_file_data[key])
+    
+    #Crude check that all collumns added for all videos
+    first_col_length = len(labels_dict[next(iter(labels_dict))])
+    for key in labels_dict:
+        if len(labels_dict[key]) != first_col_length:
+            raise ValueError(f"Column {key} of labels_dict does not match the length of other columns.")
+    
+    #Create the dataframe after checking shape
+    labels_df = pd.DataFrame(labels_dict)
+    return labels_df

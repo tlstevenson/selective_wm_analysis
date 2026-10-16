@@ -128,3 +128,32 @@ def interpolate_cubic(series, max_dist):
                 interpolated_series[start:end, node, coord, 0] = full_interp.iloc[start:end]
                 
     return interpolated_series
+
+
+def pose_in_intervals(frame_timestamps, coords, intervals):
+    """A function that gets a non-homogenous list of coordinates by time intervals.
+
+    It uses the time since the start from the intervals to find the correct frames
+    in the video and get a list of pose_data for each interval
+
+    Args:
+        frame_timestamps (float[]): 1d array of timestamps for each frame
+        coords (float[,,,]): frames x nodes x 2 x tracks SLEAP array
+        intervals (List<(float, float)>): intervals in which to get the data
+
+    Returns:
+        A non-homogenous list of slices corresponding to the intervals."""
+        
+    print(f"A timeseries of shape {np.shape(frame_timestamps)} was provided with coordinates of shape {np.shape(coords)} and {len(intervals)} intervals.")
+    pose_data_list = []
+    idx_intervals = []
+    for start_time, end_time in intervals:
+        start_idx = np.searchsorted(frame_timestamps, start_time, side="left")
+        end_idx = np.searchsorted(frame_timestamps, end_time, side="right")
+        idx_intervals.append([start_idx, end_idx])
+
+        # Slice the coordinates array using the found frame indices
+        interval_coords = coords[start_idx:end_idx]
+        pose_data_list.append(interval_coords)
+
+    return pose_data_list, idx_intervals
