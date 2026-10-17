@@ -539,3 +539,106 @@ plt.show()
 #K=4 and K=2 are instructive. 
 #K=2 is how instructive L vs R are for switch (AUC=.50) CHANCE
 #K=4 is how instructive large body movements are instructive for switch (AUC=.61)
+
+#%%
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.svm import SVC
+from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import cross_val_score, cross_val_predict, StratifiedKFold
+from sklearn.metrics import confusion_matrix, roc_curve, auc
+
+# 1. Prepare Data
+# Assuming 'X' is your original (N, 28) array of flattened start-to-end deltas.
+# If you filtered your dataframe earlier, ensure you apply the same mask to X:
+# X_aligned = X[mask_array] 
+X_features = X # Replace with X_aligned if necessary
+y_true = switch_array.astype(int)
+
+# CRITICAL: Standardize the continuous raw spatial features
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(X_features)
+
+# 2. Initialize the SVM Model with an RBF kernel
+svm_delta = SVC(kernel='rbf', class_weight='balanced', probability=True, random_state=42)
+
+# 3. Execute 50-Fold Cross-Validation for Direct Comparison
+cv_50 = StratifiedKFold(n_splits=50, shuffle=True, random_state=42)
+cv_scores = cross_val_score(svm_delta, X_scaled, y_true, cv=cv_50, scoring='accuracy')
+
+print("--- 50-Fold SVM Results (Raw Deltas) ---")
+print(f"Mean Accuracy:      {cv_scores.mean() * 100:.2f}%")
+print(f"Standard Deviation: ±{cv_scores.std() * 100:.2f}%")
+
+# 4. Generate Predictions for the Dashboard (Using 10 folds for stability)
+y_pred_delta = cross_val_predict(svm_delta, X_scaled, y_true, cv=10)
+y_prob_delta = cross_val_predict(svm_delta, X_scaled, y_true, cv=10, method='predict_proba')[:, 1]
+
+# 5. Categorize Prediction Outcomes for the Scatterplot
+outcome_labels = []
+for true_val, pred_val in zip(y_true, y_pred_delta):
+    if true_val == 1 and pred_val == 1:
+        outcome_labels.append('True Positive (Correct Switch)')
+    elif true_val == 0 and pred_val == 0:
+        outcome_labels.append('True Negative (Correct Stay)')
+    elif true_val == 1 and pred_val == 0:
+        outcome_labels.append('False Negative (Missed Switch)')
+    else:
+        outcome_labels.append('False Positive (False Alarm)')
+
+outcome_palette = {
+    'True Positive (Correct Switch)': '#2ca02c',  
+    'True Negative (Correct Stay)': '#1f77b4',    
+    'False Negative (Missed Switch)': '#d62728',  
+    'False Positive (False Alarm)': '#ff7f0e'     
+}
+
+# ---------------------------------------------------------
+# DASHBOARD VISUALIZATION
+# ---------------------------------------------------------
+fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+sns.set_theme(style="darkgrid")
+
+# --- PLOT 1: PCA Prediction Scatterplot ---
+# We still plot on the 2D PCA axes so you can visually compare it to the last graph, 
+# even though the model was trained on the full 28D data.
+sns.scatterplot(
+    x=X_pca[:, 0], 
+    y=X_pca[:, 1], 
+    hue=outcome_labels, 
+    palette=outcome_palette,
+    style=labels,  # Keep the K-Means cluster shapes for reference
+    markers={0: 'o', 1: 's', 2: '^', 3: 'D'},
+    s=80, alpha=0.8, ax=axes[0]
+)
+axes[0].scatter(centroids[:, 0], centroids[:, 1], c='black', marker='X', s=150, zorder=5)
+axes[0].set_title("Raw-Delta SVM Classifications\n(Projected on PCA Space)", fontsize=14, fontweight='bold')
+axes[0].set_xlabel("Principal Component 1")
+axes[0].set_ylabel("Principal Component 2")
+handles, legend_labels = axes[0].get_legend_handles_labels()
+axes[0].legend(handles[:5], legend_labels[:5], loc='best', fontsize=9)
+
+# --- PLOT 2: Confusion Matrix ---
+cm = confusion_matrix(y_true, y_pred_delta)
+sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', cbar=False, 
+            annot_kws={"size": 14, "weight": "bold"}, ax=axes[1])
+axes[1].set_title("Confusion Matrix (Raw Deltas)", fontsize=14, fontweight='bold')
+axes[1].set_xlabel("Predicted Label (SVM)", fontsize=12)
+axes[1].set_ylabel("True Label (Behavior)", fontsize=12)
+axes[1].set_xticklabels(['Stay (0)', 'Switch (1)'])
+axes[1].set_yticklabels(['Stay (0)', 'Switch (1)'])
+
+# --- PLOT 3: ROC Curve ---
+fpr, tpr, thresholds = roc_curve(y_true, y_prob_delta)
+roc_auc = auc(fpr, tpr)
+
+axes[2].plot(fpr, tpr, color='darkorange', lw=2, label=f'Raw Deltas (AUC = {roc_auc:.2f})')
+axes[2].plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--') 
+axes[2].set_title("Receiver Operating Characteristic (ROC)", fontsize=14, fontweight='bold')
+axes[2].set_xlabel("False Positive Rate (1 - Specificity)")
+axes[2].set_ylabel("True Positive Rate (Sensitivity)")
+axes[2].legend(loc="lower right", fontsize=12)
+
+plt.tight_layout()
+plt.show()
