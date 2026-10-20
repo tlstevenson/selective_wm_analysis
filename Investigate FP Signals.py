@@ -118,6 +118,7 @@ for subj_id in sess_ids.keys():
 #             db_access.update_fp_time_data(subj_id, sess_id, region, time_data)
 
 #         completed_sess.append(sess_id)
+        
 
 # %% define plotting routine
 
