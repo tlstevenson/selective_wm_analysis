@@ -17,6 +17,7 @@ import beh_analysis_helpers as bah
 import fp_analysis_helpers as fpah
 import bandit_beh_helpers as bbh
 import numpy as np
+import plot_style
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 import seaborn as sb
@@ -28,27 +29,47 @@ import re
 
 # %% LOAD DATA
 
-protocol = 'ClassicRLTasks'
-stage = 2
+protocol = 'BanditTasks' #'ClassicRLTasks'
 stage_name = 'twoArmBandit'
-n_back = 6
-fp_sess_only = True
-active_subjects_only = False
+n_back = 20
+fp_sess_only = False
+active_subjects_only = True
 reload = False
+date_start = '2026-09-06'
+date_end = '2026-09-23'
+exclude_subjs = []
 
 if active_subjects_only:
-    subject_info = db_access.get_active_subj_stage(protocol=protocol, stage_num=stage)
+    subj_stage_info = db_access.get_active_subj_stage(protocol=protocol, stage_name=stage_name)
 else:
-    subject_info = db_access.get_protocol_subject_info(protocol=protocol, stage_num=stage)
+    subj_stage_info = db_access.get_protocol_subject_info(protocol=protocol, stage_name=stage_name)
 
-#subj_ids = subject_info['subjid']
-subj_ids = [198,199,274,400,402]
+subj_ids = subj_stage_info['subjid']
+# subj_ids = [198, 199, 274, 400, 402, 237, 238, 424, 483, 234, 235, 419, 421, 422]
+
+subj_ids = [s for s in subj_ids if not s in exclude_subjs]
+
+subj_info = db_access.get_subject_info(subj_ids)
+# rename genotypes
+name_mapping = {'FMR1-M2 Hemi': 'FMR1 Hemi', 'FMR1-M2 WT': 'FMR1 WT'}
+subj_info['genotype'] = subj_info['genotype'].apply(lambda x: name_mapping.get(x, x))
+genotype_subj_ids = subj_info.groupby('genotype')['subjid'].agg(list).to_dict()
+genotypes = list(genotype_subj_ids.keys())
+
+subj_labels = {}
+for genotype, subjs in genotype_subj_ids.items():
+    for subj in subjs:
+        if genotype is None:
+            subj_labels[subj] = str(subj)
+        else:
+            subj_labels[subj] = '{} ({})'.format(subj, genotype)
 
 # get session ids
 if fp_sess_only:
-    sess_ids = db_access.get_fp_data_sess_ids(subj_ids=subj_ids, protocol=protocol, stage_num=stage)
+    sess_ids = db_access.get_fp_data_sess_ids(subj_ids=subj_ids, protocol=protocol, stage_name=stage_name)
+    sess_ids = {subjid: [sessid for sessid in sess_ids[subjid] if not sessid in fpah.__sess_ignore] for subjid in sess_ids.keys()}
 else:
-    sess_ids = db_access.get_subj_sess_ids(subj_ids, stage_num=stage, protocol=protocol)
+    sess_ids = db_access.get_subj_sess_ids(subj_ids, stage_name=stage_name, protocol=protocol, date_start=date_start, date_end=date_end)
     sess_ids = bah.limit_sess_ids(sess_ids, n_back)
 
 # get trial information
@@ -59,17 +80,177 @@ all_sess = loc_db.get_behavior_data(utils.flatten(sess_ids), reload=reload)
 all_sess['RT'] = all_sess['response_time'] - all_sess['response_cue_time']
 all_sess['cpoke_out_latency'] = all_sess['cpoke_out_time'] - all_sess['response_cue_time']
 
-# update reward rates
+# make trial history labels
+rew_rate_n_back = 3
 
-bah.calc_trial_hist(all_sess, 5)
-bbh.make_trial_hist_labels(all_sess, 3)
-bbh.make_rew_hist_labels(all_sess, 3)
+bah.calc_trial_hist(all_sess, rew_rate_n_back)
+bbh.make_trial_hist_labels(all_sess, rew_rate_n_back)
+bbh.make_rew_hist_labels(all_sess, rew_rate_n_back)
+all_sess['n_rew_hist'] = all_sess['rew_hist'].apply(lambda x: np.nansum(x))
 
 all_sess_resp = all_sess[all_sess['choice'] != 'none']
 
+block_rate_sess_ids = all_sess.groupby('block_prob')['sessid'].agg('unique').to_dict()
+block_rate_sess_ids['All'] = all_sess['sessid'].unique()
+block_rates = list(block_rate_sess_ids.keys())
+
+bah.get_bandit_trial_outcome(all_sess)
+
+# %% Calculate licking durations
+
+all_trial_start_ts = bah.get_beh_trial_start_ts(all_sess)
+
+bah.calc_lick_duration(all_sess, all_trial_start_ts)
+
+# %% Analyze licking durations
+
+plot_ind_subjects = False
+
+plot_cols = [('lick_dur', 'Lick Duration', 'Lick Duration (s)')]
+             # ('next_action_cpoke_in_latency', 'Next Action Cpoke Latency', 'Cpoke Latency (s)'),
+             # ('next_cpoke_in_latency', 'Next Cport On Cpoke Latency', 'Cpoke Latency (s)'),
+             # ('cpoke_out_to_response', 'Cpoke Out to Response', 'Response Latency (s)'),
+             # ('RT', 'Cue to Response', 'Response Latency (s)')]
+
+rew_hist_vals = np.arange(rew_rate_n_back+1)
+hist_col = 'n_rew_hist'
+
+for (plot_col, col_title, col_ylabel) in plot_cols:
+
+    # all subjects by choice
+    plot_outcomes = np.unique(all_sess['outcome_type'])
+
+    fig, axs = plt.subplots(len(plot_outcomes), len(block_rates), layout='constrained',
+                            figsize=(len(block_rates)*3,len(plot_outcomes)*4), sharey='row')
+    fig.suptitle('Bandit: {} vs Reward History, All Subjects'.format(col_title))
+
+    for j, br in enumerate(block_rates):
+        br_sess_data = all_sess[all_sess['sessid'].isin(block_rate_sess_ids[br])]
+
+        all_summary = (br_sess_data
+                   .dropna(subset=[hist_col, plot_col])
+                   .groupby([hist_col, 'outcome_type'])[plot_col]
+                   .agg(['mean', 'sem'])
+                   .reset_index())
+
+        stay_trials = br_sess_data[br_sess_data['stay']]
+        stay_summary = (stay_trials
+                   .dropna(subset=[hist_col, plot_col])
+                   .groupby([hist_col, 'outcome_type'])[plot_col]
+                   .agg(['mean', 'sem'])
+                   .reset_index())
+
+        switch_trials = br_sess_data[br_sess_data['switch']]
+        switch_summary = (switch_trials
+                   .dropna(subset=[hist_col, plot_col])
+                   .groupby([hist_col, 'outcome_type'])[plot_col]
+                   .agg(['mean', 'sem'])
+                   .reset_index())
+
+        for i, outcome in enumerate(plot_outcomes):
+            ax = axs[i,j]
+            all_outcome_summary = all_summary[all_summary['outcome_type'] == outcome]
+            plot_utils.plot_shaded_error(all_outcome_summary[hist_col], all_outcome_summary['mean'], y_err=all_outcome_summary['sem'], ax=ax, label='All Choices')
+            stay_outcome_summary = stay_summary[stay_summary['outcome_type'] == outcome]
+            plot_utils.plot_shaded_error(stay_outcome_summary[hist_col], stay_outcome_summary['mean'], y_err=stay_outcome_summary['sem'], ax=ax, label='Stays')
+            switch_outcome_summary = switch_summary[switch_summary['outcome_type'] == outcome]
+            plot_utils.plot_shaded_error(switch_outcome_summary[hist_col], switch_outcome_summary['mean'], y_err=switch_outcome_summary['sem'], ax=ax, label='Switches')
+
+            ax.set_xlabel('# Rewards in Last {} Trials'.format(rew_rate_n_back))
+            ax.set_ylabel(col_ylabel)
+            ax.set_title('{}, {} Block'.format(outcome.title(), br))
+            ax.legend()
+            ax.set_xticks(rew_hist_vals)
+
+    plt.show()
+
+    # all subjects by genotype
+    if len(genotypes) > 1:
+
+        fig, axs = plt.subplots(len(plot_outcomes), len(block_rates), layout='constrained',
+                                figsize=(len(block_rates)*3,len(plot_outcomes)*4), sharey='row')
+        fig.suptitle('Bandit: {} vs Reward History, All Subjects'.format(col_title))
+
+        for j, br in enumerate(block_rates):
+            br_sess_data = all_sess[all_sess['sessid'].isin(block_rate_sess_ids[br])]
+
+            genotype_data = {}
+
+            for group, group_subjs in genotype_subj_ids.items():
+                group_data = br_sess_data[br_sess_data['subjid'].isin(group_subjs)]
+
+                genotype_data[group] = (group_data
+                                    .dropna(subset=[hist_col, plot_col])
+                                    .groupby([hist_col, 'outcome_type'])[plot_col]
+                                    .agg(['mean', 'sem'])
+                                    .reset_index())
+
+            for i, outcome in enumerate(plot_outcomes):
+                ax = axs[i,j]
+
+                for group in genotypes:
+                    group_outcome_summary = genotype_data[group][genotype_data[group]['outcome_type'] == outcome]
+                    plot_utils.plot_shaded_error(group_outcome_summary[hist_col], group_outcome_summary['mean'],
+                                                 y_err=group_outcome_summary['sem'], ax=ax, label=group)
+
+                ax.set_xlabel('# Rewards in Last {} Trials'.format(rew_rate_n_back))
+                ax.set_ylabel(col_ylabel)
+                ax.tick_params(labelbottom=True, labelleft=True)
+                ax.set_title('{}, {} Block'.format(outcome.title(), br))
+                ax.legend()
+                ax.set_xticks(rew_hist_vals)
+
+        plt.show()
+
+    # individual subjects
+    if plot_ind_subjects:
+        for outcome in plot_outcomes:
+            fig, axs = plt.subplots(len(subj_ids), len(block_rates), layout='constrained', figsize=(len(block_rates)*4,len(subj_ids)*4))
+            fig.suptitle('Bandit: {} vs Reward History, Individual Subjects, {} Trials'.format(col_title, outcome.title()))
+
+            for j, br in enumerate(block_rates):
+                br_sess_data = all_sess[all_sess['sessid'].isin(block_rate_sess_ids[br])]
+
+                all_summary = (br_sess_data
+                           .dropna(subset=[hist_col, plot_col])
+                           .groupby(['subjid', hist_col, 'outcome_type'])[plot_col]
+                           .agg(['mean', 'sem'])
+                           .reset_index())
+
+                stay_trials = br_sess_data[br_sess_data['stay']]
+                stay_summary = (stay_trials
+                           .dropna(subset=[hist_col, plot_col])
+                           .groupby(['subjid', hist_col, 'outcome_type'])[plot_col]
+                           .agg(['mean', 'sem'])
+                           .reset_index())
+
+                switch_trials = br_sess_data[br_sess_data['switch']]
+                switch_summary = (switch_trials
+                           .dropna(subset=[hist_col, plot_col])
+                           .groupby(['subjid', hist_col, 'outcome_type'])[plot_col]
+                           .agg(['mean', 'sem'])
+                           .reset_index())
+
+                for i, subj in enumerate(subj_ids):
+                    ax = axs[i,j]
+                    all_outcome_summary = all_summary[(all_summary['outcome_type'] == outcome) & (all_summary['subjid'] == subj)]
+                    plot_utils.plot_shaded_error(all_outcome_summary[hist_col], all_outcome_summary['mean'], y_err=all_outcome_summary['sem'], ax=ax, label='All Choices')
+                    stay_outcome_summary = stay_summary[(stay_summary['outcome_type'] == outcome) & (stay_summary['subjid'] == subj)]
+                    plot_utils.plot_shaded_error(stay_outcome_summary[hist_col], stay_outcome_summary['mean'], y_err=stay_outcome_summary['sem'], ax=ax, label='Stays')
+                    switch_outcome_summary = switch_summary[(switch_summary['outcome_type'] == outcome) & (switch_summary['subjid'] == subj)]
+                    plot_utils.plot_shaded_error(switch_outcome_summary[hist_col], switch_outcome_summary['mean'], y_err=switch_outcome_summary['sem'], ax=ax, label='Switches')
+
+                    ax.set_xlabel('# Rewards in Last {} Trials'.format(rew_rate_n_back))
+                    ax.set_ylabel(col_ylabel)
+                    ax.set_title('{}, {} Block'.format(subj_labels[subj], br))
+                    ax.legend()
+                    ax.set_xticks(rew_hist_vals)
+
+        plt.show()
+
 # %%
 
-ind_subj = True
+ind_subj = False
 meta_subj = True
 
 # %% TRIAL COUNTS
@@ -91,21 +272,22 @@ fig, axs = plt.subplots(len(count_dict.keys()), 1, layout='constrained',
                         figsize=(3+0.25*len(subj_ids), 3*len(count_dict.keys())))
 for i, (col_name, title) in enumerate(zip(count_columns, column_titles)):
     bah.plot_counts(count_dict_pct[col_name], axs[i], title, '% Trials', 'v')
-    
+
 # %% Plot trial history counts
 
 bbh.analyze_trial_hist_counts(all_sess_resp, 3)
 
 # %% Count Block Lengths
 
-bbh.count_block_lengths(all_sess_resp,  ind_subj=ind_subj, meta_subj=meta_subj)
+bbh.count_block_lengths(all_sess_resp,  ind_subj=ind_subj, meta_subj=meta_subj, subj_groups=genotype_subj_ids)
 
 # %% Analyze response metrics
 
 plot_simple_summary = True
+plot_avg_block = False
 
-figs = bbh.analyze_choice_behavior(all_sess, n_back_hist=3, plot_simple_summary=plot_simple_summary, meta_subj=meta_subj, ind_subj=ind_subj)
-figs = bbh.analyze_trial_choice_behavior(all_sess, plot_simple_summary=plot_simple_summary, meta_subj=meta_subj, ind_subj=ind_subj)
+figs = bbh.analyze_choice_behavior(all_sess, n_back_hist=3, plot_simple_summary=plot_simple_summary, meta_subj=meta_subj, ind_subj=ind_subj, subj_groups=genotype_subj_ids)
+figs = bbh.analyze_trial_choice_behavior(all_sess, plot_simple_summary=plot_simple_summary, meta_subj=meta_subj, ind_subj=ind_subj, plot_avg_block=plot_avg_block, subj_groups=genotype_subj_ids)
 
 # fpah.save_fig(figs['all'][1], r'C:\Users\tanne\OneDrive\Desktop\choose_high', format='pdf')
 # fpah.save_fig(figs['all'][1], r'C:\Users\tanne\OneDrive\Desktop\choose_high', format='svg')
@@ -115,20 +297,18 @@ separate_block_rates = True
 
 n_back = 5
 
-# whether to model the interaction as win-stay/lose switch or not
-include_winstay = False
-# whether to include reward as a predictor on its own
-include_reward = False
-# whether to have separate interaction terms for rewarded trials and unrewarded trials
-separate_unreward = False
-# whether to include all possible interaction combinations
+include_unreward = False
+separate_winstay_loseswitch = True
 include_full_interaction = False
 
 plot_cis = True
 
-bbh.logit_regress_side_choice(all_sess, n_back=n_back, separate_block_rates=separate_block_rates, include_winstay=include_winstay, include_reward=include_reward, 
-                              separate_unreward=separate_unreward, include_full_interaction=include_full_interaction, plot_cis=plot_cis, ind_subj=ind_subj, meta_subj=meta_subj)
-        
+bah.calc_trial_hist(all_sess, n_back)
+
+bbh.logit_regress_side_choice(all_sess, n_back=n_back, separate_block_rates=separate_block_rates, include_unreward=include_unreward,
+                              separate_winstay_loseswitch=separate_winstay_loseswitch, include_full_interaction=include_full_interaction,
+                              plot_cis=plot_cis, ind_subj=ind_subj, meta_subj=meta_subj, subj_groups=genotype_subj_ids)
+
 # %% Logistic regression of stay/switch choice by past choices and trial outcomes
 
 separate_block_rates = True
@@ -150,8 +330,8 @@ include_full_interaction = True
 
 plot_cis = True
 
-bbh.logit_regress_stay_choice(all_sess, n_back=n_back, separate_block_rates=separate_block_rates, fit_switches=fit_switches, include_unreward=include_unreward, 
-                              include_choice=include_choice, include_diff_choice=include_diff_choice, include_interaction=include_interaction, include_full_interaction=include_full_interaction, 
+bbh.logit_regress_stay_choice(all_sess, n_back=n_back, separate_block_rates=separate_block_rates, fit_switches=fit_switches, include_unreward=include_unreward,
+                              include_choice=include_choice, include_diff_choice=include_diff_choice, include_interaction=include_interaction, include_full_interaction=include_full_interaction,
                               plot_cis=plot_cis, ind_subj=ind_subj, meta_subj=meta_subj)
 
 
@@ -240,10 +420,10 @@ for subj_id in subj_ids:
 # time_col = 'cpoke_in_time'
 # plot_suffix = ' - Cpoke In Time'
 
-time_col = 'cpoke_out_time'
-plot_suffix = ' - Cpoke Out Time'
+time_col = 'response_cue_time'
+plot_suffix = ' - Response Cue Time'
 
-min_time = np.floor(all_sess[time_col].min())
+min_time = max(np.floor(all_sess[time_col].min()), 3)
 
 # create uneven bins tiling the cpoke in times so bins have roughly the same amount of data points
 bin_edges = min_time + np.concatenate((np.arange(0, 10, 2), [10,15,20,30,60,np.inf]))

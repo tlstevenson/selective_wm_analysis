@@ -76,6 +76,8 @@ for subj_id in subj_ids:
         # rename file with session id
         new_name = path.join(root_dir, 'Session_{}.doric'.format(sess_id))
         os.rename(data_file, new_name)
+        
+        
 
 # %% Add Manually
 

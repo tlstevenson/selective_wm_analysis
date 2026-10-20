@@ -32,17 +32,17 @@ all_add_agents = {}
 
 ## Additional Agents
 # will be applied to all main agents
-all_add_agents[''] = None
-all_add_agents['Persev (free alpha)'] = [agents.PerseverativeAgent(n_vals=2)]
+#all_add_agents[''] = None
+#all_add_agents['Persev (free alpha)'] = [agents.PerseverativeAgent(n_vals=2)]
 all_add_agents['Persev (fixed)'] = [agents.PerseverativeAgent(n_vals=2, constraints={'alpha': {'fit': False, 'init': 1}})]
 
 ## Q MODELS
 
-all_main_agent_gens['Q'] = lambda s: agents.QValueAgent(constraints=s)
+# all_main_agent_gens['Q'] = lambda s: agents.QValueAgent(constraints=s)
 
-all_main_agent_settings['Q'] = {
+# all_main_agent_settings['Q'] = {
         # All Alphas Free, Different K Fixes
-        'All Free': {},
+        # 'All Free': {},
         
         # 'All Alpha Free, S/R K Fixed': {'k_same_rew': {'fit': False}},
         
@@ -55,9 +55,9 @@ all_main_agent_settings['Q'] = {
         #                                             'k_diff_rew': {'fit': False, 'init': 0.5}, 'k_diff_unrew': {'fit': False, 'init': 0.5}},
         
         # # All Alphas shared, Different K Fixes
-        'All Alpha Shared, All K Fixed': {'alpha_same_unrew': {'share': 'alpha_same_rew'}, 'alpha_diff_rew': {'share': 'alpha_same_rew'}, 
-                                          'alpha_diff_unrew': {'share': 'alpha_same_rew'}, 'k_same_rew': {'fit': False}, 
-                                          'k_same_unrew': {'fit': False},'k_diff_rew': {'fit': False}, 'k_diff_unrew': {'fit': False}},
+        # 'All Alpha Shared, All K Fixed': {'alpha_same_unrew': {'share': 'alpha_same_rew'}, 'alpha_diff_rew': {'share': 'alpha_same_rew'}, 
+        #                                   'alpha_diff_unrew': {'share': 'alpha_same_rew'}, 'k_same_rew': {'fit': False}, 
+        #                                   'k_same_unrew': {'fit': False},'k_diff_rew': {'fit': False}, 'k_diff_unrew': {'fit': False}},
         
         # 'All Alpha Shared, D/R K Free': {'alpha_same_unrew': {'share': 'alpha_same_rew'}, 'alpha_diff_rew': {'share': 'alpha_same_rew'}, 
         #                                   'alpha_diff_unrew': {'share': 'alpha_same_rew'},'k_same_rew': {'fit': False}, 
@@ -82,13 +82,12 @@ all_main_agent_settings['Q'] = {
         # 'Same Alpha Shared, K Free': {'alpha_same_unrew': {'share': 'alpha_same_rew'}, 'alpha_diff_rew': {'fit': False, 'init': 0}, 
         #                               'alpha_diff_unrew': {'fit': False, 'init': 0}, 'k_diff_rew': {'fit': False}, 'k_diff_unrew': {'fit': False}},
         
-         'Same Alpha Only, K Fixed': {'alpha_diff_rew': {'fit': False, 'init': 0}, 
-                                 'alpha_diff_unrew': {'fit': False, 'init': 0},
-                                 'k_same_rew': {'fit': False}, 
-                                 'k_same_unrew': {'fit': False},
-                                 'k_diff_rew': {'fit': False}, 
-                                 'k_diff_unrew': {'fit': False}},
-        #                              'k_same_rew': {'fit': False}, 'k_same_unrew': {'fit': False},'k_diff_rew': {'fit': False}, 'k_diff_unrew': {'fit': False}},
+         # 'Same Alpha Only, K Fixed': {'alpha_diff_rew': {'fit': False, 'init': 0}, 
+         #                         'alpha_diff_unrew': {'fit': False, 'init': 0},
+         #                         'k_same_rew': {'fit': False}, 
+         #                         'k_same_unrew': {'fit': False},
+         #                         'k_diff_rew': {'fit': False}, 
+         #                         'k_diff_unrew': {'fit': False}},
         
         # 'Same Alpha Only, K Free': {'alpha_diff_rew': {'fit': False, 'init': 0}, 'alpha_diff_unrew': {'fit': False, 'init': 0},
         #                             'k_diff_rew': {'fit': False}, 'k_diff_unrew': {'fit': False}},
@@ -108,12 +107,12 @@ all_main_agent_settings['Q'] = {
         # 'Alpha Same/Diff Shared, Same K Fixed': {'alpha_same_unrew': {'share': 'alpha_same_rew'}, 'alpha_diff_unrew': {'share': 'alpha_diff_rew'}, 
         #                                          'k_same_rew': {'fit': False}, 'k_same_unrew': {'fit': False}},
         
-        'Alpha Same/Diff Shared, All K Fixed': {'alpha_same_unrew': {'share': 'alpha_same_rew'}, 
-                                            'alpha_diff_unrew': {'share': 'alpha_diff_rew'}, 
-                                            'k_same_rew': {'fit': False}, 
-                                            'k_same_unrew': {'fit': False}, 
-                                            'k_diff_rew': {'fit': False}, 
-                                            'k_diff_unrew': {'fit': False}},
+        # 'Alpha Same/Diff Shared, All K Fixed': {'alpha_same_unrew': {'share': 'alpha_same_rew'}, 
+        #                                     'alpha_diff_unrew': {'share': 'alpha_diff_rew'}, 
+        #                                     'k_same_rew': {'fit': False}, 
+        #                                     'k_same_unrew': {'fit': False}, 
+        #                                     'k_diff_rew': {'fit': False}, 
+        #                                     'k_diff_unrew': {'fit': False}},
         #                                          'k_diff_unrew': {'fit': False}},
         
         # 'Alpha Same/Diff Shared, D/R K Free': {'alpha_same_unrew': {'share': 'alpha_same_rew'}, 'alpha_diff_unrew': {'share': 'alpha_diff_rew'}, 
@@ -122,12 +121,12 @@ all_main_agent_settings['Q'] = {
         # 'Alpha Rew/Unrew Shared, Same K Fixed': {'alpha_diff_rew': {'share': 'alpha_same_rew'}, 'alpha_diff_unrew': {'share': 'alpha_same_unrew'}, 
         #                                          'k_same_rew': {'fit': False}, 'k_same_unrew': {'fit': False}},
         
-        'Alpha Rew/Unrew Shared, All K Fixed': {'alpha_diff_rew': {'share': 'alpha_same_rew'}, 
-                                            'alpha_diff_unrew': {'share': 'alpha_same_unrew'}, 
-                                            'k_same_rew': {'fit': False}, 
-                                            'k_same_unrew': {'fit': False}, 
-                                            'k_diff_rew': {'fit': False}, 
-                                            'k_diff_unrew': {'fit': False}},
+        # 'Alpha Rew/Unrew Shared, All K Fixed': {'alpha_diff_rew': {'share': 'alpha_same_rew'}, 
+        #                                     'alpha_diff_unrew': {'share': 'alpha_same_unrew'}, 
+        #                                     'k_same_rew': {'fit': False}, 
+        #                                     'k_same_unrew': {'fit': False}, 
+        #                                     'k_diff_rew': {'fit': False}, 
+        #                                     'k_diff_unrew': {'fit': False}},
         
         # 'Alpha Rew/Unrew Shared, D/R K Free': {'alpha_diff_rew': {'share': 'alpha_same_rew'}, 'alpha_diff_unrew': {'share': 'alpha_same_unrew'}, 
         #                                        'k_same_rew': {'fit': False}, 'k_same_unrew': {'fit': False}, 'k_diff_unrew': {'fit': False}},
@@ -158,44 +157,48 @@ all_main_agent_settings['Q'] = {
         #                                             'k_same_rew': {'fit': False}, 'k_same_unrew': {'fit': False, 'init':-1}, 'k_diff_rew': {'fit': False}, 
         #                                             'k_diff_unrew': {'fit': False}},
         
-        }
+        # }
 
 
 ## SI Models
 
-#all_main_agent_gens['SI'] = lambda s: agents.StateInferenceAgent(**s)
+all_main_agent_gens['SI'] = lambda s: agents.StateInferenceAgent(**s)
 
-#all_main_agent_settings['SI'] = {
-        #'Shared Evidence': {'complement_c_rew':True, 'complement_c_diff':True}, 
+all_main_agent_settings['SI'] = {
+        # 'Shared Evidence': {'complement_c_rew':True, 'complement_c_diff':True}, 
         
         # 'Separate Same/Diff Evidence': {'complement_c_rew':True, 'complement_c_diff':False},
         
-        #'Separate Rew/Unrew Evidence': {'complement_c_rew':False, 'complement_c_diff':True}, 
+        'Separate Rew/Unrew Evidence': {'complement_c_rew':False, 'complement_c_diff':True}, 
         
-         #'All Separate Evidence': {'complement_c_rew':False, 'complement_c_diff':False},
+        #  'All Separate Evidence': {'complement_c_rew':False, 'complement_c_diff':False},
+        
+        # 'Shared Rew Evidence, No Unrew': {'complement_c_rew':False, 'complement_c_diff':True,
+        #                                 'constraints': {'c_same_unrew': {'fit': False, 'init': 0}, 
+        #                                                 'c_diff_unrew': {'fit': False, 'init': 0}}}
         
         # 'Free Same/Diff Rew Evidence': {'complement_c_rew':False, 'complement_c_diff':False,
         #                                 'constraints': {'c_same_unrew': {'fit': False, 'init': 0}, 
         #                                                 'c_diff_unrew': {'fit': False, 'init': 0}}}
-        #}
+        }
 
                     
 ## FULL BAYESIAN MODEL FITS
 
-all_main_agent_gens['Bayes'] = lambda s: agents.BayesianAgent(p_step=0.01, **s)
+# all_main_agent_gens['Bayes'] = lambda s: agents.BayesianAgent(p_step=0.01, **s)
 
-all_main_agent_settings['Bayes'] = {
-        # 'No Switch Scatter, Switch Update First': {'constraints': {'switch_scatter_sig': {'init': 0, 'fit': False}}}, 
+# all_main_agent_settings['Bayes'] = {
+#         # 'No Switch Scatter, Switch Update First': {'constraints': {'switch_scatter_sig': {'init': 0, 'fit': False}}}, 
         
-        'No Switch Scatter, Perfect Update, No Stay Bias, Simul Updates': {'update_p_switch_first': False,
-                                                                           'constraints': {'switch_scatter_sig': {'init': 0, 'fit': False},
-                                                                                           'imperfect_update_alpha': {'init': 0, 'fit': False},
-                                                                                           'stay_bias_lam': {'init': 0, 'fit': False}}}, 
+#         'No Switch Scatter, Perfect Update, No Stay Bias, Simul Updates': {'update_p_switch_first': False,
+#                                                                            'constraints': {'switch_scatter_sig': {'init': 0, 'fit': False},
+#                                                                                            'imperfect_update_alpha': {'init': 0, 'fit': False},
+#                                                                                            'stay_bias_lam': {'init': 0, 'fit': False}}}, 
             
-        # 'Fixed 0.5 Prior Rew Mean, No Switch Scatter': {'constraints': {'switch_scatter_sig': {'init': 0, 'fit': False}, 
-        #                                                          'init_high_rew_mean': {'init': 0, 'fit': False}, 
-        #                                                          'init_low_rew_mean': {'init': 1, 'fit': False}}}
-        }
+#         # 'Fixed 0.5 Prior Rew Mean, No Switch Scatter': {'constraints': {'switch_scatter_sig': {'init': 0, 'fit': False}, 
+#         #                                                          'init_high_rew_mean': {'init': 0, 'fit': False}, 
+#         #                                                          'init_low_rew_mean': {'init': 1, 'fit': False}}}
+#         }
 
 
 ### NOTE: Below calls have not been modified to reflect new code structure ###
@@ -300,24 +303,26 @@ all_main_agent_settings['Bayes'] = {
 
 run_on_cluster = True
 
-subj_ids = [198, 199, 274, 400, 402]
+subj_ids = [198, 199, 274, 237,238, 400, 402, 424, 483]
 separate_rew_rates = True
 fit_ind_subj = True
-fit_meta_subj = True
+fit_meta_subj = False
 equal_sess_weight = True
 
 skip_existing_fits = True
 refit_existing = False
 print_train_params = False
 
+file_name = 'fit_models_ts'
+
 # limit_mask = False
 # n_limit_hist = 2
 
 #limitations
-n_fits = 3
+n_fits = 2
 n_steps = 10000
 end_tol = 1e-6
-cv_model = True 
+cv_model = False 
 meta_subj_name = 'meta'
 model_beh_name = 'probabilistic_bandit'
 
@@ -333,7 +338,7 @@ all_sess = loc_db.get_behavior_data(utils.flatten(subj_sess_ids), reload=reload_
 group_sess_ids = {}
 
 if separate_rew_rates:
-    save_file_name = 'fit_models_sep_rates_tszma.json'
+    save_file_name = file_name + 'sep_rates.json'
     
     rew_rates = all_sess['block_prob'].unique()
     
@@ -345,7 +350,7 @@ if separate_rew_rates:
         if fit_meta_subj:
             group_sess_ids['{} ({})'.format(meta_subj_name, rate)] = block_sess['sessid'].unique().tolist()
 else:
-    save_file_name = 'fit_models_all_sess.json'
+    save_file_name = file_name + '.json'
     group_sess_ids = {k: v.tolist() for k,v in subj_sess_ids.items()}
     if fit_meta_subj:
         group_sess_ids[meta_subj_name] = utils.flatten(subj_sess_ids).tolist()
@@ -357,7 +362,6 @@ fit_config = {'fit_group_names': list(group_sess_ids.keys()), 'group_sess_ids': 
               'print_train_params': print_train_params, 'n_fits': n_fits, 'n_steps': n_steps, 'end_tol': end_tol, 'cv_model': cv_model}
 
 
-#%%
 # push behavioral data to cluster
 if run_on_cluster:
     cluster_ph = path_helper(model_beh_name, True)
@@ -407,7 +411,7 @@ for agent_name in all_main_agent_gens.keys():
                 cluster_utils.push_to_cluster(config_path, cluster_ph.config_path)
 
                 # submit slurm job
-                slurm_path = path.join(cluster_ph.cluster_home, 'code/selective_m_analysis/rl_analysis/modeling/fit_bandit_models.slurm')
+                slurm_path = path.join(cluster_ph.cluster_home, 'code/selective_wm_analysis/rl_analysis/modeling/fit_bandit_models.slurm')
                 options = '--array=1-{}'.format(len(group_sess_ids.keys())*n_fits)
                 args = 'CONFIGPATH=\'{}\''.format(cluster_utils.clean_cluster_path(path.join(cluster_ph.config_path, config_name)))
 

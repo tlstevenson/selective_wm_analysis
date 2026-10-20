@@ -13,6 +13,6 @@ if not this_dir in sys.path:
 
 if not parent_dir in sys.path:
     sys.path.append(parent_dir)
-    
+
 if not path.dirname(parent_dir) in sys.path:
     sys.path.append(path.dirname(parent_dir))

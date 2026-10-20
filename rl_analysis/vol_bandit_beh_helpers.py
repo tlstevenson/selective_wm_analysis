@@ -32,17 +32,17 @@ def make_trial_hist_labels(sess_data, n_back=3):
         The first label is always 'A' or 'a' representing that we are comparing all choices further back in time to the immediately previous choice (t-1)
         and the subsequent labels are A/a for choices to the same side as t-1 choice or B/b for choices to the different side as the t-1 choice
     '''
-    
+
     if not bah.trial_hist_exists(sess_data):
         bah.calc_trial_hist(sess_data, n_back=n_back)
-        
+
     sess_data['trial_hist_label ({})'.format(n_back)] = sess_data.apply(lambda x: _get_trial_hist_label(x['choice_hist'], x['rew_hist'], n_back), axis=1)
-    
-    
+
+
 def _get_trial_hist_label(choice_hist, rew_hist, n_back):
     label = []
     same_choice_hist = choice_hist == choice_hist[0]
-    
+
     for i in range(n_back):
         if np.isnan(rew_hist[i]):
             label.append('_')
@@ -57,29 +57,29 @@ def _get_trial_hist_label(choice_hist, rew_hist, n_back):
                     label.append('B')
                 else:
                     label.append('b')
-    
+
     return ''.join(label)
 
 def get_unique_hist_labels(sess_data, col, n_back):
-    
+
     #hist_labels = sorted(np.unique(sess_data['{} ({})'.format(col, n_back)]), key=lambda s: (s.lower(), s))
     hist_labels = np.unique(sess_data['{} ({})'.format(col, n_back)])
     # remove history labels with missing history elements denoted by '_'
     hist_labels = hist_labels[np.char.find(hist_labels.astype(str), '_') == -1]
-    
+
     return hist_labels
 
 def make_rew_hist_labels(sess_data, n_back=3):
     ''' Make labels to represent the prior outcome history.
         Labels go left to right for successive trials back (i.e. t-1, t-2, t-3, ...) and have 'R' for rewarded and 'U' for unrewarded
     '''
-    
+
     if not bah.trial_hist_exists(sess_data):
         bah.calc_trial_hist(sess_data, n_back=n_back)
-        
+
     sess_data['rew_hist_label ({})'.format(n_back)] = sess_data['rew_hist'].apply(lambda x: _get_rew_hist_label(x, n_back))
-    
-    
+
+
 def _get_rew_hist_label(rew_hist, n_back):
     label = []
 
@@ -91,149 +91,203 @@ def _get_rew_hist_label(rew_hist, n_back):
                 label.append('R')
             else:
                 label.append('U')
-    
+
     return ''.join(label)
-    
+
 # %% Trial Counts
 
-def count_block_lengths(sess_data, meta_subj=True, ind_subj=True, block_bin_width=2, epoch_bin_width=1, 
-                        plot_all_block=False, plot_ind_block=True, plot_suffix=''):
-    
+def count_block_lengths(sess_data, meta_subj=True, ind_subj=True, block_bin_width=2, epoch_bin_width=1,
+                        plot_all_block=False, plot_ind_block=True, plot_suffix='', subj_groups=None):
+
     subj_ids = []
     if ind_subj:
         subj_ids.extend(np.unique(sess_data['subjid']).tolist())
     if meta_subj:
         subj_ids.append('all')
-        
+
     for subj in subj_ids:
-        if subj == 'all':
-            subj_sess = sess_data
+        # For the meta-subject, optionally split into groups
+        if subj == 'all' and subj_groups is not None:
+            plot_datasets = {group: sess_data[sess_data['subjid'].isin(group_subjs)]
+                             for group, group_subjs in subj_groups.items()}
         else:
-            subj_sess = sess_data[sess_data['subjid'] == subj]
-            
-        subj_sess_ids = np.unique(subj_sess['sessid'])
-        subj_sess_resp = subj_sess[subj_sess['choice'] != 'none'] 
-        
-        block_types = np.unique(subj_sess_resp['epoch_block_label'])
-        block_lengths = {bt: [] for bt in block_types}
-        block_lengths['all'] = []
-        consec_blocks = {bt: [] for bt in block_types}
+            if subj == 'all':
+                subj_sess = sess_data
+            else:
+                subj_sess = sess_data[sess_data['subjid'] == subj]
+            plot_datasets = {subj: subj_sess}
 
-        for sess_id in subj_sess_ids:
-            ind_sess = subj_sess_resp[subj_sess_resp['sessid'] == sess_id]
+        # Calculate block lengths for each dataset
+        results = {}
 
-            if len(ind_sess) == 0:
-                continue
+        for group, subj_sess in plot_datasets.items():
 
-            # find last block trial number before switch
-            # ignore the last block since it likely ended prematurely
-            block_switch_trial_idx = np.nonzero(ind_sess['block_trial'] == 1)[0][1:]-1
-            
-            block_type = ind_sess['epoch_block_label'].to_numpy()
-            prev_block_type = block_type[0]
-            consec_block = 0
-            
-            for i in block_switch_trial_idx:
-                length = ind_sess.iloc[i]['block_trial']
-                block_lengths[block_type[i]].append(length)
-                block_lengths['all'].append(length)
-                
-                if block_type[i] == prev_block_type:
-                    consec_block += 1
-                else:
-                    consec_blocks[prev_block_type].append(consec_block)
-                    consec_block = 1
-                    prev_block_type = block_type[i]
-            
-            # count the last epoch's trials
-            consec_blocks[prev_block_type].append(consec_block)
-                
+            subj_sess_ids = np.unique(subj_sess['sessid'])
+            subj_sess_resp = subj_sess[subj_sess['choice'] != 'none']
+
+            block_types = np.unique(subj_sess_resp['epoch_block_label'])
+            block_lengths = {bt: [] for bt in block_types}
+            block_lengths['all'] = []
+            consec_blocks = {bt: [] for bt in block_types}
+
+            for sess_id in subj_sess_ids:
+                ind_sess = subj_sess_resp[subj_sess_resp['sessid'] == sess_id]
+
+                if len(ind_sess) == 0:
+                    continue
+
+                # find last block trial number before switch
+                # ignore the last block since it likely ended prematurely
+                block_switch_trial_idx = np.nonzero(ind_sess['block_trial'] == 1)[0][1:]-1
+
+                block_type = ind_sess['epoch_block_label'].to_numpy()
+                prev_block_type = block_type[0]
+                consec_block = 0
+
+                for i in block_switch_trial_idx:
+                    length = ind_sess.iloc[i]['block_trial']
+                    block_lengths[block_type[i]].append(length)
+                    block_lengths['all'].append(length)
+
+                    if block_type[i] == prev_block_type:
+                        consec_block += 1
+                    else:
+                        consec_blocks[prev_block_type].append(consec_block)
+                        consec_block = 1
+                        prev_block_type = block_type[i]
+
+                # count the last epoch's trials
+                consec_blocks[prev_block_type].append(consec_block)
+
+            results[group] = (block_types, block_lengths, consec_blocks)
+
         # plot results
         fig, axs = plt.subplots(1,2,layout='constrained', figsize=(8,3))
-        
+
+        # plot block trial lengths
         ax = axs[0]
-        min_len = np.min(block_lengths['all'])
-        max_len = np.max(block_lengths['all'])
-        bins = np.arange(min_len, max_len+block_bin_width, block_bin_width)
+
+        # Use common bins across groups
+        all_block_lengths = np.concatenate([
+            results[label][1]['all']
+            for label in results
+            if len(results[label][1]['all']) > 0
+        ])
+
+        min_len = np.min(all_block_lengths)
+        max_len = np.max(all_block_lengths)
+        bins = np.arange(min_len, max_len + block_bin_width, block_bin_width)
         hist_args = dict(histtype='bar', density=True, cumulative=False, bins=bins, alpha=0.5)
-        
-        if plot_all_block:
-            ax.hist(block_lengths['all'], **hist_args, label='All', color='black')
-        if plot_ind_block:
-            for bt in block_types:
-                ax.hist(block_lengths[bt], **hist_args, label=bt)
-            
+
+        for group, (block_types, block_lengths, _) in results.items():
+            if plot_all_block:
+                ax.hist(block_lengths['all'], **hist_args, label='All, {}'.format(group))
+            if plot_ind_block:
+                for bt in block_types:
+                    ax.hist(block_lengths[bt], **hist_args, label='{}, {}'.format(bt, group))
+
         ax.set_title('Block Trial Lengths ({}){}'.format(subj, plot_suffix))
         ax.set_xlabel('Block Length (trials)')
         ax.set_ylabel('Proportion')
         ax.legend()
-        
+
+        # plot epoch block lengths
         ax = axs[1]
-        min_len = np.min([np.min(consec_blocks[bt]) for bt in block_types])
-        max_len = np.max([np.max(consec_blocks[bt]) for bt in block_types])
-        bins = np.arange(min_len, max_len+epoch_bin_width, epoch_bin_width)
+
+        all_epoch_lengths = np.concatenate([
+            np.concatenate([
+                consec_blocks[bt]
+                for bt in block_types
+                if len(consec_blocks[bt]) > 0
+            ])
+            for block_types, _, consec_blocks in results.values()
+        ])
+
+        min_len = np.min(all_epoch_lengths)
+        max_len = np.max(all_epoch_lengths)
+        bins = np.arange(min_len, max_len + epoch_bin_width, epoch_bin_width)
         hist_args = dict(histtype='bar', density=True, cumulative=False, bins=bins, alpha=0.5)
 
-        for bt in block_types:
-            ax.hist(consec_blocks[bt], **hist_args, label=bt)
-            
+        for group, (block_types, _, consec_blocks) in results.items():
+            for bt in block_types:
+                ax.hist(consec_blocks[bt], **hist_args, label='{}, {}'.format(bt, group))
+
         ax.set_title('Block Epoch Lengths ({}){}'.format(subj, plot_suffix))
         ax.set_xlabel('Epoch Length (blocks)')
         ax.set_ylabel('Proportion')
         ax.legend()
-    
+
 # %% Filter session data to be last half of epochs
 
 def filter_last_half_epoch_trials(sess_data):
-    
+
     sess_ids = np.unique(sess_data['sessid'])
     filtered_sess_data = []
-    
+
     for sess_id in sess_ids:
         ind_sess = sess_data[sess_data['sessid'] == sess_id].reset_index()
-        
+
         trial_sel = np.full(len(ind_sess), False)
-        
+
         epoch_end_idxs = np.where(np.diff(ind_sess['block_num']) < 0)[0] + 1
         epoch_end_idxs = np.append(epoch_end_idxs, len(ind_sess))
-        
+
         epoch_start_idx = 0
-        
+
         for end_idx in epoch_end_idxs:
             mid_idx = int((epoch_start_idx + end_idx)/2)
             trial_sel[mid_idx:end_idx] = True
             epoch_start_idx = end_idx
-            
+
         filtered_sess_data.append(ind_sess[trial_sel].reset_index())
-        
+
     return pd.concat(filtered_sess_data)
 
 # %% Choice Probability Methods
 
-def analyze_choice_behavior(sess_data, plot_simple_summary=False, meta_subj=True, ind_subj=True, plot_suffix='', last_half_only=False):
-    
+def analyze_choice_behavior(sess_data, plot_simple_summary=False, meta_subj=True, ind_subj=True,
+                            plot_suffix='', last_half_only=False, subj_groups=None):
+
+    comp_lines = ['-', '--', '..', '-.']
     subj_ids = []
     if ind_subj:
         subj_ids.extend(np.unique(sess_data['subjid']).tolist())
     if meta_subj:
         subj_ids.append('all')
-        
+
     if last_half_only:
         sess_data = filter_last_half_epoch_trials(sess_data)
-    
+
+    block_types = np.unique(sess_data['epoch_block_label'])
+    all_rew_vols = np.unique(sess_data['reward'])
+
     for subj in subj_ids:
-        if subj == 'all':
-            subj_sess = sess_data
+        # For the meta-subject, optionally split into groups
+        if subj == 'all' and subj_groups is not None:
+            plot_datasets = {group: sess_data[sess_data['subjid'].isin(group_subjs)]
+                             for group, group_subjs in subj_groups.items()}
+            n_groups = len(subj_groups.items())
         else:
-            subj_sess = sess_data[sess_data['subjid'] == subj]
+            if subj == 'all':
+                subj_sess = sess_data
+            else:
+                subj_sess = sess_data[sess_data['subjid'] == subj]
+            plot_datasets = {subj: subj_sess}
+            n_groups = 1
 
-        subj_sess_resp = subj_sess[subj_sess['choice'] != 'none']
+        # Calculate simple response rates
+        results = {}
 
-        # TO DO: use previous epoch side label
-        choose_left_side_probs = bah.get_rate_dict(subj_sess_resp, 'chose_left', ['prev_high_side', 'epoch_side_label'])
-        choose_right_side_probs = bah.get_rate_dict(subj_sess_resp, 'chose_right', ['prev_high_side'])
-        choose_high_trial_probs = bah.get_rate_dict(subj_sess_resp, 'chose_prev_high', ['epoch_block_label'])
-        
+        for group, subj_sess in plot_datasets.items():
+
+            subj_sess_resp = subj_sess[subj_sess['choice'] != 'none']
+
+            # TO DO: use previous epoch side label
+            results[group] = {
+                'choose_left_side_probs': bah.get_rate_dict(subj_sess_resp, 'chose_left', ['prev_high_side', 'epoch_side_label']),
+                'choose_right_side_probs': bah.get_rate_dict(subj_sess_resp, 'chose_right', ['prev_high_side']),
+                'choose_high_trial_probs': bah.get_rate_dict(subj_sess_resp, 'chose_prev_high', ['epoch_block_label'])}
+
         # plot simple rates
         fig = plt.figure(layout='constrained', figsize=(6, 6))
         fig.suptitle('Response Probabilities ({}){}'.format(subj, plot_suffix))
@@ -242,11 +296,13 @@ def analyze_choice_behavior(sess_data, plot_simple_summary=False, meta_subj=True
         # choose high for each trial probability
         ax = fig.add_subplot(gs[0, 0])
 
-        data = choose_high_trial_probs['epoch_block_label']
-        x_labels = data['epoch_block_label']
-        x_vals = np.arange(len(x_labels))
+        for group, result in results.items():
+            data = result['choose_high_trial_probs']['epoch_block_label']
+            x_labels = data['epoch_block_label']
+            x_vals = np.arange(len(x_labels))
 
-        ax.errorbar(x_vals, data['rate'], yerr=bah.convert_rate_err_to_mat(data), fmt='o', capsize=4)
+            ax.errorbar(x_vals, data['rate'], yerr=bah.convert_rate_err_to_mat(data), fmt='o', capsize=4, label=group)
+
         ax.set_ylabel('p(Choose High)')
         ax.set_xlabel('Block Epoch Label (Stoch/Vol-High/Low Mean)')
         ax.set_xticks(x_vals, x_labels)
@@ -254,17 +310,20 @@ def analyze_choice_behavior(sess_data, plot_simple_summary=False, meta_subj=True
         ax.set_ylim(-0.05, 1.05)
         ax.grid(axis='y')
         ax.set_title('Choose High Side')
+        ax.legend()
 
         # choose side when side is high/low
         ax = fig.add_subplot(gs[0, 1])
 
-        left_data = choose_left_side_probs['prev_high_side']
-        right_data = choose_right_side_probs['prev_high_side']
-        x_labels = left_data['prev_high_side']
-        x_vals = [1,2]
+        for group, result in results.items():
+            left_data = result['choose_left_side_probs']['prev_high_side']
+            right_data = result['choose_right_side_probs']['prev_high_side']
+            x_labels = left_data['prev_high_side']
+            x_vals = [1,2]
 
-        ax.errorbar(x_vals, left_data['rate'], yerr=bah.convert_rate_err_to_mat(left_data), fmt='o', capsize=4, label='Left Choice')
-        ax.errorbar(x_vals, right_data['rate'], yerr=bah.convert_rate_err_to_mat(right_data), fmt='o', capsize=4, label='Right Choice')
+            ax.errorbar(x_vals, left_data['rate'], yerr=bah.convert_rate_err_to_mat(left_data), fmt='o', capsize=4, label='Left Choice, {}'.format(group))
+            ax.errorbar(x_vals, right_data['rate'], yerr=bah.convert_rate_err_to_mat(right_data), fmt='o', capsize=4, label='Right Choice, {}'.format(group))
+
         ax.set_ylabel('p(Choose Side)')
         ax.set_xlabel('High Volume Side')
         ax.set_xticks(x_vals, x_labels)
@@ -277,11 +336,13 @@ def analyze_choice_behavior(sess_data, plot_simple_summary=False, meta_subj=True
         # choose left by left probability
         ax = fig.add_subplot(gs[1, :])
 
-        data = choose_left_side_probs['epoch_side_label']
-        x_labels = data['epoch_side_label']
-        x_vals = np.arange(len(x_labels))
+        for group, result in results.items():
+            data = result['choose_left_side_probs']['epoch_side_label']
+            x_labels = data['epoch_side_label']
+            x_vals = np.arange(len(x_labels))
 
-        ax.errorbar(x_vals, data['rate'], yerr=bah.convert_rate_err_to_mat(data), fmt='o', capsize=4)
+            ax.errorbar(x_vals, data['rate'], yerr=bah.convert_rate_err_to_mat(data), fmt='o', capsize=4, label=group)
+
         ax.set_ylabel('p(Choose Left)')
         ax.set_xlabel('Side Epoch Label (Stoch/Vol-Left/Right Mean)')
         ax.set_xticks(x_vals, x_labels)
@@ -289,91 +350,285 @@ def analyze_choice_behavior(sess_data, plot_simple_summary=False, meta_subj=True
         ax.set_ylim(-0.05, 1.05)
         ax.grid(axis='y')
         ax.set_title('Choose Left')
-
+        ax.legend()
 
         # SWITCHING PROBABILITIES
-        all_switch_trial_probs = bah.get_rate_dict(subj_sess_resp, 'next_switch', [['epoch_block_label', 'reward']])
-        switch_trial_probs = bah.get_rate_dict(subj_sess_resp, 'next_switch', [['epoch_block_label', 'chose_prev_high', 'reward']])
-        all_switch_trial_probs = all_switch_trial_probs['epoch_block_label x reward']
-        switch_trial_probs = switch_trial_probs['epoch_block_label x chose_prev_high x reward']
-        block_types = np.unique(switch_trial_probs['epoch_block_label'])
-        
-        n_rows = len(block_types)
-        n_cols = 2
 
-        fig, axs = plt.subplots(n_rows, n_cols, layout='constrained', figsize=(3.5*n_cols, 3.5*n_rows), width_ratios=[2,1])
+        results = {}
+
+        for group, subj_sess in plot_datasets.items():
+
+            subj_sess_resp = subj_sess[subj_sess['choice'] != 'none']
+
+            all_switch_trial_probs = bah.get_rate_dict(subj_sess_resp, 'next_switch', [['epoch_block_label', 'reward']])
+            prev_high_switch_trial_probs = bah.get_rate_dict(subj_sess_resp, 'next_switch', [['epoch_block_label', 'chose_prev_high', 'reward']])
+            prev_switch_switch_trial_probs = bah.get_rate_dict(subj_sess_resp, 'next_switch', [['epoch_block_label', 'prev_switch', 'reward']])
+            prev_high_switch_switch_trial_probs = bah.get_rate_dict(subj_sess_resp, 'next_switch', [['epoch_block_label', 'chose_prev_high', 'prev_switch', 'reward']])
+
+            results[group] = {
+                'all_switch_trial_probs': all_switch_trial_probs['epoch_block_label x reward'],
+                'prev_high_switch_trial_probs': prev_high_switch_trial_probs['epoch_block_label x chose_prev_high x reward'],
+                'prev_switch_switch_trial_probs': prev_switch_switch_trial_probs['epoch_block_label x prev_switch x reward'],
+                'prev_high_switch_switch_trial_probs': prev_high_switch_switch_trial_probs['epoch_block_label x chose_prev_high x prev_switch x reward']}
+
+        n_rows = len(block_types)
+        n_cols = 3
+
+        fig, axs = plt.subplots(n_rows, n_cols, layout='constrained', figsize=(3.5*n_cols, 3.5*n_rows))
         axs = axs.reshape(n_rows, n_cols)
-        
+
         fig.suptitle('Switch Psychometrics by Choice and Reward Volume ({}){}'.format(subj, plot_suffix))
 
         for i, bt in enumerate(block_types):
-            all_bt_data = all_switch_trial_probs[all_switch_trial_probs['epoch_block_label'] == bt]
-            bt_data = switch_trial_probs[switch_trial_probs['epoch_block_label'] == bt]
-            
-            # left is the psychometric curve of switch rate by reward volume
+
+            bt_results = {}
+
+            for group, result in results.items():
+
+                all_switch_trial_probs = result['all_switch_trial_probs']
+                prev_high_switch_trial_probs = result['prev_high_switch_trial_probs']
+                prev_switch_switch_trial_probs = result['prev_switch_switch_trial_probs']
+
+                bt_results[group] = {'all_switch_trial_probs': all_switch_trial_probs[all_switch_trial_probs['epoch_block_label'] == bt],
+                                          'prev_high_switch_trial_probs': prev_high_switch_trial_probs[prev_high_switch_trial_probs['epoch_block_label'] == bt],
+                                          'prev_switch_switch_trial_probs': prev_switch_switch_trial_probs[prev_switch_switch_trial_probs['epoch_block_label'] == bt]}
+
+            # left is overall switch rates
             ax = axs[i,0]
-            plot_utils.plot_shaded_error(all_bt_data['reward'], all_bt_data['rate'], bah.convert_rate_err_to_mat(all_bt_data), color='k', label='All', ax=ax)
-            for chose_high in [True, False]:
-                sub_data = bt_data[bt_data['chose_prev_high'] == chose_high]
-                label = 'High' if chose_high else 'Low'
-                ax.errorbar(sub_data['reward'], sub_data['rate'], yerr=bah.convert_rate_err_to_mat(sub_data), fmt='o', capsize=4, label=label, alpha=0.6)
-                
+
+            for j, (group, result) in enumerate(bt_results.items()):
+                plot_utils.plot_shaded_error(result['all_switch_trial_probs']['reward'], result['all_switch_trial_probs']['rate'],
+                                             bah.convert_rate_err_to_mat(result['all_switch_trial_probs']), color='C{}'.format(j),
+                                             label=group, alpha=0.8, ax=ax)
+
+            ax.set_xticks(all_rew_vols)
+            ax.set_ylabel('p(Switch)')
+            ax.set_xlabel('Reward Volume (μL)')
+            ax.set_ylim(-0.05, 1.05)
+            ax.grid(axis='y')
+            ax.set_title('Next Trial Switch Probabilities - {}'.format(bt))
+            ax.legend()
+
+            # center is the psychometric curves of switch rate by reward volume based on prior choice volume
+            ax = axs[i,1]
+
+            for j, (group, result) in enumerate(bt_results.items()):
+                for k, chose_high in enumerate([True, False]):
+                    sub_data = result['prev_high_switch_trial_probs'][result['prev_high_switch_trial_probs']['chose_prev_high'] == chose_high]
+                    label = 'High, {}' if chose_high else 'Low, {}'
+
+                    plot_utils.plot_shaded_error(sub_data['reward'], sub_data['rate'], bah.convert_rate_err_to_mat(sub_data), color='C{}'.format(j),
+                                                 linestyle=comp_lines[k], label=label.format(group), alpha=0.8, ax=ax)
+
+            ax.set_xticks(all_rew_vols)
             ax.set_ylabel('p(Switch)')
             ax.set_xlabel('Reward Volume (μL)')
             ax.set_ylim(-0.05, 1.05)
             ax.grid(axis='y')
             ax.set_title('Next Trial Switch Probabilities - {}'.format(bt))
             ax.legend(title='Previous Value of Choice')
-            
-            # right is the trial count histogram
-            ax = axs[i,1]
-            for chose_high in [True, False]:
-                sub_data = bt_data[bt_data['chose_prev_high'] == chose_high]
-                label = 'High' if chose_high else 'Low'
-                ax.bar(sub_data['reward'], sub_data['n'], label=label, width=1, alpha=0.6)
-                
-            ax.set_ylabel('# Trials')
+
+            # center is the psychometric curves of switch rate by reward volume based on prior stay/switch
+            ax = axs[i,2]
+
+            for j, (group, result) in enumerate(bt_results.items()):
+                for k, prev_switch in enumerate([False, True]):
+                    sub_data = result['prev_switch_switch_trial_probs'][result['prev_switch_switch_trial_probs']['prev_switch'] == prev_switch]
+                    label = 'Switch, {}' if prev_switch else 'Stay, {}'
+
+                    plot_utils.plot_shaded_error(sub_data['reward'], sub_data['rate'], bah.convert_rate_err_to_mat(sub_data), color='C{}'.format(j),
+                                                 linestyle=comp_lines[k], label=label.format(group), alpha=0.8, ax=ax)
+
+            ax.set_xticks(all_rew_vols)
+            ax.set_ylabel('p(Switch)')
             ax.set_xlabel('Reward Volume (μL)')
+            ax.set_ylim(-0.05, 1.05)
             ax.grid(axis='y')
-            ax.set_title('Trial Counts')
-            ax.legend(title='Previous Value of Choice')
-            
-            
-        fig, ax = plt.subplots(1, 1, layout='constrained', figsize=(4, 3))
-        
-        fig.suptitle('Switch Psychometrics by Epoch Type ({}){}'.format(subj, plot_suffix))
+            ax.set_title('Next Trial Switch Probabilities - {}'.format(bt))
+            ax.legend(title='Current Choice')
+
+            # # right is the trial count histogram
+            # ax = axs[i,1]
+            # for chose_high in [True, False]:
+            #     sub_data = bt_data[bt_data['chose_prev_high'] == chose_high]
+            #     label = 'High' if chose_high else 'Low'
+            #     ax.bar(sub_data['reward'], sub_data['n'], label=label, width=1, alpha=0.6)
+
+            # ax.set_ylabel('# Trials')
+            # ax.set_xlabel('Reward Volume (μL)')
+            # ax.grid(axis='y')
+            # ax.set_title('Trial Counts')
+            # ax.legend(title='Previous Value of Choice')
+
+        # plot psychometrics broken out by value of previous choice and by previous stay/switch
+        n_rows = len(block_types)
+        n_cols = 4
+
+        fig, axs = plt.subplots(n_rows, n_cols, layout='constrained', figsize=(3.5*n_cols, 3.5*n_rows))
+        axs = axs.reshape(n_rows, n_cols)
+
+        fig.suptitle('Next Trial Switch Probabilities by Choice and Reward Volume ({}){}'.format(subj, plot_suffix))
 
         for i, bt in enumerate(block_types):
-            all_bt_data = all_switch_trial_probs[all_switch_trial_probs['epoch_block_label'] == bt]
 
-            plot_utils.plot_shaded_error(all_bt_data['reward'], all_bt_data['rate'], bah.convert_rate_err_to_mat(all_bt_data), label=bt, ax=ax)
-            
-        ax.set_ylabel('p(Switch)')
-        ax.set_xlabel('Reward Volume (μL)')
-        ax.set_ylim(-0.05, 1.05)
-        ax.grid(axis='y')
-        ax.legend(title='Epoch Type')
+            bt_results = {}
+
+            for group, result in results.items():
+
+                switch_trial_probs = result['prev_high_switch_switch_trial_probs']
+
+                bt_results[group] = switch_trial_probs[switch_trial_probs['epoch_block_label'] == bt]
+
+            # previous high choice, stay
+            ax = axs[i,0]
+
+            for j, (group, result) in enumerate(bt_results.items()):
+                plot_results = result[(result['chose_prev_high'] == True) & (result['prev_switch'] == False)]
+                plot_utils.plot_shaded_error(plot_results['reward'], plot_results['rate'],
+                                             bah.convert_rate_err_to_mat(plot_results), color='C{}'.format(j),
+                                             label=group, alpha=0.8, ax=ax)
+
+            ax.set_xticks(all_rew_vols)
+            ax.set_ylabel('p(Switch)')
+            ax.set_xlabel('Reward Volume (μL)')
+            ax.set_ylim(-0.05, 1.05)
+            ax.grid(axis='y')
+            ax.set_title('Chose Prev High & Stayed - {}'.format(bt))
+            ax.legend()
+
+            # previous high choice, switch
+            ax = axs[i,1]
+
+            for j, (group, result) in enumerate(bt_results.items()):
+                plot_results = result[(result['chose_prev_high'] == True) & (result['prev_switch'] == True)]
+                plot_utils.plot_shaded_error(plot_results['reward'], plot_results['rate'],
+                                             bah.convert_rate_err_to_mat(plot_results), color='C{}'.format(j),
+                                             label=group, alpha=0.8, ax=ax)
+
+            ax.set_xticks(all_rew_vols)
+            ax.set_ylabel('p(Switch)')
+            ax.set_xlabel('Reward Volume (μL)')
+            ax.set_ylim(-0.05, 1.05)
+            ax.grid(axis='y')
+            ax.set_title('Chose Prev High & Switched - {}'.format(bt))
+            ax.legend()
+
+            # previous low choice, stay
+            ax = axs[i,2]
+
+            for j, (group, result) in enumerate(bt_results.items()):
+                plot_results = result[(result['chose_prev_high'] == False) & (result['prev_switch'] == False)]
+                plot_utils.plot_shaded_error(plot_results['reward'], plot_results['rate'],
+                                             bah.convert_rate_err_to_mat(plot_results), color='C{}'.format(j),
+                                             label=group, alpha=0.8, ax=ax)
+
+            ax.set_xticks(all_rew_vols)
+            ax.set_ylabel('p(Switch)')
+            ax.set_xlabel('Reward Volume (μL)')
+            ax.set_ylim(-0.05, 1.05)
+            ax.grid(axis='y')
+            ax.set_title('Chose Prev Low & Stayed - {}'.format(bt))
+            ax.legend()
+
+            # previous low choice, switch
+            ax = axs[i,3]
+
+            for j, (group, result) in enumerate(bt_results.items()):
+                plot_results = result[(result['chose_prev_high'] == False) & (result['prev_switch'] == True)]
+                plot_utils.plot_shaded_error(plot_results['reward'], plot_results['rate'],
+                                             bah.convert_rate_err_to_mat(plot_results), color='C{}'.format(j),
+                                             label=group, alpha=0.8, ax=ax)
+
+            ax.set_xticks(all_rew_vols)
+            ax.set_ylabel('p(Switch)')
+            ax.set_xlabel('Reward Volume (μL)')
+            ax.set_ylim(-0.05, 1.05)
+            ax.grid(axis='y')
+            ax.set_title('Chose Prev Low & Switched - {}'.format(bt))
+            ax.legend()
+
+        # fig, ax = plt.subplots(1, 1, layout='constrained', figsize=(4, 3))
+
+        # fig.suptitle('Switch Psychometrics by Epoch Type ({}){}'.format(subj, plot_suffix))
+
+        # for i, bt in enumerate(block_types):
+        #     all_bt_data = all_switch_trial_probs[all_switch_trial_probs['epoch_block_label'] == bt]
+
+        #     plot_utils.plot_shaded_error(all_bt_data['reward'], all_bt_data['rate'], bah.convert_rate_err_to_mat(all_bt_data), label=bt, ax=ax)
+
+        # ax.set_ylabel('p(Switch)')
+        # ax.set_xlabel('Reward Volume (μL)')
+        # ax.set_ylim(-0.05, 1.05)
+        # ax.grid(axis='y')
+        # ax.legend(title='Epoch Type')
+
+        # FULLY DISCRETIZED SWITCHING PROBABILITIES
+
+        for i, bt in enumerate(block_types):
+
+            n_rows = n_groups
+            n_cols = 3
+
+            fig, axs = plt.subplots(n_rows, n_cols, layout='constrained', figsize=(4*n_cols, 4*n_rows))
+            axs = axs.reshape(n_rows, n_cols)
+
+            fig.suptitle('Next Trial Switch Rates by Current and Previous Reward Volumes, {} ({}){}'.format(bt, subj, plot_suffix))
+
+            for j, (group, subj_sess) in enumerate(plot_datasets.items()):
+
+                subj_sess_resp_prev_resp = subj_sess[(subj_sess['choice'] != 'none') & (subj_sess['prev_choice'] != 'none')]
+
+                all_block_trials = subj_sess_resp_prev_resp[subj_sess_resp_prev_resp['epoch_block_label'] == bt]
+                prev_switch_trials = all_block_trials[all_block_trials['prev_switch']]
+                prev_stay_trials = all_block_trials[all_block_trials['prev_stay']]
+
+                all_switch_trial_probs = bah.get_rate_dict(all_block_trials, 'next_switch', [['reward', 'prev_reward']])
+                prev_switch_switch_trial_probs = bah.get_rate_dict(prev_switch_trials, 'next_switch', [['reward', 'prev_reward']])
+                prev_stay_switch_trial_probs = bah.get_rate_dict(prev_stay_trials, 'next_switch', [['reward', 'prev_reward']])
+
+                # left is the switch rate by previous and current reward over all trials
+                ax = axs[j,0]
+                ax.set_title('All Prev Choices, {}'.format(group))
+                bah.plot_rate_heatmap(all_switch_trial_probs, 'reward', 'Current Reward', 'prev_reward', 'Previous Reward', ax=ax,
+                                      fmt='.3f', row_summary=False, col_summary=False, cbar=True,
+                                      x_rot=0, y_rot=0)
+
+                # middle is the switch rate by previous and current reward over previous stays
+                ax = axs[j,1]
+                ax.set_title('Prev Stay Choices, {}'.format(group))
+                bah.plot_rate_heatmap(prev_stay_switch_trial_probs, 'reward', 'Current Reward', 'prev_reward', 'Previous Reward', ax=ax,
+                                      fmt='.3f', row_summary=False, col_summary=False, cbar=True,
+                                      x_rot=0, y_rot=0)
+
+                # right is the switch rate by previous and current reward over previous switches
+                ax = axs[j,2]
+                ax.set_title('Prev Switch Choices, {}'.format(group))
+                bah.plot_rate_heatmap(prev_switch_switch_trial_probs, 'reward', 'Current Reward', 'prev_reward', 'Previous Reward', ax=ax,
+                                      fmt='.3f', row_summary=False, col_summary=False, cbar=True,
+                                      x_rot=0, y_rot=0)
+
 
 
 # %% Choice Probabilities over trials
 
-def analyze_trial_choice_behavior(sess_data, plot_simple_summary=False, meta_subj=True, ind_subj=True, plot_suffix='', last_half_only=False):
-    
+def analyze_trial_choice_behavior(sess_data, plot_simple_summary=False, meta_subj=True, ind_subj=True,
+                                  plot_suffix='', last_half_only=False, subj_groups=None):
+
     subj_ids = []
     if ind_subj:
         subj_ids.extend(np.unique(sess_data['subjid']).tolist())
     if meta_subj:
         subj_ids.append('all')
-        
+
     if last_half_only:
         sess_data = filter_last_half_epoch_trials(sess_data)
-    
+
     for subj in subj_ids:
         if subj == 'all':
             subj_sess = sess_data
         else:
             subj_sess = sess_data[sess_data['subjid'] == subj]
-            
+
         subj_sess_ids = np.unique(subj_sess['sessid'])
         subj_sess_resp = subj_sess[subj_sess['choice'] != 'none']
 
@@ -386,7 +641,7 @@ def analyze_trial_choice_behavior(sess_data, plot_simple_summary=False, meta_sub
         n_away = 10
         p_choose_high_blocks = {bt: {'pre': [], 'post': []} for bt in block_types}
         p_choose_high_blocks['all'] = []
-        
+
         n_before_switch = {bt: {'pre': [], 'post': []} for bt in block_types}
 
         reward_choices = ['high', 'low', 'all']
@@ -429,7 +684,7 @@ def analyze_trial_choice_behavior(sess_data, plot_simple_summary=False, meta_sub
                 p_choose_high_blocks[pre_bt]['pre'].append(choose_high_switch)
                 p_choose_high_blocks[post_bt]['post'].append(choose_high_switch)
                 p_choose_high_blocks['all'].append(choose_high_switch)
-                
+
                 # count number of trials before switch after block switch
                 n_stays_post_switch = 0
                 chose_low = ~chose_high[switch_idx]
@@ -438,7 +693,7 @@ def analyze_trial_choice_behavior(sess_data, plot_simple_summary=False, meta_sub
                     if (switch_idx + n_stays_post_switch) == len(chose_high):
                         break
                     chose_low = ~chose_high[switch_idx + n_stays_post_switch]
-                    
+
                 n_before_switch[pre_bt]['pre'].append(n_stays_post_switch)
                 n_before_switch[post_bt]['post'].append(n_stays_post_switch)
 
@@ -512,7 +767,7 @@ def analyze_trial_choice_behavior(sess_data, plot_simple_summary=False, meta_sub
         ax.set_title('Trials to Switch by Epoch Type')
         ax.set_xlim(-0.5, t_max)
         ax.legend(loc='lower right', title='Epoch Type')
-        
+
         # avg reward before stays/switches for high choices
         ax = fig.add_subplot(gs[0,1])
         plot_utils.plot_x0line(ax=ax)
@@ -542,7 +797,7 @@ def analyze_trial_choice_behavior(sess_data, plot_simple_summary=False, meta_sub
         ax.set_ylabel('Reward (μL)')
         ax.set_title('Low Option Reward Before Stay/Switch')
         ax.set_xlim(-8, 8)
-        
+
         # avg reward before stays by block rate
         ax = fig.add_subplot(gs[0,2])
         plot_utils.plot_x0line(ax=ax)
@@ -571,19 +826,19 @@ def analyze_trial_choice_behavior(sess_data, plot_simple_summary=False, meta_sub
         ax.set_ylabel('Reward (μL)')
         ax.set_title('Reward Before Switch Choices')
         ax.set_xlim(-8, 8)
-        
+
         # break out reward before stay/switch by port and epoch type
         n_rows = len(block_types)
         n_cols = 2
 
         fig, axs = plt.subplots(n_rows, n_cols, layout='constrained', figsize=(5*n_cols, 4*n_rows))
         axs = axs.reshape(n_rows, n_cols)
-        
+
         fig.suptitle('Reward Volumes Before Stay/Switch by Port, Choice, and Epoch ({}){}'.format(subj, plot_suffix))
 
         for i, bt in enumerate(block_types):
             epoch_data = reward_switch_blocks[bt]
-            
+
             # avg reward before stays/switches for high choices
             ax = axs[i,0]
             plot_utils.plot_x0line(ax=ax)
@@ -614,13 +869,13 @@ def analyze_trial_choice_behavior(sess_data, plot_simple_summary=False, meta_sub
             ax.set_title('Low Option Avg Reward - {}'.format(bt))
             ax.set_xlim(-8, 8)
             ax.legend(loc='lower left', title='Choice')
-        
+
         # # Simple Summary
         # if plot_simple_summary:
-            
+
         #     fig, axs = plt.subplots(1, 2, figsize=(7,3), layout='constrained')
         #     fig.suptitle('Choice Probabilities Over Trials ({}){}'.format(subj, plot_suffix))
-            
+
         #     # left plot is average p(choose high) aligned to block switches
         #     ax = axs[0]
         #     raw_mat = np.asarray(p_choose_high_blocks['all'])
@@ -633,20 +888,20 @@ def analyze_trial_choice_behavior(sess_data, plot_simple_summary=False, meta_sub
         #     ax.set_title('Choose High at Block Switch')
         #     ax.set_xlim(-6, n_away)
         #     ax.set_ylim(-0.05, 1.05)
-            
-            
+
+
         #     # right plot is reward probability aligned to switching choices
         #     ax = axs[1]
         #     plot_utils.plot_x0line(ax=ax)
-            
+
         #     raw_mat = np.vstack(reward_switch['all']['stay'])
         #     avg, err = bah.get_rate_avg_err(raw_mat)
         #     plot_utils.plot_shaded_error(x, avg, err, ax=ax, label='Stay')
-            
+
         #     raw_mat = np.vstack(reward_switch['all']['switch'])
         #     avg, err = bah.get_rate_avg_err(raw_mat)
         #     plot_utils.plot_shaded_error(x, avg, err, ax=ax, label='Switch')
-    
+
         #     ax.set_xlabel('Trials from current choice')
         #     ax.set_ylabel('p(Reward)')
         #     ax.set_title('Reward Probability Before Choice')
@@ -657,7 +912,7 @@ def analyze_trial_choice_behavior(sess_data, plot_simple_summary=False, meta_sub
 
 # %% Choice Regressions
 
-def logit_regress_side_choice(sess_data, n_back=5, separate_block_types=True, include_winstay=False, include_reward=False, 
+def logit_regress_side_choice(sess_data, n_back=5, separate_block_types=True, include_winstay=False, include_reward=False,
                               separate_unreward=False, include_full_interaction=False, plot_cis=True, ind_subj=True, meta_subj=True, plot_suffix=''):
 
     subj_ids = []
@@ -665,13 +920,13 @@ def logit_regress_side_choice(sess_data, n_back=5, separate_block_types=True, in
         subj_ids.extend(np.unique(sess_data['subjid']).tolist())
     if meta_subj:
         subj_ids.append('all')
-    
+
     for subj in subj_ids:
         if subj == 'all':
             subj_sess = sess_data
         else:
             subj_sess = sess_data[sess_data['subjid'] == subj]
-            
+
         subj_sess_ids = np.unique(subj_sess['sessid'])
         subj_sess_resp = subj_sess[subj_sess['choice'] != 'none']
 
@@ -680,9 +935,9 @@ def logit_regress_side_choice(sess_data, n_back=5, separate_block_types=True, in
         reg_groups = ['All']
         if separate_block_types:
             reg_groups.extend(block_types)
-        
+
         label_list = []
-        
+
         if include_full_interaction:
             label_list.append('left/rewarded ({})')
             label_list.append('left/unrewarded ({})')
@@ -692,7 +947,7 @@ def logit_regress_side_choice(sess_data, n_back=5, separate_block_types=True, in
             label_list.append('choice ({})')
             if include_reward:
                 label_list.append('reward ({})')
-        
+
             if separate_unreward:
                 label_list.append('reward ({})')
                 label_list.append('unreward ({})')
@@ -766,7 +1021,7 @@ def logit_regress_side_choice(sess_data, n_back=5, separate_block_types=True, in
                         predictor_list.append(buff_choices)
                         if include_reward:
                             predictor_list.append(buff_reward)
-        
+
                         if separate_unreward:
                             predictor_list.append(buff_rew_only)
                             predictor_list.append(buff_unrew_only)
@@ -820,7 +1075,7 @@ def logit_regress_side_choice(sess_data, n_back=5, separate_block_types=True, in
                                 predictor_list.append(block_choices)
                                 if include_reward:
                                     predictor_list.append(block_reward)
-        
+
                                 if separate_unreward:
                                     predictor_list.append(block_rew_only)
                                     predictor_list.append(block_unrew_only)
@@ -915,15 +1170,15 @@ def logit_regress_side_choice(sess_data, n_back=5, separate_block_types=True, in
             ax.legend(loc='best')
 
 
-def logit_regress_stay_choice(sess_data, n_back=5, separate_block_types=True, fit_switches=False, include_unreward=False, include_choice=True, 
+def logit_regress_stay_choice(sess_data, n_back=5, separate_block_types=True, fit_switches=False, include_unreward=False, include_choice=True,
                               include_diff_choice=True, include_interaction=True, include_full_interaction=False, plot_cis=True, ind_subj=True, meta_subj=True, plot_suffix=''):
-    
+
     label_order = []
     if include_unreward:
         label_order.append('reward 1/-1')
     else:
         label_order.append('reward 1/0')
-        
+
     if include_full_interaction:
         label_order.extend(['same/rewarded', 'same/unrewarded', 'diff/unrewarded']) #'diff/rewarded'
     else:
@@ -932,22 +1187,22 @@ def logit_regress_stay_choice(sess_data, n_back=5, separate_block_types=True, fi
                 label_order.append('same choice 1/-1')
             else:
                 label_order.append('same choice 1/0')
-            
+
         if include_interaction:
             label_order.append('choice x reward')
-            
+
     subj_ids = []
     if ind_subj:
         subj_ids.extend(np.unique(sess_data['subjid']).tolist())
     if meta_subj:
         subj_ids.append('all')
-    
+
     for subj in subj_ids:
         if subj == 'all':
             subj_sess = sess_data
         else:
             subj_sess = sess_data[sess_data['subjid'] == subj]
-            
+
         subj_sess_ids = np.unique(subj_sess['sessid'])
         subj_sess_resp = subj_sess[subj_sess['choice'] != 'none']
 
@@ -956,7 +1211,7 @@ def logit_regress_stay_choice(sess_data, n_back=5, separate_block_types=True, fi
         reg_groups = ['All']
         if separate_block_types:
             reg_groups.extend(block_types)
-        
+
         reg_results = []
 
         for reg_group in reg_groups:
@@ -988,12 +1243,12 @@ def logit_regress_stay_choice(sess_data, n_back=5, separate_block_types=True, fi
                 buff_unreward = np.concatenate((buffer, unrewarded))
                 buff_choices = np.concatenate((buffer, choices))
                 buff_rew_unrew = np.concatenate((buffer, rew_unrew))
-                
+
                 # create same/diff predictors for each n-back step
                 same_sides = {}
                 diff_sides = {}
                 same_diff_sides = {}
-                for i in range(n_back-2, -1, -1): 
+                for i in range(n_back-2, -1, -1):
                     same_sides[i-n_back] = (buff_choices[i:-n_back+i] == buff_choices[n_back-1:-1]).astype(int)
                     diff_sides[i-n_back] = (buff_choices[i:-n_back+i] != buff_choices[n_back-1:-1]).astype(int)
                     same_diff_sides[i-n_back] = same_sides[i-n_back].copy()
@@ -1009,13 +1264,13 @@ def logit_regress_stay_choice(sess_data, n_back=5, separate_block_types=True, fi
 
                     # construct list of predictors to stack into matrix
                     predictors = {}
-                    
+
                     if include_full_interaction:
                         if include_unreward:
                             predictors['reward 1/-1 (-1)'] = buff_rew_unrew[n_back-1:-1]
                         else:
                             predictors['reward 1/0 (-1)'] = buff_reward[n_back-1:-1]
-                            
+
                         predictors.update({'same/rewarded ({})'.format(i-n_back): same_sides[i-n_back]*buff_reward[i:-n_back+i] for i in range(n_back-2, -1, -1)})
                         predictors.update({'same/unrewarded ({})'.format(i-n_back): same_sides[i-n_back]*buff_unreward[i:-n_back+i] for i in range(n_back-2, -1, -1)})
                         #predictors.update({'diff/rewarded ({})'.format(i-n_back): diff_sides[i-n_back]*buff_reward[i:-n_back+i] for i in range(n_back-2, -1, -1)})
@@ -1031,7 +1286,7 @@ def logit_regress_stay_choice(sess_data, n_back=5, separate_block_types=True, fi
                                 predictors.update({'same choice 1/-1 ({})'.format(i-n_back): same_diff_sides[i-n_back] for i in range(n_back-2, -1, -1)})
                             else:
                                 predictors.update({'same choice 1/0 ({})'.format(i-n_back): same_sides[i-n_back] for i in range(n_back-2, -1, -1)})
-                            
+
                         if include_interaction:
                             if include_unreward:
                                 if include_diff_choice:
@@ -1073,20 +1328,20 @@ def logit_regress_stay_choice(sess_data, n_back=5, separate_block_types=True, fi
                             block_reward = buff_reward[block_trans_idxs[j]:block_trans_idxs[j+1]+n_back]
                             block_unreward = buff_unreward[block_trans_idxs[j]:block_trans_idxs[j+1]+n_back]
                             block_rew_unrew = buff_rew_unrew[block_trans_idxs[j]:block_trans_idxs[j+1]+n_back]
-                            
+
                             # create same/diff predictors for each n-back step
                             block_same_sides = {k: v[block_trans_idxs[j]:block_trans_idxs[j+1]] for k,v in same_sides.items()}
                             block_diff_sides = {k: v[block_trans_idxs[j]:block_trans_idxs[j+1]] for k,v in diff_sides.items()}
                             block_same_diff_sides = {k: v[block_trans_idxs[j]:block_trans_idxs[j+1]] for k,v in same_diff_sides.items()}
 
                             predictors = {}
-                            
+
                             if include_full_interaction:
                                 if include_unreward:
                                     predictors['reward 1/-1 (-1)'] = block_rew_unrew[n_back-1:-1]
                                 else:
                                     predictors['reward 1/0 (-1)'] = block_reward[n_back-1:-1]
-                                    
+
                                 predictors.update({'same/rewarded ({})'.format(i-n_back): block_same_sides[i-n_back]*block_reward[i:-n_back+i] for i in range(n_back-2, -1, -1)})
                                 predictors.update({'same/unrewarded ({})'.format(i-n_back): block_same_sides[i-n_back]*block_unreward[i:-n_back+i] for i in range(n_back-2, -1, -1)})
                                 #predictors.update({'diff/rewarded ({})'.format(i-n_back): block_diff_sides[i-n_back]*block_reward[i:-n_back+i] for i in range(n_back-2, -1, -1)})
@@ -1102,7 +1357,7 @@ def logit_regress_stay_choice(sess_data, n_back=5, separate_block_types=True, fi
                                         predictors.update({'same choice 1/-1 ({})'.format(i-n_back): block_same_diff_sides[i-n_back] for i in range(n_back-2, -1, -1)})
                                     else:
                                         predictors.update({'same choice 1/0 ({})'.format(i-n_back): block_same_sides[i-n_back] for i in range(n_back-2, -1, -1)})
-                                    
+
                                 if include_interaction:
                                     if include_unreward:
                                         if include_diff_choice:
@@ -1192,14 +1447,14 @@ def logit_regress_stay_choice(sess_data, n_back=5, separate_block_types=True, fi
                 ax.set_ylabel('Regresssion Coefficient for Staying with Same Choice')
             ax.set_xlabel('Trials Back')
             ax.legend(loc='best')
-    
-    
-    
+
+
+
 # %% Time-related Behavioral Effects
 
 def analyze_choice_time_effects(sess_data, time_col, time_bin_edges, ind_subj=True, meta_subj=True, plot_suffix=''):
     # look at relationship between previous reward and future choice (stay/switch) based on how long it took to start the next trial
-    
+
     subj_ids = []
     if ind_subj:
         subj_ids.extend(np.unique(sess_data['subjid']).tolist())
@@ -1214,7 +1469,7 @@ def analyze_choice_time_effects(sess_data, time_col, time_bin_edges, ind_subj=Tr
             subj_sess = sess_data
         else:
             subj_sess = sess_data[sess_data['subjid'] == subj]
-            
+
         subj_sess_ids = np.unique(subj_sess['sessid'])
         subj_sess_resp = subj_sess[subj_sess['choice'] != 'none']
 
@@ -1251,7 +1506,7 @@ def analyze_choice_time_effects(sess_data, time_col, time_bin_edges, ind_subj=Tr
         stay_reward_err = comp_err(stay_reward).T
         stay_noreward_vals = comp_p(stay_noreward)
         stay_noreward_err = comp_err(stay_noreward).T
-        
+
         # calculate trial distribution
         total_trials = np.sum(stay_reward['n'] + stay_noreward['n'])
         rel_reward = stay_reward['n']/total_trials
@@ -1263,9 +1518,9 @@ def analyze_choice_time_effects(sess_data, time_col, time_bin_edges, ind_subj=Tr
         x_labels = ['{:.0f} - {:.0f}'.format(b.left, b.right) for b in bins]
 
         fig, axs = plt.subplots(2, 1, layout='constrained', figsize=(7, 6), height_ratios=[3,2])
-        
+
         fig.suptitle('Stay Probabilities by Trial Latency ({}){}'.format(subj, plot_suffix))
-        
+
         ax = axs[0]
         ax.set_title('Stay Probabilities')
 
@@ -1277,10 +1532,10 @@ def analyze_choice_time_effects(sess_data, time_col, time_bin_edges, ind_subj=Tr
         ax.set_ylim(0.35, 1.05)
         ax.grid(axis='y')
         ax.legend(loc='best')
-        
+
         ax = axs[1]
         ax.set_title('Trial Distribution')
-        
+
         plot_utils.plot_stacked_bar([rel_reward, rel_unreward], value_labels=['Rewarded', 'Unrewarded'], x_labels=x_labels, ax=ax)
         ax.set_ylabel('Proportion of Total Trials')
         ax.set_xlabel('Next Trial Latency (s)')

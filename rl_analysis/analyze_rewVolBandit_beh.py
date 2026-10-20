@@ -27,28 +27,50 @@ import statsmodels.api as sm
 import re
 
 # %% LOAD DATA
+protocol = 'BanditTasks' # 'ClassicRLTasks'
 task_name = 'rewVolBandit'
-subject_info = db_access.get_active_subj_stage(protocol='ClassicRLTasks', stage_name=task_name)
-subj_ids = subject_info['subjid']
+active_subjects_only = False
+reload = False
+exclude_subjs = [438] #[404, 415]
+
+if active_subjects_only:
+    subj_stage_info = db_access.get_active_subj_stage(protocol=protocol, stage_name=task_name)
+else:
+    subj_stage_info = db_access.get_protocol_subject_info(protocol=protocol, stage_name=task_name)
+
+subj_ids = subj_stage_info['subjid']
 
 #sess_ids = db_access.get_fp_protocol_subj_sess_ids('ClassicRLTasks', 2)
 
 # optionally limit sessions based on subject ids
-#subj_ids = [401, 218, 217, 216] #[404, 275, 217] # #[179, 188, 191, 207, 182]
+# subj_ids = [255,439] #[415, 229] # [218, 228, 229, 414, 217, 275, 401, 404, 415] # 401, 275, 228, 414, 217, #[404, 275, 217]
 # sess_ids = {k: v for k, v in sess_ids.items() if k in subj_ids}
-exclude_subjs = [] #[404, 415]
 
 subj_ids = [s for s in subj_ids if not s in exclude_subjs]
 
-n_back = 30
+subj_info = db_access.get_subject_info(subj_ids)
 
-#sess_ids = db_access.get_fp_data_sess_ids(protocol='ClassicRLTasks', stage_num=2, subj_ids=subj_ids)
-sess_ids = db_access.get_subj_sess_ids(subj_ids, protocol='ClassicRLTasks', stage_name=task_name)
+genotype_subj_ids = subj_info.groupby('genotype')['subjid'].agg(list).to_dict()
+genotypes = list(genotype_subj_ids.keys())
+
+# date_start = '2025-06-24'
+# date_end = '2025-06-29'
+# date_start = '2026-07-07'
+# date_end = '2026-08-07'
+date_start = None
+date_end = None
+
+#sess_ids = db_access.get_fp_data_sess_ids(protocol=protocol, stage_num=2, subj_ids=subj_ids)
+sess_ids = db_access.get_subj_sess_ids(subj_ids, protocol=protocol, stage_name=task_name, date_start=date_start, date_end=date_end)
+# sess_ids = db_access.get_subj_sess_ids(subj_ids, protocol=protocol, stage_name=task_name)
 #sess_ids = {subj: sess[2:] for subj, sess in sess_ids.items()}
+n_back = 20
 sess_ids = bah.limit_sess_ids(sess_ids, n_back)
 
+# subj_ids = [433]
+# sess_ids = {433: [129352]}
+
 # get trial information
-reload = False
 loc_db = db.LocalDB_BasicRLTasks(task_name)
 all_sess = loc_db.get_behavior_data(utils.flatten(sess_ids), reload=reload)
 
@@ -66,7 +88,7 @@ all_sess_resp = all_sess[all_sess['choice'] != 'none']
 
 # %%
 
-ind_subj = True
+ind_subj = False
 meta_subj = True
 
 # %% TRIAL COUNTS
@@ -74,32 +96,37 @@ meta_subj = True
 # aggregate count tables into dictionary
 count_columns = ['high_side', 'epoch_label']
 column_titles = ['High Side', 'Epoch Type (Stochasticity/Volatility)', ]
-count_dict = bah.get_count_dict(all_sess_resp, 'subjid', count_columns, normalize=False)
-count_dict_pct = bah.get_count_dict(all_sess_resp, 'subjid', count_columns, normalize=True)
 
-# plot bar charts of trial distribution
+for g in genotypes:
+    g_sess = all_sess_resp[all_sess_resp['subjid'].isin(genotype_subj_ids[g])]
 
-fig, axs = plt.subplots(len(count_dict.keys()), 1, layout='constrained',
-                        figsize=(3+0.25*len(subj_ids), 3*len(count_dict.keys())))
-for i, (col_name, title) in enumerate(zip(count_columns, column_titles)):
-    bah.plot_counts(count_dict[col_name], axs[i], title, '# Trials', 'h')
+    count_dict = bah.get_count_dict(g_sess, 'subjid', count_columns, normalize=False)
+    count_dict_pct = bah.get_count_dict(g_sess, 'subjid', count_columns, normalize=True)
 
-fig, axs = plt.subplots(len(count_dict.keys()), 1, layout='constrained',
-                        figsize=(3+0.25*len(subj_ids), 3*len(count_dict.keys())))
-for i, (col_name, title) in enumerate(zip(count_columns, column_titles)):
-    bah.plot_counts(count_dict_pct[col_name], axs[i], title, '% Trials', 'v')
+    # plot bar charts of trial distribution
+
+    fig, axs = plt.subplots(len(count_dict.keys()), 1, layout='constrained',
+                            figsize=(3+0.25*len(subj_ids), 3*len(count_dict.keys())))
+    for i, (col_name, title) in enumerate(zip(count_columns, column_titles)):
+        bah.plot_counts(count_dict[col_name], axs[i], title, '# Trials', 'h')
+
+    fig, axs = plt.subplots(len(count_dict.keys()), 1, layout='constrained',
+                            figsize=(3+0.25*len(subj_ids), 3*len(count_dict.keys())))
+    for i, (col_name, title) in enumerate(zip(count_columns, column_titles)):
+        bah.plot_counts(count_dict_pct[col_name], axs[i], title, '% Trials', 'v')
 
 # %% Count Block Lengths
 
-vbbh.count_block_lengths(all_sess_resp,  ind_subj=ind_subj, meta_subj=meta_subj)
+vbbh.count_block_lengths(all_sess_resp, ind_subj=ind_subj, meta_subj=meta_subj, subj_groups=genotype_subj_ids)
 
 # %% Analyze response metrics
 
 plot_simple_summary = False
 last_half_only = False
-
-vbbh.analyze_choice_behavior(all_sess, plot_simple_summary=plot_simple_summary, meta_subj=meta_subj, ind_subj=ind_subj, last_half_only=last_half_only)
-vbbh.analyze_trial_choice_behavior(all_sess, plot_simple_summary=plot_simple_summary, meta_subj=meta_subj, ind_subj=ind_subj, last_half_only=last_half_only)
+vbbh.analyze_choice_behavior(all_sess_resp, plot_simple_summary=plot_simple_summary, meta_subj=meta_subj, ind_subj=ind_subj,
+                                 last_half_only=last_half_only, subj_groups=genotype_subj_ids)
+vbbh.analyze_trial_choice_behavior(all_sess_resp, plot_simple_summary=plot_simple_summary, meta_subj=meta_subj, ind_subj=ind_subj,
+                                   last_half_only=last_half_only, subj_groups=genotype_subj_ids)
 
 # %% Logistic regression of choice by past choices and trial outcomes
 separate_block_rates = True
@@ -117,9 +144,9 @@ include_full_interaction = False
 
 plot_cis = True
 
-bbh.logit_regress_side_choice(all_sess, n_back=n_back, separate_block_rates=separate_block_rates, include_winstay=include_winstay, include_reward=include_reward, 
+bbh.logit_regress_side_choice(all_sess, n_back=n_back, separate_block_rates=separate_block_rates, include_winstay=include_winstay, include_reward=include_reward,
                               separate_unreward=separate_unreward, include_full_interaction=include_full_interaction, plot_cis=plot_cis, ind_subj=ind_subj, meta_subj=meta_subj)
-        
+
 # %% Logistic regression of stay/switch choice by past choices and trial outcomes
 
 separate_block_rates = True
@@ -141,8 +168,8 @@ include_full_interaction = True
 
 plot_cis = True
 
-bbh.logit_regress_stay_choice(all_sess, n_back=n_back, separate_block_rates=separate_block_rates, fit_switches=fit_switches, include_unreward=include_unreward, 
-                              include_choice=include_choice, include_diff_choice=include_diff_choice, include_interaction=include_interaction, include_full_interaction=include_full_interaction, 
+bbh.logit_regress_stay_choice(all_sess, n_back=n_back, separate_block_rates=separate_block_rates, fit_switches=fit_switches, include_unreward=include_unreward,
+                              include_choice=include_choice, include_diff_choice=include_diff_choice, include_interaction=include_interaction, include_full_interaction=include_full_interaction,
                               plot_cis=plot_cis, ind_subj=ind_subj, meta_subj=meta_subj)
 
 

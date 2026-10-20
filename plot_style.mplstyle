@@ -1,0 +1,32 @@
+# Font
+font.size: 12
+axes.labelsize: 12
+axes.titlesize: 12
+xtick.labelsize: 12
+ytick.labelsize: 12
+legend.fontsize: 12
+figure.titlesize: 12
+
+# Axes
+axes.linewidth: 1
+axes.spines.top: False
+axes.spines.right: False
+
+# Ticks
+xtick.major.width: 1
+ytick.major.width: 1
+xtick.minor.width: 0.75
+ytick.minor.width: 0.75
+
+# Lines
+lines.linewidth: 2
+
+# Figure
+figure.dpi: 100
+savefig.dpi: 300
+
+# Legend
+legend.frameon: False
+
+# Grid
+axes.grid: False

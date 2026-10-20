@@ -28,6 +28,7 @@ import seaborn as sb
 from scipy import stats
 import copy
 import warnings
+import itertools
 
 from statsmodels.stats.anova import anova_lm
 import statsmodels.api as sm
@@ -40,6 +41,9 @@ import statsmodels.stats.multitest as smm
 # get all session ids for given protocol
 sess_ids = db_access.get_fp_data_sess_ids(protocol='ClassicRLTasks', stage_num=2)
 subj_ids = list(sess_ids.keys())
+subj_ids = [198,199,274,400,402,237,238,424,483]
+#subj_ids = [179,207,191,188]
+sess_ids = {k:v for k,v in sess_ids.items() if k in subj_ids}
 
 reload = False
 loc_db = db.LocalDB_BasicRLTasks('twoArmBandit')
@@ -77,17 +81,17 @@ avg_trial_std = np.std(trial_counts['trial'])
 
 
 # %% Set up variables
-signal_types = ['dff_iso_baseline', 'z_dff_iso_baseline', 'dff_iso_baseline_fband', 'z_dff_iso_baseline_fband']
+signal_types = ['z_dff_iso_baseline_fband'] #['dff_iso', 'z_dff_iso'] # 'dff_iso_baseline_fband', 'z_dff_iso_baseline_fband', 'dff_iso_baseline', 'z_dff_iso_baseline', 
 alignments = [Align.cue, Align.cpoke_out, Align.resp, Align.reward]
-regions = ['DMS', 'DLS', 'PL']
-xlims = {Align.cue: {'DMS': [-1,2], 'DLS': [-1,2], 'PL': [-3,5]},
-         Align.cpoke_out: {'DMS': [-1,2], 'DLS': [-1,2], 'PL': [-3,5]},
-         Align.resp: {'DMS': [-1,2], 'DLS': [-1,2], 'PL': [-3,5]},
-         Align.reward: {'DMS': [-1,2], 'DLS': [-1,2], 'PL': [-3,20]}}
+regions = ['PL', 'NAc', 'DMS', 'DLS', 'TS']
+xlims = {Align.cue: {'DMS': [-1,2], 'DLS': [-1,2], 'TS': [-1,2], 'NAc': [-1,2], 'PL': [-3,5]},
+         Align.cpoke_out: {'DMS': [-1,2], 'DLS': [-1,2], 'TS': [-1,2], 'NAc': [-1,2], 'PL': [-3,5]},
+         Align.resp: {'DMS': [-1,2], 'DLS': [-1,2], 'TS': [-1,2], 'NAc': [-1,2], 'PL': [-3,5]},
+         Align.reward: {'DMS': [-1,2], 'DLS': [-1,2], 'TS': [-1,2], 'NAc': [-2,4], 'PL': [-3,20]}}
 
 recalculate = False
 
-filename = 'two_arm_bandit_data'
+filename = 'two_arm_bandit_data_new' # 'two_arm_bandit_data_new'
 
 save_path = path.join(utils.get_user_home(), 'db_data', filename+'.pkl')
 
@@ -104,8 +108,10 @@ else:
                        for subjid in subj_ids}
                        
 ignored_signals = {'PL': [],
+                   'NAc': [],
                    'DMS': [],
-                   'DLS': []}
+                   'DLS': [],
+                   'TS': []}
 
 ignored_subjects = [182] # [179]
 
@@ -232,23 +238,31 @@ rew_hist_bins = pd.IntervalIndex.from_breaks(rew_hist_bin_edges)
 rew_hist_bin_strs = {b:'{:.0f}-{:.0f}%'.format(abs(b.left)*100, b.right*100) for b in rew_hist_bins}
 
 alignments = [Align.cue, Align.reward] #  
-signal_types = ['dff_iso_baseline', 'z_dff_iso_baseline', 'dff_iso_baseline_fband', 'z_dff_iso_baseline_fband'] # 
+signal_types = ['z_dff_iso_baseline_fband'] #['dff_iso', 'z_dff_iso'] # 'dff_iso_baseline_fband', 'z_dff_iso_baseline_fband', 'dff_iso_baseline', 'z_dff_iso_baseline', 
 
 norm_baseline = True
-analyze_peaks = True
+analyze_peaks = False
 
 filter_props = {Align.cue: {'DMS': {'filter': True, 'use_filt_signal_props': False, 'cutoff_f': 8},
                             'DLS': {'filter': True, 'use_filt_signal_props': False, 'cutoff_f': 8},
+                            'TS': {'filter': True, 'use_filt_signal_props': False, 'cutoff_f': 8},
+                            'NAc': {'filter': True, 'use_filt_signal_props': False, 'cutoff_f': 8},
                             'PL': {'filter': True, 'use_filt_signal_props': True, 'cutoff_f': 1}},
                 Align.reward: {'DMS': {'filter': True, 'use_filt_signal_props': False, 'cutoff_f': 8},
                                'DLS': {'filter': True, 'use_filt_signal_props': False, 'cutoff_f': 8},
+                               'TS': {'filter': True, 'use_filt_signal_props': False, 'cutoff_f': 8},
+                               'NAc': {'filter': True, 'use_filt_signal_props': False, 'cutoff_f': 8},
                                'PL': {'filter': True, 'use_filt_signal_props': True, 'cutoff_f': 1}}}
 
 peak_find_props = {Align.cue: {'DMS': {'min_dist': 0.05, 'peak_tmax': 0.45, 'peak_edge_buffer': 0.08, 'lim_peak_width_to_edges': True},
                                'DLS': {'min_dist': 0.05, 'peak_tmax': 0.45, 'peak_edge_buffer': 0.08, 'lim_peak_width_to_edges': True},
+                               'TS': {'min_dist': 0.05, 'peak_tmax': 0.45, 'peak_edge_buffer': 0.08, 'lim_peak_width_to_edges': True},
+                               'NAc': {'min_dist': 0.05, 'peak_tmax': 1, 'peak_edge_buffer': 0.1, 'lim_peak_width_to_edges': False},
                                'PL': {'min_dist': 0.2, 'peak_tmax': 1.5, 'peak_edge_buffer': 0.2, 'lim_peak_width_to_edges': True}},
                    Align.reward: {'DMS': {'min_dist': 0.05, 'peak_tmax': 0.45, 'peak_edge_buffer': 0.08, 'lim_peak_width_to_edges': True},
                                   'DLS': {'min_dist': 0.05, 'peak_tmax': 0.45, 'peak_edge_buffer': 0.08, 'lim_peak_width_to_edges': True},
+                                  'TS': {'min_dist': 0.05, 'peak_tmax': 0.45, 'peak_edge_buffer': 0.08, 'lim_peak_width_to_edges': True},
+                                  'NAc': {'min_dist': 0.05, 'peak_tmax': 1, 'peak_edge_buffer': 0.1, 'lim_peak_width_to_edges': False},
                                   'PL': {'min_dist': 0.5, 'peak_tmax': 3.5, 'peak_edge_buffer': 0.2, 'lim_peak_width_to_edges': False}}}
 
 sides = ['contra', 'ipsi']
@@ -325,6 +339,9 @@ for subj_id in subj_ids:
 
                     t_r = t[align][region]
                     mat = aligned_signals[subj_id][sess_id][signal_type][align][region]
+                    
+                    if len(mat) == 0:
+                        continue
 
                     # calculate peak properties on a trial-by-trial basis
                     if analyze_peaks:
@@ -362,6 +379,7 @@ for subj_id in subj_ids:
                     if norm_baseline:
                         # normalize all grouped matrices to the pre-event signal of the lowest reward rate
                         baseline_mat = mat[(rew_hist == rew_hist_bins[0]) & responded,:]
+
                         if baseline_mat.shape[0] > 0:
                             baseline_sel = (t_r >= -0.1) & (t_r < 0)
                             baseline = np.nanmean(baseline_mat[:,baseline_sel])
@@ -478,6 +496,8 @@ align_labels = {'cue': 'Response Cue', 'reward': 'Reward Delivery'}
 
 dms_color = '#53C43B'
 dls_color = '#E87A2C'
+ts_color = '#CF5D88'
+nac_color = '#47BBBF'
 pl_color = '#BB6ED8'
 
 # %% Prepare peak metrics
@@ -592,14 +612,14 @@ if ignore_outliers:
 
 # %% Plot average traces across all groups (Fig S9-E)
 
-plot_regions = ['PL', 'DMS', 'DLS'] # 'DMS', 'PL'
+plot_regions = ['PL', 'NAc', 'DMS', 'DLS'] # 'DMS', 'PL'
 plot_aligns = [Align.cue, Align.reward]
 plot_signals = ['z_dff_iso_baseline_fband']
 
 # plot formatting
-plot_dec = {'DMS': 1, 'DLS': 1, 'PL': 2}
-x_inc = {'DMS': 0.3, 'DLS': 0.3, 'PL': 3}
-y_inc = {'DMS': 0.2, 'DLS': 0.8, 'PL': 0.2}
+plot_dec = {'DMS': 1, 'DLS': 1, 'NAc': 2, 'PL': 2}
+x_inc = {'DMS': 0.3, 'DLS': 0.3, 'NAc': 0.6, 'PL': 3}
+y_inc = {'DMS': 0.2, 'DLS': 0.8, 'NAc': 0.5, 'PL': 0.2}
 
 all_color = '#08AB36'
 rew_color = '#BC141A'
@@ -614,20 +634,21 @@ if separate_outcome:
 
     region_colors = {'DMS': {'rewarded': rew_color, 'unrewarded': unrew_color},
                      'DLS': {'rewarded': rew_color, 'unrewarded': unrew_color},
+                     'NAc': {'rewarded': rew_color, 'unrewarded': unrew_color},
                      'PL': {'rewarded': rew_color, 'unrewarded': unrew_color}}
 else:
     gen_groups = {Align.cue: {'all': 'rew_hist_{}'},
                   Align.reward: {'all': 'rew_hist_{}_rewarded'}}
     group_labels = {'all': '_'}
 
-    region_colors = {'DMS': {'all': dms_color}, 'DLS': {'all': dls_color}, 'PL': {'all': pl_color}}
+    region_colors = {'DMS': {'all': dms_color}, 'DLS': {'all': dls_color}, 'NAc': {'all': nac_color}, 'PL': {'all': pl_color}}
     
 groups = {a: {k: [v.format(rew_hist_bin_strs[rew_bin]) for rew_bin in rew_hist_bins] for k, v in gen_groups[a].items()} for a in plot_aligns}
 
 cue_to_reward = np.nanmedian(sess_data['reward_time'] - sess_data['response_cue_time'])
 
-plot_lims = {Align.cue: {'DMS': [-0.1,0.8], 'DLS': [-0.1,0.8], 'PL': [-1,3]},
-             Align.reward: {'DMS': [-0.1,1.2], 'DLS': [-0.1,1.2], 'PL': [-1,12]}}
+plot_lims = {Align.cue: {'DMS': [-0.1,0.8], 'DLS': [-0.1,0.8], 'NAc': [-0.2,1.6], 'PL': [-1,3]},
+             Align.reward: {'DMS': [-0.1,1.2], 'DLS': [-0.1,1.2], 'NAc': [-0.2,2.4], 'PL': [-1,12]}}
 
 width_ratios = [np.diff(plot_lims[align]['DMS'])[0] for align in plot_aligns]
 #width_ratios = [2,10.5]
@@ -643,7 +664,7 @@ plot_data = {}
 for signal_type in plot_signals:
     signal_title, y_label = fpah.get_signal_type_labels(signal_type)
     
-    fig, axs = plt.subplots(n_rows, n_cols, layout='constrained', figsize=(5.5, 3*n_rows+0.1), sharey='row', width_ratios=width_ratios)
+    fig, axs = plt.subplots(n_rows, n_cols, layout='constrained', figsize=(6, 3*n_rows+0.1), sharey='row', width_ratios=width_ratios)
     
     if n_rows == 1 and n_cols == 1:
         axs = np.array(axs)
@@ -718,14 +739,14 @@ for signal_type in plot_signals:
 
 # %% Plot average traces by reward history (Fig 5J)
 
-plot_regions = ['PL', 'DMS', 'DLS'] # 
-plot_aligns = [Align.reward] # Align.cue, 
+plot_regions = ['PL', 'NAc', 'DMS', 'DLS'] # 
+plot_aligns = [Align.cue, Align.reward] # Align.cue, 
 plot_signal_types = ['z_dff_iso_baseline_fband']
 
 # plot formatting
-plot_dec = {'DMS': 1, 'DLS': 1, 'PL': 2}
-x_inc = {'DMS': 0.3, 'DLS': 0.3, 'PL': 3}
-y_inc = {'DMS': 0.3, 'DLS': 0.8, 'PL': 0.3}
+plot_dec = {'DMS': 1, 'DLS': 1, 'NAc': 2, 'PL': 2}
+x_inc = {'DMS': 0.3, 'DLS': 0.3, 'NAc': 0.6, 'PL': 3}
+y_inc = {'DMS': 0.4, 'DLS': 0.8, 'NAc': 1, 'PL': 0.4}
 
 #gen_groups = {Align.cue: ['rew_hist_{}_rewarded', 'rew_hist_{}_unrewarded'], Align.reward: ['rew_hist_{}_rewarded', 'rew_hist_{}_unrewarded']}
 groups = {Align.cue: ['rew_hist_{}'.format(rew_hist_bin_strs[rew_bin]) for rew_bin in rew_hist_bins], 
@@ -733,10 +754,12 @@ groups = {Align.cue: ['rew_hist_{}'.format(rew_hist_bin_strs[rew_bin]) for rew_b
                         ['unrew']+['rew_hist_{}_unrewarded'.format(rew_hist_bin_strs[rew_bin]) for rew_bin in rew_hist_bins]}
 
 new_rew_labels = {'rewarded': '', 'unrewarded': ''}
-new_group_labels_dict = {'rew_hist_{}_{}'.format(rew_hist_bin_strs[rew_bin], rk): '{} {}'.format(bin_labels[rew_bin], rv)
+new_group_labels_dict = {'rew_hist_{}_{}'.format(rew_hist_bin_strs[rew_bin], rk): bin_labels[rew_bin]
                 for rew_bin in rew_hist_bins
                 for rk, rv in new_rew_labels.items()}
 new_group_labels_dict.update({'rew': 'Rew', 'unrew': 'Unrew'})
+new_group_labels_dict.update({'rew_hist_{}'.format(rew_hist_bin_strs[rew_bin]): bin_labels[rew_bin]
+                for rew_bin in rew_hist_bins})
 
 rew_hist_all_colors = plt.cm.Greens(np.linspace(0.4,1,len(rew_hist_bins)))
 rew_hist_rew_colors = plt.cm.Reds(np.linspace(0.4,1,len(rew_hist_bins)))
@@ -745,15 +768,15 @@ rew_hist_unrew_colors = plt.cm.Blues(np.linspace(0.4,1,len(rew_hist_bins)))
 #colors = {Align.cue: np.vstack((rew_hist_rew_colors, rew_hist_unrew_colors)), Align.reward: np.vstack((rew_hist_rew_colors, rew_hist_unrew_colors))}
 colors = {Align.cue: rew_hist_all_colors, Align.reward: np.vstack((np.zeros((1,4)), rew_hist_rew_colors, np.zeros((1,4)), rew_hist_unrew_colors))}
 
-plot_lims = {Align.cue: {'DMS': [-0.1,0.5], 'DLS': [-0.1,0.5], 'PL': [-1,1]},
-             Align.reward: {'DMS': [-0.2,1.2], 'DLS': [-0.2,1.2], 'PL': [-2,12]}}
+plot_lims = {Align.cue: {'DMS': [-0.1,0.5], 'DLS': [-0.1,0.5], 'NAc': [-0.2,1], 'PL': [-1,3]},
+             Align.reward: {'DMS': [-0.2,1.2], 'DLS': [-0.2,1.2], 'NAc': [-0.2,2.4], 'PL': [-2,12]}}
 
 #width_ratios = [1,2]
 #width_ratios = [0.7,0.9]
 if len(plot_aligns) == 1:
     width_ratios = [1]
 else:
-    width_ratios = [np.diff(plot_lims[Align.cue][plot_regions[0]])[0], np.diff(plot_lims[Align.reward][plot_regions[0]])[0]]
+    width_ratios = [np.diff(plot_lims[Align.cue]['DMS'])[0], np.diff(plot_lims[Align.reward]['DMS'])[0]]
 
 n_rows = len(plot_regions)
 n_cols = len(plot_aligns)
@@ -767,7 +790,7 @@ for signal_type in plot_signal_types:
     
     plot_data[signal_type] = {}
     
-    fig, axs = plt.subplots(n_rows, n_cols, layout='constrained', figsize=(7, 3*n_rows+0.1), sharey='row', width_ratios=width_ratios)
+    fig, axs = plt.subplots(n_rows, n_cols, layout='constrained', figsize=(8, 3*n_rows+0.1), sharey='row', width_ratios=width_ratios)
     
     if n_rows == 1 and n_cols == 1:
         axs = np.array(axs)
@@ -836,7 +859,7 @@ for signal_type in plot_signal_types:
             ax.yaxis.set_major_locator(MultipleLocator(y_inc[region]))
             
             plot_data[signal_type][region][align] = pd.DataFrame.from_dict(plot_data[signal_type][region][align])
-            
+
         fig.legend(handles, labels, loc='outside right center', ncols=legend_cols, title='# Rewards in last {} trials'.format(rew_rate_n_back))
             
         fpah.save_fig(fig, fpah.get_figure_save_path('Two-armed Bandit', 'Reward History', plot_name), format='pdf')
@@ -1176,11 +1199,11 @@ for signal_type in signal_types:
 
 parameters = ['peak_height', 'peak_width'] # 'peak_time', 'decay_tau']
 
-regions = ['PL', 'DMS', 'DLS']
+regions = ['PL', 'DMS']
 region_colors = [pl_color, dms_color, dls_color]
 plot_aligns = ['Response Cue', 'Reward Delivery']
 subj_ids = np.unique(filt_peak_metrics['subj_id'])
-plot_signals = ['dff_iso_baseline_fband', 'z_dff_iso_baseline_fband']
+plot_signals = ['dff_iso'] # 'dff_iso_baseline_fband', 'z_dff_iso_baseline_fband', 'dff_iso_baseline', 'z_dff_iso_baseline', 
 
 # have same jitter for each subject
 noise = 0.075
@@ -1365,10 +1388,10 @@ for signal_type in plot_signals:
                 
         fpah.save_fig(fig, fpah.get_figure_save_path('Two-armed Bandit', 'Reward History', plot_name), format='pdf')
 
-# %% Get mean and SE for peak properties
-# by region/align
+# %% Get mean and SE for peak properties and statistical significance of the comparison by region/align
+
 signal_type = 'dff_iso'
-parameters = ['peak_height', 'peak_width'] # 'peak_time', 'decay_tau']
+parameters = ['peak_height'] #, 'peak_width', 'peak_time', 'decay_tau']
 plot_regions = ['DMS', 'PL']
 plot_aligns = ['cue', 'reward'] #
 
@@ -1384,6 +1407,55 @@ for param in parameters:
             
             print('{} {}, {}-aligned {}: {:.3f} +/- {:.3f}\n'.format(
                    signal_type, region, align, param, np.nanmean(region_metrics[param]), utils.stderr(region_metrics[param])))
+
+test_diffs = False
+include_sess_effects = False
+include_subj_effect_diffs = False
+            
+for param in parameters:
+    for align in plot_aligns:
+        peak_sel = (filt_peak_metrics['align'] == align) & (filt_peak_metrics['signal_type'] == signal_type) & (filt_peak_metrics['region'].isin(plot_regions))
+
+        if align == Align.reward:
+                peak_sel = peak_sel & filt_peak_metrics['rewarded']
+
+        comp_metrics = filt_peak_metrics[peak_sel].pivot(index=['subj_id', 'sess_id', 'trial'], columns='region', values=param).reset_index()
+        
+        # drop nans
+        comp_metrics = comp_metrics[~comp_metrics.isna().any(axis=1)]
+        
+        if include_sess_effects:
+            vc_form = {'sess_id': '0 + C(sess_id)'}
+        else:
+            vc_form = None
+        
+        if test_diffs:
+            region_combinations = list(itertools.combinations(plot_regions, 2))
+            for reg_comb in region_combinations:
+                col_name = 'diff_{}_{}'.format(reg_comb[0], reg_comb[1])
+                comp_metrics[col_name] = comp_metrics[reg_comb[0]] - comp_metrics[reg_comb[1]]
+
+                mem = sm.MixedLM.from_formula(col_name+' ~ 1', groups='subj_id', data=comp_metrics, vc_formula=vc_form).fit()
+                
+                print('{}: {} {}-aligned Mixed-effects Model, {} vs {}:\n {}\n'.format(
+                       param, signal_type, align, reg_comb[0], reg_comb[1], mem.summary()))
+                #print('Random Effects:\n{}\n'.format(mem.random_effects))
+                print('P-values:\n{}\n'.format(mem.pvalues))
+        else:
+            # pivot table to long format
+            comp_metrics = comp_metrics.melt(id_vars=['subj_id', 'sess_id', 'trial'], value_vars=plot_regions, var_name='region', value_name=param)
+            
+            if include_subj_effect_diffs:
+                re_form = '1 + C(region)'
+            else:
+                re_form = '1'
+                
+            mem = sm.MixedLM.from_formula(param+' ~ C(region)', groups='subj_id', data=comp_metrics, re_formula=re_form, vc_formula=vc_form).fit()
+            
+            print('{}: {} {}-aligned Mixed-effects Model, region effects:\n {}\n'.format(
+                   param, signal_type, align, mem.summary()))
+            #print('Random Effects:\n{}\n'.format(mem.random_effects))
+            print('P-values:\n{}\n'.format(mem.pvalues))
             
 
 # %% Compare peak properties based on reward time
@@ -2053,9 +2125,9 @@ def plot_regress_over_time(params, t, plot_cols, ax, ci_lower=None, ci_upper=Non
     
 # %% Prep for reward history regression over time
 
-regions = ['PL', 'DMS', 'DLS'] # 'DMS', 'PL'
-aligns = [Align.cue, Align.reward] # Align.cue, Align.reward
-signals = ['z_dff_iso_baseline', 'z_dff_iso_baseline_fband']
+regions = ['PL', 'NAc', 'DMS', 'DLS', 'TS'] # 'DMS', 'PL'
+aligns = [Align.cue, Align.reward] # 
+signals = ['z_dff_iso_baseline_fband']
 included_subjs = np.array(subj_ids)[~np.isin(subj_ids, ignored_subjects)]
 
 n_back = 3
@@ -2110,7 +2182,7 @@ for subj_id in included_subjs:
             rew_time = rew_time[n_back:]
             
         for region in regions:
-            if sess_id in ignored_signals[region] or not region in implant_info[subj_id]:
+            if sess_id in ignored_signals[region] or not region in implant_info[subj_id] or region in fpah.__region_ignore.get(subj_id, []):
                 continue
             
             # build predictors by region
@@ -2127,8 +2199,8 @@ for subj_id in included_subjs:
                 preds.update({'contra choice ({})'.format(i-n_back): buff_left_choice[i:-n_back+i-1] for i in range(n_back-1, -1, -1)})
             preds.update({'choice': choice_side})
             preds.update({'switch': switches})
-            preds.update({'stay': switches})
-            preds.update({'next_stay': switches})
+            preds.update({'stay': stays})
+            preds.update({'next_stay': next_stays})
             preds.update({'reward_time': rew_time})
                 
             subj_predictors[subj_id][region].append(pd.DataFrame(preds))
@@ -2142,6 +2214,9 @@ for subj_id in included_subjs:
             
                     t_r = t[align][region]
                     mat = aligned_signals[subj_id][sess_id][signal_type][align][region]
+                    
+                    if len(mat) == 0:
+                        continue
                     
                     # normalize all grouped matrices to the average pre-event signal of the lowest reward rate
                     if normalize:
@@ -2162,7 +2237,7 @@ for subj_id in included_subjs:
                     subj_stacked_signals[subj_id][signal_type][align][region] = np.vstack((subj_stacked_signals[subj_id][signal_type][align][region], mat))
     
     for region in regions:
-        if not region in implant_info[subj_id]:
+        if not region in implant_info[subj_id] or region in fpah.__region_ignore.get(subj_id, []):
             continue
         subj_predictors[subj_id][region] = pd.concat(subj_predictors[subj_id][region])
     
@@ -2172,7 +2247,8 @@ subj_stacked_signals['all'] = {s: {a: {r: [] for r in regions}
                                    for a in aligns} 
                                for s in signals}
 for region in regions:
-    subj_predictors['all'][region] = pd.concat([subj_predictors[subj_id][region] for subj_id in included_subjs if region in implant_info[subj_id]])
+    subj_predictors['all'][region] = pd.concat([subj_predictors[subj_id][region] for subj_id in included_subjs if 
+                                                (region in implant_info[subj_id] and not region in fpah.__region_ignore.get(subj_id, []))])
     
     for signal_type in signals:
         for align in aligns:
@@ -2184,8 +2260,9 @@ for region in regions:
 
 limit_rewarded_trials = False
 include_current_side = False
-include_stay_switch = False
+include_stays = True
 include_stay_side_interaction = False
+include_stay_outcome_interaction = True # Effect of stays on each outcome
 include_current_reward = False # only relevant if not including outcome interaction, mostly for cue-related alignments
 include_side_reward_interaction = False
 include_outcome_reward_interaction = True # Separate regressions based on outcome
@@ -2268,12 +2345,15 @@ for subj_id in analyzed_subjs:
                 pred_mat[rew_str] = rew_preds
 
         # add in switches
-        if include_stay_switch:
+        if include_stays:
             if include_stay_side_interaction:
-                pred_mat['contra, switch'] = region_preds['switch'] * contra_choice
-                pred_mat['ipsi, switch'] = region_preds['switch'] * ipsi_choice
+                pred_mat['contra, stay'] = region_preds['stay'] * contra_choice
+                pred_mat['ipsi, stay'] = region_preds['stay'] * ipsi_choice
+            elif include_stay_outcome_interaction:
+                pred_mat['rewarded, stay'] = region_preds['stay'] * rewarded
+                pred_mat['unrewarded, stay'] = region_preds['stay'] * unrewarded
             else:
-                pred_mat['switch'] = region_preds['switch']
+                pred_mat['stay'] = region_preds['stay']
             
         pred_mat = pd.DataFrame(pred_mat)
 
@@ -2289,21 +2369,27 @@ for subj_id in analyzed_subjs:
                 
 # %% plot regression coefficients over time (Fig 5L)
 
+plot_n_back = n_back 
+
 # Create the reward history colormap
 cmap = LinearSegmentedColormap.from_list('red_to_blue', [plt.cm.Reds(0.7), plt.cm.Blues(0.7)])
+intercept_color = ['black']
+rew_hist_cmap = LinearSegmentedColormap.from_list('red_to_blue', [plt.cm.Reds(0.7), plt.cm.Blues(0.7)])(np.linspace(1,0,plot_n_back)).tolist()
 
 plot_signals = ['z_dff_iso_baseline_fband']
-plot_regions = ['PL', 'DMS', 'DLS'] # 'DMS', 'PL'
+plot_regions = ['PL', 'NAc', 'DMS', 'DLS', 'TS'] # 'DMS', 'PL'
 plot_aligns = [Align.reward] #  Align.cue, Align.reward
 
 # plot formatting
-plot_dec = {'DMS': 1, 'DLS': 1, 'PL': 2}
-x_inc = {'DMS': 0.3, 'DLS': 0.3, 'PL': 3}
-y_inc = {'DMS': 0.3, 'DLS': 0.8, 'PL': 0.3}
-plot_lims = {Align.cue: {'DMS': [-0.1,0.6], 'DLS': [-0.1,0.6], 'PL': [-1,2]},
-             Align.reward: {'DMS': [-0.2,1.2], 'DLS': [-0.2,1.2], 'PL': [-2,12]}}
+plot_dec = {'DMS': 1, 'DLS': 1, 'TS': 1, 'NAc': 2, 'PL': 2}
+x_inc = {Align.cue: {'DMS': 0.2, 'DLS': 0.2, 'TS': 0.2, 'NAc': 0.4, 'PL': 0.4},
+         Align.reward: {'DMS': 0.3, 'DLS': 0.3, 'TS': 0.3, 'NAc': 0.6, 'PL': 3}}
+y_inc = {Align.cue: {'DMS': 0.3, 'DLS': 0.8, 'TS': 0.3, 'NAc': 0.3, 'PL': 0.1},
+         Align.reward: {'DMS': 0.3, 'DLS': 0.8, 'TS': 0.5, 'NAc': 1, 'PL': 0.3}}
+plot_lims = {Align.cue: {'DMS': [-0.1,0.6], 'DLS': [-0.1,0.6], 'TS': [-0.1,0.6], 'NAc': [-0.2,1.2], 'PL': [-0.2,1.2]},
+             Align.reward: {'DMS': [-0.2,1.2], 'DLS': [-0.2,1.2], 'TS': [-0.2,1.2], 'NAc': [-0.4,2.4], 'PL': [-2,12]}}
 
-plot_n_back = n_back # 
+
 
 plot_ind_subj = False
 plot_subj_average = False
@@ -2382,6 +2468,7 @@ elif include_outcome_reward_interaction:
         if not limit_rewarded_trials:
             rew_groups.append(['unrewarded'])
         plot_groups = [r+[g.format(i-plot_n_back) for i in range(plot_n_back-1, -1, -1)] for r, g in zip(rew_groups, hist_groups)]
+        group_colors = [intercept_color+rew_hist_cmap for i in range(len(rew_groups))]
 else:
     plot_group_labels = ['Reward History']
     if plot_current_reward_separate:
@@ -2390,9 +2477,9 @@ else:
         if include_current_reward:
             plot_groups = [['rewarded']+['reward ({})'.format(i-plot_n_back) for i in range(plot_n_back-1, -1, -1)]]
         else:
-            plot_groups = [['reward ({})'.format(i-plot_n_back) for i in range(plot_n_back-1, -1, -1)]]
+            plot_groups = [['intercept']+['reward ({})'.format(i-plot_n_back) for i in range(plot_n_back-1, -1, -1)]]
     
-group_colors = [cmap(np.linspace(0,1,len(g))) for g in plot_groups]
+#group_colors = [cmap(np.linspace(1,0,len(g))) for g in plot_groups]
 
 # group all other parameters into one plot    
 plot_group_labels.append('Other Parameters')
@@ -2414,20 +2501,22 @@ elif include_current_side or include_side_reward_interaction:
             other_group.append('rewarded')
             
 elif include_outcome_reward_interaction:
-    if plot_current_reward_separate:
-        other_group.append('rewarded')
-        if not limit_rewarded_trials:
-            other_group.append('unrewarded')
+    other_group.append('rewarded')
+    if not limit_rewarded_trials:
+        other_group.append('unrewarded')
 else:
-    other_group.append('intercept')
-    if plot_current_reward_separate and include_current_reward:
+    if include_current_reward:
         other_group.append('rewarded')
-
-if include_stay_switch:
-    if include_stay_side_interaction:
-        other_group.extend(['contra, switch', 'ipsi, switch'])
     else:
-        other_group.append('switch')
+        other_group.append('intercept')
+
+if include_stays:
+    if include_stay_side_interaction:
+        other_group.extend(['contra, stay', 'ipsi, stay'])
+    elif include_stay_outcome_interaction:
+        other_group.extend(['rewarded, stay', 'unrewarded, stay'])
+    else:
+        other_group.append('stay')
     
 if any(other_group):    
     plot_groups.append(other_group)
@@ -2465,11 +2554,11 @@ for signal_type in plot_signals:
                             plot_regress_over_time(subj_params['params'], t_r, plot_group, ax, region,
                                                    ci_lower=subj_params['ci_lower'], ci_upper=subj_params['ci_upper'], 
                                                    sig=subj_params['sig'], t_sel=t_sel, colors=colors,
-                                                   dec=plot_dec[region], x_inc=x_inc[region], y_inc=y_inc[region])
+                                                   dec=plot_dec[region], x_inc=x_inc[align][region], y_inc=y_inc[align][region])
                         else:
                             plot_regress_over_time(subj_params['params'], t_r, plot_group, ax, region,
                                                    error=subj_params['se'], sig=subj_params['sig'], 
-                                                   t_sel=t_sel, colors=colors, dec=plot_dec[region], x_inc=x_inc[region], y_inc=y_inc[region])   
+                                                   t_sel=t_sel, colors=colors, dec=plot_dec[region], x_inc=x_inc[align][region], y_inc=y_inc[align][region])   
                         
                         ax.set_title('{}, {}-aligned'.format(region, align))
                         
@@ -2516,7 +2605,7 @@ for signal_type in plot_signals:
             
                     plot_regress_over_time(param_avg, t_r, plot_group, ax, region,
                                            error=param_se, t_sel=t_sel, colors=colors,
-                                           dec=plot_dec[region], x_inc=x_inc[region], y_inc=y_inc[region])
+                                           dec=plot_dec[region], x_inc=x_inc[align][region], y_inc=y_inc[align][region])
                     
                     ax.set_title('{}, {}-aligned'.format(region, align))
                     
@@ -2555,11 +2644,11 @@ for signal_type in plot_signals:
                         group_plot_data = plot_regress_over_time(subj_params['params'], t_r, plot_group, ax, region,
                                                ci_lower=subj_params['ci_lower'], ci_upper=subj_params['ci_upper'], group_labels=group_labels,
                                                sig=subj_params['sig'], p_vals=subj_params['p_vals'], t_sel=t_sel, colors=colors,
-                                               dec=plot_dec[region], x_inc=x_inc[region], y_inc=y_inc[region])
+                                               dec=plot_dec[region], x_inc=x_inc[align][region], y_inc=y_inc[align][region])
                     else:
                         group_plot_data = plot_regress_over_time(subj_params['params'], t_r, plot_group, ax, region,
                                                error=subj_params['se'], sig=subj_params['sig'], p_vals=subj_params['p_vals'], group_labels=group_labels,
-                                               t_sel=t_sel, colors=colors, dec=plot_dec[region], x_inc=x_inc[region], y_inc=y_inc[region])
+                                               t_sel=t_sel, colors=colors, dec=plot_dec[region], x_inc=x_inc[align][region], y_inc=y_inc[align][region])
                     
                     plot_data[signal_type][region][align].update(group_plot_data)
                     
@@ -2605,7 +2694,8 @@ for signal_type in plot_signals:
 
 fit_ind_subj = False
 fit_meta_subj = True
-include_rew_hist = False
+separate_sides = False # whether to split up regression by the side of the choice
+include_rew_hist = False # whether to include reward history as a regressor on its own, not to be used with full interaction
 use_unreward_hist = False # whether to use rewarded trials (False) or unrewarded trials (True) as the reward regressors
 include_side_hist = False
 use_same_diff_side_hist = True
@@ -2640,22 +2730,148 @@ for subj_id in analyzed_subjs:
             elif align == Align.reward:
                 poss_outcomes = ['rewarded', 'unrewarded']
             
-            for side in ['contra', 'ipsi']:
-                choice_sel = (region_preds['choice'] == side).astype(int)
+            if separate_sides:
+                for side in ['contra', 'ipsi']:
+                    choice_sel = (region_preds['choice'] == side).astype(int)
+                    for outcome in poss_outcomes:
+                        if outcome == 'rewarded':
+                            outcome_sel = region_preds['reward (0)']
+                        elif outcome == 'unrewarded':
+                            outcome_sel = region_preds['unreward (0)']
+                        else:
+                            outcome_sel = np.full_like(choice_sel, 1)
+                            
+                        prefix = '{}, {}'.format(side, outcome)
+                        
+                        sub_sel = choice_sel * outcome_sel
+    
+                        pred_mat[prefix] = sub_sel
+                        
+                        for i in range(n_back-1, -1, -1):
+                            rew_str = 'reward ({})'.format(i-n_back)
+                            unrew_str = 'unreward ({})'.format(i-n_back)
+                            contra_str = 'contra choice ({})'.format(i-n_back)
+                            ipsi_str = 'ipsi choice ({})'.format(i-n_back)
+                            rew_preds = region_preds[rew_str]
+                            unrew_preds = region_preds[unrew_str]
+                            contra_preds = region_preds[contra_str]
+                            ipsi_preds = region_preds[ipsi_str]
+                            
+                            if side == 'contra':
+                                same_side_preds = contra_preds
+                                diff_side_preds = ipsi_preds
+                            else:
+                                same_side_preds = ipsi_preds
+                                diff_side_preds = contra_preds
+                            
+                            if include_rew_hist:
+                                if use_unreward_hist:
+                                    pred_mat[prefix+', '+unrew_str] = unrew_preds * sub_sel
+                                else:
+                                    pred_mat[prefix+', '+rew_str] = rew_preds * sub_sel
+                                
+                            if include_side_hist:
+                                if use_same_diff_side_hist:
+                                    if use_diff_hist:
+                                        pred_mat[prefix+', diff choice ({})'.format(i-n_back)] = diff_side_preds * sub_sel
+                                    else:
+                                        pred_mat[prefix+', same choice ({})'.format(i-n_back)] = same_side_preds * sub_sel
+                                else:
+                                    if use_ipsi_hist:
+                                        pred_mat[prefix+', '+ipsi_str] = ipsi_preds * sub_sel
+                                    else:
+                                        pred_mat[prefix+', '+contra_str] = contra_preds * sub_sel
+                            
+                            if include_interaction:
+                                if use_full_interaction:
+                                    if use_same_diff_side_hist:
+                                        match interaction:
+                                            case 's/r':
+                                                pred_mat[prefix+', same unrewarded ({})'.format(i-n_back)] = unrew_preds * same_side_preds * sub_sel
+                                                pred_mat[prefix+', diff unrewarded ({})'.format(i-n_back)] = unrew_preds * diff_side_preds * sub_sel
+                                                pred_mat[prefix+', diff rewarded ({})'.format(i-n_back)] = rew_preds * diff_side_preds * sub_sel
+                                            case 's/u':
+                                                pred_mat[prefix+', same rewarded ({})'.format(i-n_back)] = rew_preds * same_side_preds * sub_sel
+                                                pred_mat[prefix+', diff unrewarded ({})'.format(i-n_back)] = unrew_preds * diff_side_preds * sub_sel
+                                                pred_mat[prefix+', diff rewarded ({})'.format(i-n_back)] = rew_preds * diff_side_preds * sub_sel
+                                            case 'd/r':
+                                                pred_mat[prefix+', same rewarded ({})'.format(i-n_back)] = rew_preds * same_side_preds * sub_sel
+                                                pred_mat[prefix+', same unrewarded ({})'.format(i-n_back)] = unrew_preds * same_side_preds * sub_sel
+                                                pred_mat[prefix+', diff unrewarded ({})'.format(i-n_back)] = unrew_preds * diff_side_preds * sub_sel
+                                            case 'd/u':
+                                                pred_mat[prefix+', same rewarded ({})'.format(i-n_back)] = rew_preds * same_side_preds * sub_sel
+                                                pred_mat[prefix+', same unrewarded ({})'.format(i-n_back)] = unrew_preds * same_side_preds * sub_sel
+                                                pred_mat[prefix+', diff rewarded ({})'.format(i-n_back)] = rew_preds * diff_side_preds * sub_sel
+                                            
+                                    else:
+                                        match interaction:
+                                            case 'c/r':
+                                                pred_mat[prefix+', contra unrewarded ({})'.format(i-n_back)] = unrew_preds * contra_preds * sub_sel
+                                                pred_mat[prefix+', ipsi unrewarded ({})'.format(i-n_back)] = unrew_preds * ipsi_preds * sub_sel
+                                                pred_mat[prefix+', ipsi rewarded ({})'.format(i-n_back)] = rew_preds * ipsi_preds * sub_sel
+                                            case 'c/u':
+                                                pred_mat[prefix+', contra rewarded ({})'.format(i-n_back)] = rew_preds * contra_preds * sub_sel
+                                                pred_mat[prefix+', ipsi unrewarded ({})'.format(i-n_back)] = unrew_preds * ipsi_preds * sub_sel
+                                                pred_mat[prefix+', ipsi rewarded ({})'.format(i-n_back)] = rew_preds * ipsi_preds * sub_sel
+                                            case 'i/r':
+                                                pred_mat[prefix+', contra rewarded ({})'.format(i-n_back)] = rew_preds * contra_preds * sub_sel
+                                                pred_mat[prefix+', contra unrewarded ({})'.format(i-n_back)] = unrew_preds * contra_preds * sub_sel
+                                                pred_mat[prefix+', ipsi unrewarded ({})'.format(i-n_back)] = unrew_preds * ipsi_preds * sub_sel
+                                            case 'i/u':
+                                                pred_mat[prefix+', contra rewarded ({})'.format(i-n_back)] = rew_preds * contra_preds * sub_sel
+                                                pred_mat[prefix+', contra unrewarded ({})'.format(i-n_back)] = unrew_preds * contra_preds * sub_sel
+                                                pred_mat[prefix+', ipsi rewarded ({})'.format(i-n_back)] = rew_preds * ipsi_preds * sub_sel
+                                else:
+                                    if use_same_diff_side_hist:
+                                        match interaction:
+                                            case 's/r':
+                                                pred_mat[prefix+', same rewarded ({})'.format(i-n_back)] = rew_preds * same_side_preds * sub_sel
+                                            case 's/u':
+                                                pred_mat[prefix+', same unrewarded ({})'.format(i-n_back)] = unrew_preds * same_side_preds * sub_sel
+                                            case 'd/r':
+                                                pred_mat[prefix+', diff rewarded ({})'.format(i-n_back)] = rew_preds * diff_side_preds * sub_sel
+                                            case 'd/u':
+                                                pred_mat[prefix+', diff unrewarded ({})'.format(i-n_back)] = unrew_preds * diff_side_preds * sub_sel
+                                    else:
+                                        match interaction:
+                                            case 'c/r':
+                                                pred_mat[prefix+', contra rewarded ({})'.format(i-n_back)] = rew_preds * contra_preds * sub_sel
+                                            case 'c/u':
+                                                pred_mat[prefix+', contra unrewarded ({})'.format(i-n_back)] = unrew_preds * contra_preds * sub_sel
+                                            case 'i/r':
+                                                pred_mat[prefix+', ipsi rewarded ({})'.format(i-n_back)] = rew_preds * ipsi_preds * sub_sel
+                                            case 'i/u':
+                                                pred_mat[prefix+', ipsi unrewarded ({})'.format(i-n_back)] = unrew_preds * ipsi_preds * sub_sel
+                                    #     if use_unreward_hist:
+                                    #         pred_mat[prefix+', same unrewarded ({})'.format(i-n_back)] = unrew_preds * same_side_preds * sub_sel
+                                    #         #pred_mat[prefix+', diff unrewarded ({})'.format(i-n_back)] = unrew_preds * diff_side_preds * sub_sel
+                                    #     else:
+                                    #         pred_mat[prefix+', same rewarded ({})'.format(i-n_back)] = rew_preds * same_side_preds * sub_sel
+                                    #         #pred_mat[prefix+', diff rewarded ({})'.format(i-n_back)] = rew_preds * diff_side_preds * sub_sel
+                                    # else:
+                                    #     if use_unreward_hist:
+                                    #         pred_mat[prefix+', contra unrewarded ({})'.format(i-n_back)] = unrew_preds * contra_preds * sub_sel
+                                    #         #pred_mat[prefix+', ipsi unrewarded ({})'.format(i-n_back)] = unrew_preds * ipsi_preds * sub_sel
+                                    #     else:
+                                    #         pred_mat[prefix+', contra rewarded ({})'.format(i-n_back)] = rew_preds * contra_preds * sub_sel
+                                    #         #pred_mat[prefix+', ipsi rewarded ({})'.format(i-n_back)] = rew_preds * ipsi_preds * sub_sel
+            else:
+                contra_sel = (region_preds['choice'] == 'contra').to_numpy()
+                ipsi_sel = (region_preds['choice'] == 'ipsi').to_numpy()
+                
                 for outcome in poss_outcomes:
                     if outcome == 'rewarded':
                         outcome_sel = region_preds['reward (0)']
                     elif outcome == 'unrewarded':
                         outcome_sel = region_preds['unreward (0)']
                     else:
-                        outcome_sel = np.full_like(choice_sel, 1)
+                        outcome_sel = np.full_like(contra_sel, 1, dtype=int)
                         
-                    prefix = '{}, {}'.format(side, outcome)
+                    prefix = outcome
+                    sub_sel = outcome_sel
                     
-                    sub_sel = choice_sel * outcome_sel
-
                     pred_mat[prefix] = sub_sel
-                    
+
                     for i in range(n_back-1, -1, -1):
                         rew_str = 'reward ({})'.format(i-n_back)
                         unrew_str = 'unreward ({})'.format(i-n_back)
@@ -2663,16 +2879,17 @@ for subj_id in analyzed_subjs:
                         ipsi_str = 'ipsi choice ({})'.format(i-n_back)
                         rew_preds = region_preds[rew_str]
                         unrew_preds = region_preds[unrew_str]
-                        contra_preds = region_preds[contra_str]
-                        ipsi_preds = region_preds[ipsi_str]
+                        contra_preds = region_preds[contra_str].to_numpy()
+                        ipsi_preds = region_preds[ipsi_str].to_numpy()
                         
-                        if side == 'contra':
-                            same_side_preds = contra_preds
-                            diff_side_preds = ipsi_preds
-                        else:
-                            same_side_preds = ipsi_preds
-                            diff_side_preds = contra_preds
+                        same_side_preds = np.zeros_like(outcome_sel)
+                        diff_side_preds = np.zeros_like(outcome_sel)
                         
+                        same_side_preds[contra_sel] = contra_preds[contra_sel]
+                        same_side_preds[ipsi_sel] = ipsi_preds[ipsi_sel]
+                        diff_side_preds[contra_sel] = ipsi_preds[contra_sel]
+                        diff_side_preds[ipsi_sel] = contra_preds[ipsi_sel]
+
                         if include_rew_hist:
                             if use_unreward_hist:
                                 pred_mat[prefix+', '+unrew_str] = unrew_preds * sub_sel
@@ -2680,16 +2897,10 @@ for subj_id in analyzed_subjs:
                                 pred_mat[prefix+', '+rew_str] = rew_preds * sub_sel
                             
                         if include_side_hist:
-                            if use_same_diff_side_hist:
-                                if use_diff_hist:
-                                    pred_mat[prefix+', diff choice ({})'.format(i-n_back)] = diff_side_preds * sub_sel
-                                else:
-                                    pred_mat[prefix+', same choice ({})'.format(i-n_back)] = same_side_preds * sub_sel
+                            if use_diff_hist:
+                                pred_mat[prefix+', diff choice ({})'.format(i-n_back)] = diff_side_preds * sub_sel
                             else:
-                                if use_ipsi_hist:
-                                    pred_mat[prefix+', '+ipsi_str] = ipsi_preds * sub_sel
-                                else:
-                                    pred_mat[prefix+', '+contra_str] = contra_preds * sub_sel
+                                pred_mat[prefix+', same choice ({})'.format(i-n_back)] = same_side_preds * sub_sel
                         
                         if include_interaction:
                             if use_full_interaction:
@@ -2751,19 +2962,6 @@ for subj_id in analyzed_subjs:
                                             pred_mat[prefix+', ipsi rewarded ({})'.format(i-n_back)] = rew_preds * ipsi_preds * sub_sel
                                         case 'i/u':
                                             pred_mat[prefix+', ipsi unrewarded ({})'.format(i-n_back)] = unrew_preds * ipsi_preds * sub_sel
-                                #     if use_unreward_hist:
-                                #         pred_mat[prefix+', same unrewarded ({})'.format(i-n_back)] = unrew_preds * same_side_preds * sub_sel
-                                #         #pred_mat[prefix+', diff unrewarded ({})'.format(i-n_back)] = unrew_preds * diff_side_preds * sub_sel
-                                #     else:
-                                #         pred_mat[prefix+', same rewarded ({})'.format(i-n_back)] = rew_preds * same_side_preds * sub_sel
-                                #         #pred_mat[prefix+', diff rewarded ({})'.format(i-n_back)] = rew_preds * diff_side_preds * sub_sel
-                                # else:
-                                #     if use_unreward_hist:
-                                #         pred_mat[prefix+', contra unrewarded ({})'.format(i-n_back)] = unrew_preds * contra_preds * sub_sel
-                                #         #pred_mat[prefix+', ipsi unrewarded ({})'.format(i-n_back)] = unrew_preds * ipsi_preds * sub_sel
-                                #     else:
-                                #         pred_mat[prefix+', contra rewarded ({})'.format(i-n_back)] = rew_preds * contra_preds * sub_sel
-                                #         #pred_mat[prefix+', ipsi rewarded ({})'.format(i-n_back)] = rew_preds * ipsi_preds * sub_sel
                     
             pred_mat = pd.DataFrame(pred_mat)
 
@@ -2787,16 +2985,16 @@ side_unrew_hist_cmap = LinearSegmentedColormap.from_list('turqoise_light_to_dark
 rew_hist_cmap = plt.cm.Reds(np.linspace(1,0.4,plot_n_back)).tolist()
 unrew_hist_cmap = plt.cm.Blues(np.linspace(1,0.4,plot_n_back)).tolist()
 
-plot_signals = ['z_dff_iso']
-plot_regions = ['DMS', 'PL'] #'DMS', 'PL'
+plot_signals = ['z_dff_iso_baseline_fband']
+plot_regions = ['PL', 'NAc', 'DMS', 'DLS', 'TS'] #'DMS', 'PL'
 plot_aligns = [Align.cue, Align.reward] #  Align.cue, Align.reward
 
 # plot formatting
-plot_dec = {'DMS': 1, 'PL': 2}
-x_inc = {'DMS': None, 'PL': None}
-y_inc = {'DMS': None, 'PL': None}
-plot_lims = {Align.cue: {'DMS': [-0.1,0.6], 'PL': [-1,2]},
-             Align.reward: {'DMS': [-0.2,1.2], 'PL': [-2,12]}}
+plot_dec = {'DMS': 1, 'DLS': 1, 'TS': 1, 'NAc': 1, 'PL': 2}
+x_inc = {'DMS': None, 'DLS': None, 'TS': None, 'NAc': None, 'PL': None}
+y_inc = {'DMS': None, 'DLS': None, 'TS': None, 'NAc': None, 'PL': None}
+plot_lims = {Align.cue: {'DMS': [-0.1,0.6], 'DLS': [-0.1,0.6], 'TS': [-0.1,0.6], 'NAc': [-0.2,1.2], 'PL': [-0.2,1.2]},
+             Align.reward: {'DMS': [-0.2,1.2], 'DLS': [-0.2,1.2], 'TS': [-0.2,1.2], 'NAc': [-0.4,2.4], 'PL': [-2,12]}}
 
 
 plot_ind_subj = False
@@ -2840,22 +3038,36 @@ diff_rew_groups = ['diff rewarded ({})'.format(i-n_back) for i in range(n_back-1
 diff_unrew_groups = ['diff unrewarded ({})'.format(i-n_back) for i in range(n_back-1,-1,-1)]
 
 group_labels = {}
-for choice in ['contra', 'ipsi']:
+if separate_sides:
+    for choice in ['contra', 'ipsi']:
+        for outcome in ['rewarded', 'unrewarded', 'all']:
+            prefix = '{}, {}'.format(choice, outcome)
+            group_labels[prefix] = prefix
+            group_labels.update({'{}, {}'.format(prefix, g): g for g in rew_groups})
+            group_labels.update({'{}, {}'.format(prefix, g): g for g in unrew_groups})
+            group_labels.update({'{}, {}'.format(prefix, g): g.replace('choice ','') for g in contra_groups})
+            group_labels.update({'{}, {}'.format(prefix, g): g.replace('choice ','') for g in ipsi_groups})
+            group_labels.update({'{}, {}'.format(prefix, g): g for g in same_groups})
+            group_labels.update({'{}, {}'.format(prefix, g): g for g in diff_groups})
+    
+            group_labels.update({'{}, {}'.format(prefix, g): g for g in contra_rew_groups})
+            group_labels.update({'{}, {}'.format(prefix, g): g for g in contra_unrew_groups})
+            group_labels.update({'{}, {}'.format(prefix, g): g for g in ipsi_rew_groups})
+            group_labels.update({'{}, {}'.format(prefix, g): g for g in ipsi_unrew_groups})
+            
+            group_labels.update({'{}, {}'.format(prefix, g): g for g in same_rew_groups})
+            group_labels.update({'{}, {}'.format(prefix, g): g for g in same_unrew_groups})
+            group_labels.update({'{}, {}'.format(prefix, g): g for g in diff_rew_groups})
+            group_labels.update({'{}, {}'.format(prefix, g): g for g in diff_unrew_groups})
+else:
     for outcome in ['rewarded', 'unrewarded', 'all']:
-        prefix = '{}, {}'.format(choice, outcome)
+        prefix = outcome
         group_labels[prefix] = prefix
         group_labels.update({'{}, {}'.format(prefix, g): g for g in rew_groups})
         group_labels.update({'{}, {}'.format(prefix, g): g for g in unrew_groups})
-        group_labels.update({'{}, {}'.format(prefix, g): g.replace('choice ','') for g in contra_groups})
-        group_labels.update({'{}, {}'.format(prefix, g): g.replace('choice ','') for g in ipsi_groups})
         group_labels.update({'{}, {}'.format(prefix, g): g for g in same_groups})
         group_labels.update({'{}, {}'.format(prefix, g): g for g in diff_groups})
 
-        group_labels.update({'{}, {}'.format(prefix, g): g for g in contra_rew_groups})
-        group_labels.update({'{}, {}'.format(prefix, g): g for g in contra_unrew_groups})
-        group_labels.update({'{}, {}'.format(prefix, g): g for g in ipsi_rew_groups})
-        group_labels.update({'{}, {}'.format(prefix, g): g for g in ipsi_unrew_groups})
-        
         group_labels.update({'{}, {}'.format(prefix, g): g for g in same_rew_groups})
         group_labels.update({'{}, {}'.format(prefix, g): g for g in same_unrew_groups})
         group_labels.update({'{}, {}'.format(prefix, g): g for g in diff_rew_groups})
@@ -2881,7 +3093,7 @@ if include_interaction:
         n_cols = 3
     else:
         n_cols += 1
-        if use_full_interaction:
+        if use_full_interaction and separate_sides:
             n_cols += 1
         
 plot_subjs = []
@@ -2897,10 +3109,10 @@ for signal_type in plot_signals:
         for align in plot_aligns:
             
             if align == Align.cue:
-                n_rows = 2
+                n_rows = 2 if separate_sides else 1
                 poss_outcomes = ['all']
             elif align == Align.reward:
-                n_rows = 4
+                n_rows = 4 if separate_sides else 2
                 poss_outcomes = ['rewarded', 'unrewarded']
             
             for subj_id in plot_subjs:
@@ -2914,14 +3126,252 @@ for signal_type in plot_signals:
                 t_sel = (t_r > plot_lims[align][region][0]) & (t_r < plot_lims[align][region][1])
                 
                 for i, outcome in enumerate(poss_outcomes):
-                    for j, choice in enumerate(['contra', 'ipsi']):
+                    
+                    if separate_sides:
+                        for j, choice in enumerate(['contra', 'ipsi']):
+                                
+                            prefix = '{}, {}'.format(choice, outcome)
+                            if i == 0:
+                                row = j
+                            else:
+                                row = 2+j
+    
+                            col_idx = 0
                             
-                        prefix = '{}, {}'.format(choice, outcome)
-                        if i == 0:
-                            row = j
-                        else:
-                            row = 2+j
+                            if include_rew_hist:
+                                # reward history coefficients
+                                ax = axs[row, col_idx]
+                                # plot trial group intercept
+                                if use_unreward_hist:
+                                    plot_groups = [prefix]+['{}, {}'.format(prefix, g) for g in unrew_groups]
+                                    plot_colors = intercept_color + unrew_hist_cmap
+                                else:
+                                    plot_groups = [prefix]+['{}, {}'.format(prefix, g) for g in rew_groups]
+                                    plot_colors = intercept_color + rew_hist_cmap
+                                
+                                generic_plot(subj_params, t_r, plot_groups, ax, t_sel, plot_colors)
+                                
+                                plot_utils.plot_dashlines(0, dir='v', ax=ax)
+                                plot_utils.plot_dashlines(0, dir='h', ax=ax)
+                                ax.set_title('{}, Reward History'.format(prefix))
+                                ax.set_ylabel('Coefficient ({})'.format(y_label))
+                                ax.legend(loc='upper right', fontsize=8, framealpha=0.5)
+                                plot_utils.show_axis_labels(ax, axis='y')
+                                
+                                col_idx += 1
+                            
+                            # side history coefficients
+                            if include_side_hist:
+                                ax = axs[row, col_idx]
+                                # plot trial group intercept
+                                if use_same_diff_side_hist:
+                                    if use_diff_hist:
+                                        plot_groups = [prefix]+['{}, {}'.format(prefix, g) for g in diff_groups]
+                                        plot_colors = intercept_color + ipsi_hist_cmap
+                                    else:
+                                        plot_groups = [prefix]+['{}, {}'.format(prefix, g) for g in same_groups]
+                                        plot_colors = intercept_color + contra_hist_cmap
+                                else:
+                                    if use_ipsi_hist:
+                                        plot_groups = [prefix]+['{}, {}'.format(prefix, g) for g in ipsi_groups]
+                                        plot_colors = intercept_color + ipsi_hist_cmap
+                                    else:
+                                        plot_groups = [prefix]+['{}, {}'.format(prefix, g) for g in contra_groups]
+                                        plot_colors = intercept_color + contra_hist_cmap
+                                
+                                generic_plot(subj_params, t_r, plot_groups, ax, t_sel, plot_colors)
+                                
+                                plot_utils.plot_dashlines(0, dir='v', ax=ax)
+                                plot_utils.plot_dashlines(0, dir='h', ax=ax)
+                                ax.set_title('{}, Choice Side History'.format(prefix))
+                                ax.set_ylabel('Coefficient ({})'.format(y_label))
+                                ax.legend(loc='upper right', fontsize=8, framealpha=0.5)
+                                plot_utils.show_axis_labels(ax, axis='y')
+                                
+                                col_idx += 1
+                            
+                            if include_interaction:
+                                if not include_rew_hist and not include_side_hist and use_full_interaction:
+                                    if use_same_diff_side_hist:
+                                        intxs = ['s/r', 'd/r', 's/u', 'd/u']
+                                    else:
+                                        intxs = ['c/r', 'i/r', 'c/u', 'i/u']
+                                    
+                                    intxs.remove(interaction)
+    
+                                    for col_idx, intx in enumerate(intxs):
+                                        match intx:
+                                            case 's/r':
+                                                plot_groups = [prefix] + ['{}, {}'.format(prefix, g) for g in same_rew_groups]
+                                                plot_colors = intercept_color + rew_hist_cmap
+                                                title = '{}, Same Side Reward History'.format(prefix)
+                                            case 's/u':
+                                                plot_groups = [prefix] + ['{}, {}'.format(prefix, g) for g in same_unrew_groups]
+                                                plot_colors = intercept_color + unrew_hist_cmap
+                                                title = '{}, Same Side Unreward History'.format(prefix)
+                                            case 'd/r':
+                                                plot_groups = [prefix] + ['{}, {}'.format(prefix, g) for g in diff_rew_groups]
+                                                plot_colors = intercept_color + side_rew_hist_cmap
+                                                title = '{}, Diff Side Reward History'.format(prefix)
+                                            case 'd/u':
+                                                plot_groups = [prefix] + ['{}, {}'.format(prefix, g) for g in diff_unrew_groups]
+                                                plot_colors = intercept_color + side_unrew_hist_cmap
+                                                title = '{}, Diff Side Unreward History'.format(prefix)
+                                            case 'c/r':
+                                                plot_groups = [prefix] + ['{}, {}'.format(prefix, g) for g in contra_rew_groups]
+                                                plot_colors = intercept_color + rew_hist_cmap
+                                                title = '{}, Contra Reward History'.format(prefix)
+                                            case 'c/u':
+                                                plot_groups = [prefix] + ['{}, {}'.format(prefix, g) for g in contra_unrew_groups]
+                                                plot_colors = intercept_color + unrew_hist_cmap
+                                                title = '{}, Contra Unreward History'.format(prefix)
+                                            case 'i/r':
+                                                plot_groups = [prefix] + ['{}, {}'.format(prefix, g) for g in ipsi_rew_groups]
+                                                plot_colors = intercept_color + side_rew_hist_cmap
+                                                title = '{}, Ipsi Reward History'.format(prefix)
+                                            case 'i/u':
+                                                plot_groups = [prefix] + ['{}, {}'.format(prefix, g) for g in ipsi_unrew_groups]
+                                                plot_colors = intercept_color + side_unrew_hist_cmap
+                                                title = '{}, Ipsi Unreward History'.format(prefix)
+                                        
+                                        ax = axs[row, col_idx]
+                                        generic_plot(subj_params, t_r, plot_groups, ax, t_sel, plot_colors)
+                                        
+                                        plot_utils.plot_dashlines(0, dir='v', ax=ax)
+                                        plot_utils.plot_dashlines(0, dir='h', ax=ax)
+                                        ax.set_title(title)
+                                        ax.set_ylabel('Coefficient ({})'.format(y_label))
+                                        ax.legend(loc='upper right', fontsize=8, framealpha=0.5)
+                                        plot_utils.show_axis_labels(ax, axis='y')
+                                else:
+                                    # contra/same outcome history coefficients
+                                    ax = axs[row, col_idx]
+                                    # plot trial group intercept
+                                    if use_full_interaction:
+                                        if use_same_diff_side_hist:
+                                            plot_groups = [prefix] + ['{}, {}'.format(prefix, g) for g in same_rew_groups + same_unrew_groups]
+                                            plot_colors = intercept_color + side_rew_hist_cmap + side_unrew_hist_cmap
+                                            title = '{}, Same Side Reward History'.format(prefix)
+                                        else:
+                                            plot_groups = [prefix] + ['{}, {}'.format(prefix, g) for g in contra_rew_groups + contra_unrew_groups]
+                                            plot_colors = intercept_color + side_rew_hist_cmap + side_unrew_hist_cmap
+                                            title = '{}, Contra Reward History'.format(prefix)                              
+                                    else:
+                                        match interaction:
+                                            case 's/r':
+                                                plot_groups = [prefix] + ['{}, {}'.format(prefix, g) for g in same_rew_groups]
+                                                plot_colors = intercept_color + side_rew_hist_cmap
+                                                title = '{}, Same Side Reward History'.format(prefix)
+                                            case 's/u':
+                                                plot_groups = [prefix] + ['{}, {}'.format(prefix, g) for g in same_unrew_groups]
+                                                plot_colors = intercept_color + side_unrew_hist_cmap
+                                                title = '{}, Same Side Unreward History'.format(prefix)
+                                            case 'd/r':
+                                                plot_groups = [prefix] + ['{}, {}'.format(prefix, g) for g in diff_rew_groups]
+                                                plot_colors = intercept_color + side_rew_hist_cmap
+                                                title = '{}, Diff Side Reward History'.format(prefix)
+                                            case 'd/u':
+                                                plot_groups = [prefix] + ['{}, {}'.format(prefix, g) for g in diff_unrew_groups]
+                                                plot_colors = intercept_color + side_unrew_hist_cmap
+                                                title = '{}, Diff Side Unreward History'.format(prefix)
+                                            case 'c/r':
+                                                plot_groups = [prefix] + ['{}, {}'.format(prefix, g) for g in contra_rew_groups]
+                                                plot_colors = intercept_color + side_rew_hist_cmap
+                                                title = '{}, Contra Reward History'.format(prefix)
+                                            case 'c/u':
+                                                plot_groups = [prefix] + ['{}, {}'.format(prefix, g) for g in contra_unrew_groups]
+                                                plot_colors = intercept_color + side_unrew_hist_cmap
+                                                title = '{}, Contra Unreward History'.format(prefix)
+                                            case 'i/r':
+                                                plot_groups = [prefix] + ['{}, {}'.format(prefix, g) for g in ipsi_rew_groups[:-1]]
+                                                plot_colors = intercept_color + side_rew_hist_cmap
+                                                title = '{}, Ipsi Reward History'.format(prefix)
+                                            case 'i/u':
+                                                plot_groups = [prefix] + ['{}, {}'.format(prefix, g) for g in ipsi_unrew_groups]
+                                                plot_colors = intercept_color + side_unrew_hist_cmap
+                                                title = '{}, Ipsi Unreward History'.format(prefix)
+                                                
+                                        # if use_same_diff_side_hist:
+                                        #     if use_unreward_hist:
+                                        #         plot_groups = [prefix] + ['{}, {}'.format(prefix, g) for g in same_unrew_groups]
+                                        #         plot_colors = intercept_color + side_unrew_hist_cmap
+                                        #     else:
+                                        #         plot_groups = [prefix] + ['{}, {}'.format(prefix, g) for g in same_rew_groups]
+                                        #         plot_colors = intercept_color + side_rew_hist_cmap
+                                        # else:
+                                        #     if use_unreward_hist:
+                                        #         plot_groups = [prefix] + ['{}, {}'.format(prefix, g) for g in contra_unrew_groups]
+                                        #         plot_colors = intercept_color + side_unrew_hist_cmap
+                                        #     else:
+                                        #         plot_groups = [prefix] + ['{}, {}'.format(prefix, g) for g in contra_rew_groups]
+                                        #         plot_colors = intercept_color + side_rew_hist_cmap
+                                                
+                                    
+                                    
+                                    generic_plot(subj_params, t_r, plot_groups, ax, t_sel, plot_colors)
+                                    
+                                    plot_utils.plot_dashlines(0, dir='v', ax=ax)
+                                    plot_utils.plot_dashlines(0, dir='h', ax=ax)
+                                    ax.set_title(title)
+                                    ax.set_ylabel('Coefficient ({})'.format(y_label))
+                                    ax.legend(loc='upper right', fontsize=8, framealpha=0.5)
+                                    plot_utils.show_axis_labels(ax, axis='y')
+                                    
+                                    # ipsi/outcome history coefficients
+                                    
+                                    # plot trial group intercept
+                                    if use_full_interaction:
+                                        ax = axs[row, col_idx+1]
+                                        if use_same_diff_side_hist:
+                                            plot_groups = [prefix] + ['{}, {}'.format(prefix, g) for g in diff_rew_groups + diff_unrew_groups]
+                                            plot_colors = intercept_color + side_rew_hist_cmap + side_unrew_hist_cmap
+                                            title = '{}, Diff Side Reward History'.format(prefix)
+                                        else:
+                                            plot_groups = [prefix] + ['{}, {}'.format(prefix, g) for g in ipsi_rew_groups + ipsi_unrew_groups]
+                                            plot_colors = intercept_color + side_rew_hist_cmap + side_unrew_hist_cmap
+                                            title = '{}, Ipsi Reward History'.format(prefix)
+                                        # if use_same_diff_side_hist:
+                                        #     if use_unreward_hist:
+                                        #         plot_groups = [prefix] + ['{}, {}'.format(prefix, g) for g in diff_unrew_groups]
+                                        #         plot_colors = intercept_color + side_unrew_hist_cmap
+                                        #     else:
+                                        #         plot_groups = [prefix] + ['{}, {}'.format(prefix, g) for g in diff_rew_groups]
+                                        #         plot_colors = intercept_color + side_rew_hist_cmap
+                                        # else:
+                                        #     if use_unreward_hist:
+                                        #         plot_groups = [prefix] + ['{}, {}'.format(prefix, g) for g in ipsi_unrew_groups]
+                                        #         plot_colors = intercept_color + side_unrew_hist_cmap
+                                        #     else:
+                                        #         plot_groups = [prefix] + ['{}, {}'.format(prefix, g) for g in ipsi_rew_groups]
+                                        #         plot_colors = intercept_color + side_rew_hist_cmap
+                                    # else:
+                                    #     if use_same_diff_side_hist:
+                                    #         if use_unreward_hist:
+                                    #             plot_groups = [prefix] + ['{}, {}'.format(prefix, g) for g in diff_unrew_groups]
+                                    #             plot_colors = intercept_color + side_unrew_hist_cmap
+                                    #         else:
+                                    #             plot_groups = [prefix] + ['{}, {}'.format(prefix, g) for g in diff_rew_groups]
+                                    #             plot_colors = intercept_color + side_rew_hist_cmap
+                                    #     else:
+                                    #         if use_unreward_hist:
+                                    #             plot_groups = [prefix] + ['{}, {}'.format(prefix, g) for g in ipsi_unrew_groups]
+                                    #             plot_colors = intercept_color + side_unrew_hist_cmap
+                                    #         else:
+                                    #             plot_groups = [prefix] + ['{}, {}'.format(prefix, g) for g in ipsi_rew_groups]
+                                    #             plot_colors = intercept_color + side_rew_hist_cmap
 
+                                        generic_plot(subj_params, t_r, plot_groups, ax, t_sel, plot_colors)
+                                        
+                                        plot_utils.plot_dashlines(0, dir='v', ax=ax)
+                                        plot_utils.plot_dashlines(0, dir='h', ax=ax)
+                                        ax.set_title(title)
+                                        ax.set_ylabel('Coefficient ({})'.format(y_label))
+                                        ax.legend(loc='upper right', fontsize=8, framealpha=0.5)
+                                        plot_utils.show_axis_labels(ax, axis='y')
+                    else:
+                        prefix = outcome
+                        row = i
+ 
                         col_idx = 0
                         
                         if include_rew_hist:
@@ -2950,20 +3400,12 @@ for signal_type in plot_signals:
                         if include_side_hist:
                             ax = axs[row, col_idx]
                             # plot trial group intercept
-                            if use_same_diff_side_hist:
-                                if use_diff_hist:
-                                    plot_groups = [prefix]+['{}, {}'.format(prefix, g) for g in diff_groups]
-                                    plot_colors = intercept_color + ipsi_hist_cmap
-                                else:
-                                    plot_groups = [prefix]+['{}, {}'.format(prefix, g) for g in same_groups]
-                                    plot_colors = intercept_color + contra_hist_cmap
+                            if use_diff_hist:
+                                plot_groups = [prefix]+['{}, {}'.format(prefix, g) for g in diff_groups]
+                                plot_colors = intercept_color + ipsi_hist_cmap
                             else:
-                                if use_ipsi_hist:
-                                    plot_groups = [prefix]+['{}, {}'.format(prefix, g) for g in ipsi_groups]
-                                    plot_colors = intercept_color + ipsi_hist_cmap
-                                else:
-                                    plot_groups = [prefix]+['{}, {}'.format(prefix, g) for g in contra_groups]
-                                    plot_colors = intercept_color + contra_hist_cmap
+                                plot_groups = [prefix]+['{}, {}'.format(prefix, g) for g in same_groups]
+                                plot_colors = intercept_color + contra_hist_cmap
                             
                             generic_plot(subj_params, t_r, plot_groups, ax, t_sel, plot_colors)
                             
@@ -2989,11 +3431,11 @@ for signal_type in plot_signals:
                                     match intx:
                                         case 's/r':
                                             plot_groups = [prefix] + ['{}, {}'.format(prefix, g) for g in same_rew_groups]
-                                            plot_colors = intercept_color + side_rew_hist_cmap
+                                            plot_colors = intercept_color + rew_hist_cmap
                                             title = '{}, Same Side Reward History'.format(prefix)
                                         case 's/u':
                                             plot_groups = [prefix] + ['{}, {}'.format(prefix, g) for g in same_unrew_groups]
-                                            plot_colors = intercept_color + side_unrew_hist_cmap
+                                            plot_colors = intercept_color + unrew_hist_cmap
                                             title = '{}, Same Side Unreward History'.format(prefix)
                                         case 'd/r':
                                             plot_groups = [prefix] + ['{}, {}'.format(prefix, g) for g in diff_rew_groups]
@@ -3005,11 +3447,11 @@ for signal_type in plot_signals:
                                             title = '{}, Diff Side Unreward History'.format(prefix)
                                         case 'c/r':
                                             plot_groups = [prefix] + ['{}, {}'.format(prefix, g) for g in contra_rew_groups]
-                                            plot_colors = intercept_color + side_rew_hist_cmap
+                                            plot_colors = intercept_color + rew_hist_cmap
                                             title = '{}, Contra Reward History'.format(prefix)
                                         case 'c/u':
                                             plot_groups = [prefix] + ['{}, {}'.format(prefix, g) for g in contra_unrew_groups]
-                                            plot_colors = intercept_color + side_unrew_hist_cmap
+                                            plot_colors = intercept_color + unrew_hist_cmap
                                             title = '{}, Contra Unreward History'.format(prefix)
                                         case 'i/r':
                                             plot_groups = [prefix] + ['{}, {}'.format(prefix, g) for g in ipsi_rew_groups]
@@ -3030,7 +3472,6 @@ for signal_type in plot_signals:
                                     ax.legend(loc='upper right', fontsize=8, framealpha=0.5)
                                     plot_utils.show_axis_labels(ax, axis='y')
                             else:
-                                # contra/same outcome history coefficients
                                 ax = axs[row, col_idx]
                                 # plot trial group intercept
                                 if use_full_interaction:
@@ -3077,23 +3518,6 @@ for signal_type in plot_signals:
                                             plot_colors = intercept_color + side_unrew_hist_cmap
                                             title = '{}, Ipsi Unreward History'.format(prefix)
                                             
-                                    # if use_same_diff_side_hist:
-                                    #     if use_unreward_hist:
-                                    #         plot_groups = [prefix] + ['{}, {}'.format(prefix, g) for g in same_unrew_groups]
-                                    #         plot_colors = intercept_color + side_unrew_hist_cmap
-                                    #     else:
-                                    #         plot_groups = [prefix] + ['{}, {}'.format(prefix, g) for g in same_rew_groups]
-                                    #         plot_colors = intercept_color + side_rew_hist_cmap
-                                    # else:
-                                    #     if use_unreward_hist:
-                                    #         plot_groups = [prefix] + ['{}, {}'.format(prefix, g) for g in contra_unrew_groups]
-                                    #         plot_colors = intercept_color + side_unrew_hist_cmap
-                                    #     else:
-                                    #         plot_groups = [prefix] + ['{}, {}'.format(prefix, g) for g in contra_rew_groups]
-                                    #         plot_colors = intercept_color + side_rew_hist_cmap
-                                            
-                                
-                                
                                 generic_plot(subj_params, t_r, plot_groups, ax, t_sel, plot_colors)
                                 
                                 plot_utils.plot_dashlines(0, dir='v', ax=ax)
@@ -3102,117 +3526,13 @@ for signal_type in plot_signals:
                                 ax.set_ylabel('Coefficient ({})'.format(y_label))
                                 ax.legend(loc='upper right', fontsize=8, framealpha=0.5)
                                 plot_utils.show_axis_labels(ax, axis='y')
-                                
-                                # ipsi/outcome history coefficients
-                                
-                                # plot trial group intercept
-                                if use_full_interaction:
-                                    ax = axs[row, col_idx+1]
-                                    if use_same_diff_side_hist:
-                                        plot_groups = [prefix] + ['{}, {}'.format(prefix, g) for g in diff_rew_groups + diff_unrew_groups]
-                                        plot_colors = intercept_color + side_rew_hist_cmap + side_unrew_hist_cmap
-                                        title = '{}, Same Side Reward History'.format(prefix)
-                                    else:
-                                        plot_groups = [prefix] + ['{}, {}'.format(prefix, g) for g in ipsi_rew_groups + ipsi_unrew_groups]
-                                        plot_colors = intercept_color + side_rew_hist_cmap + side_unrew_hist_cmap
-                                        title = '{}, Contra Reward History'.format(prefix)                 
-                                    # if use_same_diff_side_hist:
-                                    #     if use_unreward_hist:
-                                    #         plot_groups = [prefix] + ['{}, {}'.format(prefix, g) for g in diff_unrew_groups]
-                                    #         plot_colors = intercept_color + side_unrew_hist_cmap
-                                    #     else:
-                                    #         plot_groups = [prefix] + ['{}, {}'.format(prefix, g) for g in diff_rew_groups]
-                                    #         plot_colors = intercept_color + side_rew_hist_cmap
-                                    # else:
-                                    #     if use_unreward_hist:
-                                    #         plot_groups = [prefix] + ['{}, {}'.format(prefix, g) for g in ipsi_unrew_groups]
-                                    #         plot_colors = intercept_color + side_unrew_hist_cmap
-                                    #     else:
-                                    #         plot_groups = [prefix] + ['{}, {}'.format(prefix, g) for g in ipsi_rew_groups]
-                                    #         plot_colors = intercept_color + side_rew_hist_cmap
-                                # else:
-                                #     if use_same_diff_side_hist:
-                                #         if use_unreward_hist:
-                                #             plot_groups = [prefix] + ['{}, {}'.format(prefix, g) for g in diff_unrew_groups]
-                                #             plot_colors = intercept_color + side_unrew_hist_cmap
-                                #         else:
-                                #             plot_groups = [prefix] + ['{}, {}'.format(prefix, g) for g in diff_rew_groups]
-                                #             plot_colors = intercept_color + side_rew_hist_cmap
-                                #     else:
-                                #         if use_unreward_hist:
-                                #             plot_groups = [prefix] + ['{}, {}'.format(prefix, g) for g in ipsi_unrew_groups]
-                                #             plot_colors = intercept_color + side_unrew_hist_cmap
-                                #         else:
-                                #             plot_groups = [prefix] + ['{}, {}'.format(prefix, g) for g in ipsi_rew_groups]
-                                #             plot_colors = intercept_color + side_rew_hist_cmap
-                                        
-                                    if use_same_diff_side_hist:
-                                        title = '{}, Diff Side Reward History'.format(prefix)
-                                    else:
-                                        title = '{}, Ipsi Reward History'.format(prefix)
-                                        
-                                    generic_plot(subj_params, t_r, plot_groups, ax, t_sel, plot_colors)
-                                    
-                                    plot_utils.plot_dashlines(0, dir='v', ax=ax)
-                                    plot_utils.plot_dashlines(0, dir='h', ax=ax)
-                                    ax.set_title(title)
-                                    ax.set_ylabel('Coefficient ({})'.format(y_label))
-                                    ax.legend(loc='upper right', fontsize=8, framealpha=0.5)
-                                    plot_utils.show_axis_labels(ax, axis='y')
-                            
-        # if plot_rmse:
-        #     for subj_id in included_subjs:
-        #         fig, axs = plt.subplots(n_rows, n_cols, layout='constrained', figsize=(5.5, 3*n_rows+0.1), width_ratios=width_ratios, sharey='row')
-        #         axs = np.array(axs).reshape((n_rows, n_cols))
-        #         fig.suptitle('Regression RMSE, Subj {}'.format(subj_id))
-                
-        #         for i, region in enumerate(plot_regions):
-        #             for j, align in enumerate(plot_aligns):
-        #                 ax = axs[i,j]
-        #                 t_r = t[align][region]
-                        
-        #                 rmse = reg_params[subj_id][signal_type][region][align]['rmse']
-        #                 t_sel = (t_r > plot_lims[align][region][0]) & (t_r < plot_lims[align][region][1])
-        #                 plot_regress_over_time(pd.DataFrame({'rmse': rmse}), t_r, ['rmse'], ax, region, t_sel=t_sel, plot_y0=False)
-                        
-        #                 ax.set_title('{}, {}-aligned'.format(region, align))
-                        
-        #                 if j == 0:
-        #                     ax.set_ylabel('RMSE ({})'.format(y_label))
-                        
-    # if plot_subj_average:
-    #     for plot_group, group_label, colors in zip(plot_groups, plot_group_labels, group_colors):
-    #         fig, axs = plt.subplots(n_rows, n_cols, layout='constrained', figsize=(5.5, 3*n_rows+0.1), width_ratios=width_ratios, sharey='row')
-    #         axs = np.array(axs).reshape((n_rows, n_cols))
-    #         fig.suptitle('{} Regression, Subject Avg'.format(group_label))
-            
-    #         for i, region in enumerate(plot_regions):
-    #             for j, align in enumerate(plot_aligns):
-    #                 ax = axs[i,j]
-    #                 t_r = t[align][region]
-                    
-    #                 # average coefficients across subjects
-    #                 all_params = pd.concat([reg_params[subj_id][signal_type][region][align]['params'] for subj_id in included_subjs])
-    #                 param_avg = all_params.groupby(level=0).mean()
-    #                 param_se = all_params.groupby(level=0).std() / np.sqrt(len(included_subjs))
-                    
-    #                 t_sel = (t_r > plot_lims[align][region][0]) & (t_r < plot_lims[align][region][1])
-            
-    #                 plot_regress_over_time(param_avg, t_r, plot_group, ax, region,
-    #                                        error=param_se, t_sel=t_sel, colors=colors,
-    #                                        dec=plot_dec[region], x_inc=x_inc[region], y_inc=y_inc[region])
-                    
-    #                 ax.set_title('{}, {}-aligned'.format(region, align))
-                    
-    #                 if j == 0:
-    #                     ax.set_ylabel('Coefficient ({})'.format(y_label))
 
 
 # %% perform regression to investigate signatures of perseveration
 
 separate_sides = False
 include_reward = False
-trial_filter = 'rewarded'
+trial_filter = 'all'
 fit_ind_subj = False
 fit_meta_subj = True
 
@@ -3259,6 +3579,11 @@ for subj_id in analyzed_subjs:
                 if include_reward:
                     pred_mat[side + ' rewarded'] = side_sel * rewarded
                     pred_mat[side + ' rewarded stay'] = side_sel * rewarded * region_preds['stay']
+                    
+                # add in reward history, don't go all the way to the current trial
+                for i in range(n_back-1, -1, -1):
+                    rew_str = 'reward ({})'.format(i-n_back)
+                    pred_mat[side+' '+rew_str] = region_preds[rew_str] * side_sel
         else:
             pred_mat['intercept'] = 1
             pred_mat['stay'] = region_preds['stay']
@@ -3266,6 +3591,11 @@ for subj_id in analyzed_subjs:
             if include_reward:
                 pred_mat['rewarded'] = rewarded
                 pred_mat['rewarded stay'] = rewarded * region_preds['stay']
+                
+            # add in reward history, don't go all the way to the current trial
+            for i in range(n_back-1, -1, -1):
+                rew_str = 'reward ({})'.format(i-n_back)
+                pred_mat[rew_str] = region_preds[rew_str]
             
         pred_mat = pd.DataFrame(pred_mat)
 
@@ -3277,20 +3607,23 @@ for subj_id in analyzed_subjs:
                 reg_params[subj_id][signal_type][region][align] = regress_over_time(signal_mat, pred_mat)
                 
                 
-# %% plot regression coefficients over time
+# %% plot persev regression coefficients over time
 
-plot_signals = ['z_dff_iso']
-plot_regions = ['DMS'] # 'DMS', 'PL'
-plot_aligns = [Align.cue] #  Align.cue, Align.reward
+plot_n_back = n_back 
+
+plot_signals = ['z_dff_iso_baseline_fband']
+plot_regions = ['PL', 'NAc', 'DMS', 'DLS', 'TS'] # 'DMS', 'PL'
+plot_aligns = [Align.cue]
 
 # plot formatting
-plot_dec = {'DMS': 1, 'PL': 2}
-x_inc = {'DMS': 0.3, 'PL': 3}
-y_inc = {'DMS': 0.3, 'PL': 0.3}
-plot_lims = {Align.cue: {'DMS': [-0.1,1], 'PL': [-1,2]},
-             Align.reward: {'DMS': [-0.2,1.2], 'PL': [-2,12]}}
+plot_dec = {'DMS': 1, 'DLS': 1, 'TS': 1, 'NAc': 2, 'PL': 2}
+x_inc = {'DMS': None, 'DLS': None, 'TS': None, 'NAc': None, 'PL': None}
+y_inc = {'DMS': None, 'DLS': None, 'TS': None, 'NAc': None, 'PL': None}
+plot_lims = {Align.cue: {'DMS': [-0.1,0.6], 'DLS': [-0.1,0.6], 'TS': [-0.1,0.6], 'NAc': [-0.2,1.2], 'PL': [-0.2,1.2]},
+             Align.reward: {'DMS': [-0.2,1.2], 'DLS': [-0.2,1.2], 'TS': [-0.2,1.2], 'NAc': [-0.4,2.4], 'PL': [-2,12]}}
 
-fig_width = 5.5 if len(plot_regions) == 2 else 4
+intercept_color = ['black']
+rew_hist_cmap = LinearSegmentedColormap.from_list('red_to_blue', [plt.cm.Reds(0.7), plt.cm.Blues(0.7)])(np.linspace(1,0,plot_n_back)).tolist()
 
 plot_ind_subj = False
 plot_subj_average = False
@@ -3298,6 +3631,7 @@ plot_meta_subj = True
 plot_rmse = False
 use_ci_errors = False
 plot_sig = True
+plot_reward_hist_separate = True
 
 # Process p-values for significance
 sig_lvl = 0.05
@@ -3314,27 +3648,68 @@ if plot_sig:
                     reg_params[subj_id][signal_type][region][align]['sig'] = sig
 
 # Build plot groups based on regression options
-
+plot_groups = []
+plot_group_titles = []
+group_labels = {}
+group_colors = []
 if separate_sides:
-    plot_group_titles = ['Perseverative Effects Contra Choices', 'Perseverative Effects Ipsi Choices'] if include_reward else ['Perseverative Effects by Choice Side']
-    plot_groups = []
-    group_labels = {}
     for side in ['contra', 'ipsi']:
         if include_reward:
-            plot_groups.append([side, side+' stay', side+' rewarded', side+' rewarded stay'])
-            group_labels.update({side: 'avg', side+' stay': 'stay', side+' rewarded': 'rewarded', side+' rewarded stay': 'rewarded stay'})
+            if plot_reward_hist_separate:
+                plot_group_titles.extend(['Reward History - {} Choices'.format(side.title()), 'Perseverative Effects - {} Choices'.format(side.title())])
+                plot_groups.append([side]+[side+' reward ({})'.format(i-plot_n_back) for i in range(plot_n_back-1, -1, -1)])
+                plot_groups.append([side, side+' stay', side+' rewarded', side+' rewarded stay'])
+                group_colors.append(intercept_color+rew_hist_cmap)
+                group_colors.append(intercept_color+['C0', 'C1', 'C2'])
+            else:
+                plot_group_titles.append('Perseverative and Reward History Effects - {} Choices'.format(side.title()))
+                plot_groups.append([side, side+' stay', side+' rewarded', side+' rewarded stay'] + 
+                                   [side+' reward ({})'.format(i-plot_n_back) for i in range(plot_n_back-1, -1, -1)])
+                group_colors.append(intercept_color+['C0', 'C1', 'C2']+rew_hist_cmap)
         else:
-            plot_groups.extend([side, side+' stay'])
+            if plot_reward_hist_separate:
+                plot_group_titles.extend(['Reward History - {} Choices'.format(side.title()), 'Perseverative Effects - {} Choices'.format(side.title())])
+                plot_groups.append([side]+[side+' reward ({})'.format(i-plot_n_back) for i in range(plot_n_back-1, -1, -1)])
+                plot_groups.append([side, side+' stay'])
+                group_colors.append(intercept_color+rew_hist_cmap)
+                group_colors.append(intercept_color+['C0'])
+            else:
+                plot_group_titles.append('Perseverative and Reward History Effects - {} Choices'.format(side.title()))
+                plot_groups.append([side, side+' stay'] + [side+' reward ({})'.format(i-plot_n_back) for i in range(plot_n_back-1, -1, -1)])
+                group_colors.append(intercept_color+['C0']+rew_hist_cmap)
+            
+        group_labels.update({side+' reward ({})'.format(i-plot_n_back): 'reward ({})'.format(i-plot_n_back) for i in range(plot_n_back-1, -1, -1)})
+        group_labels.update({side: 'avg', side+' stay': 'stay', side+' rewarded': 'rewarded', side+' rewarded stay': 'rewarded stay'})
 else:
-    plot_group_titles = ['Perseverative Effects']
-    plot_groups = ['intercept', 'stay']
-    group_labels = {'intercept': 'avg'}
     if include_reward:
-        plot_groups.extend(['rewarded', 'rewarded stay'])
-        
-if not utils.is_list(plot_groups[0]):
-    plot_groups = [plot_groups]
+        if plot_reward_hist_separate:
+            plot_group_titles.extend(['Reward History', 'Perseverative Effects'])
+            plot_groups.append(['intercept']+['reward ({})'.format(i-plot_n_back) for i in range(plot_n_back-1, -1, -1)])
+            plot_groups.append(['intercept', 'stay', 'rewarded', 'rewarded stay'])
+            group_colors.append(intercept_color+rew_hist_cmap)
+            group_colors.append(intercept_color+['C0', 'C1', 'C2'])
+        else:
+            plot_group_titles.append('Perseverative and Reward History Effects')
+            plot_groups.append(['intercept', 'stay', 'rewarded', 'rewarded stay'] + 
+                               ['reward ({})'.format(i-plot_n_back) for i in range(plot_n_back-1, -1, -1)])
+            group_colors.append(intercept_color+['C0', 'C1', 'C2']+rew_hist_cmap)
+    else:
+        if plot_reward_hist_separate:
+            plot_group_titles.extend(['Reward History', 'Perseverative Effects'])
+            plot_groups.append(['intercept']+['reward ({})'.format(i-plot_n_back) for i in range(plot_n_back-1, -1, -1)])
+            plot_groups.append(['intercept', 'stay'])
+            group_colors.append(intercept_color+rew_hist_cmap)
+            group_colors.append(intercept_color+['C0'])
+        else:
+            plot_group_titles.append('Perseverative and Reward History Effects')
+            plot_groups.append(['intercept', 'stay'] + 
+                               ['reward ({})'.format(i-plot_n_back) for i in range(plot_n_back-1, -1, -1)])
+            group_colors.append(intercept_color+['C0']+rew_hist_cmap)
 
+    group_labels.update({'intercept': 'avg'})
+
+fig_width = 7
+row_height = 3.5
 width_ratios = [np.diff(plot_lims[align]['DMS'])[0] for align in plot_aligns]
     
 n_rows = len(plot_regions)
@@ -3344,9 +3719,9 @@ for signal_type in plot_signals:
     signal_label, y_label = fpah.get_signal_type_labels(signal_type)
     
     if plot_ind_subj:
-        for plot_group, group_label in zip(plot_groups, plot_group_titles):
+        for plot_group, group_label, colors in zip(plot_groups, plot_group_titles, group_colors):
             for subj_id in included_subjs:
-                fig, axs = plt.subplots(n_rows, n_cols, layout='constrained', figsize=(fig_width, 3*n_rows+0.1), width_ratios=width_ratios, sharey='row')
+                fig, axs = plt.subplots(n_rows, n_cols, layout='constrained', figsize=(fig_width, row_height*n_rows+0.1), width_ratios=width_ratios, sharey='row')
                 axs = np.array(axs).reshape((n_rows, n_cols))
                 
                 fig.suptitle('{} Regression, Subj {}'.format(group_label, subj_id))
@@ -3363,12 +3738,12 @@ for signal_type in plot_signals:
                             plot_regress_over_time(subj_params['params'], t_r, plot_group, ax, region,
                                                    ci_lower=subj_params['ci_lower'], ci_upper=subj_params['ci_upper'], 
                                                    sig=subj_params['sig'], t_sel=t_sel, group_labels=group_labels,
-                                                   dec=plot_dec[region], x_inc=x_inc[region], y_inc=y_inc[region])
+                                                   dec=plot_dec[region], x_inc=x_inc[region], y_inc=y_inc[region], colors=colors)
                         else:
                             plot_regress_over_time(subj_params['params'], t_r, plot_group, ax, region,
                                                    error=subj_params['se'], sig=subj_params['sig'], 
                                                    t_sel=t_sel, group_labels=group_labels, dec=plot_dec[region], 
-                                                   x_inc=x_inc[region], y_inc=y_inc[region])   
+                                                   x_inc=x_inc[region], y_inc=y_inc[region], colors=colors)   
                         
                         ax.set_title('{}, {}-aligned'.format(region, align))
                         
@@ -3377,7 +3752,7 @@ for signal_type in plot_signals:
                             
         if plot_rmse:
             for subj_id in included_subjs:
-                fig, axs = plt.subplots(n_rows, n_cols, layout='constrained', figsize=(fig_width, 3*n_rows+0.1), width_ratios=width_ratios, sharey='row')
+                fig, axs = plt.subplots(n_rows, n_cols, layout='constrained', figsize=(fig_width, row_height*n_rows+0.1), width_ratios=width_ratios, sharey='row')
                 axs = np.array(axs).reshape((n_rows, n_cols))
                 fig.suptitle('Regression RMSE, Subj {}'.format(subj_id))
                 
@@ -3396,8 +3771,8 @@ for signal_type in plot_signals:
                             ax.set_ylabel('RMSE ({})'.format(y_label))
                         
     if plot_subj_average:
-        for plot_group, group_label in zip(plot_groups, plot_group_titles):
-            fig, axs = plt.subplots(n_rows, n_cols, layout='constrained', figsize=(fig_width, 3*n_rows+0.1), width_ratios=width_ratios, sharey='row')
+        for plot_group, group_label, colors in zip(plot_groups, plot_group_titles, group_colors):
+            fig, axs = plt.subplots(n_rows, n_cols, layout='constrained', figsize=(fig_width, row_height*n_rows+0.1), width_ratios=width_ratios, sharey='row')
             axs = np.array(axs).reshape((n_rows, n_cols))
             fig.suptitle('{} Regression, Subject Avg'.format(group_label))
             
@@ -3415,7 +3790,7 @@ for signal_type in plot_signals:
             
                     plot_regress_over_time(param_avg, t_r, plot_group, ax, region,
                                            error=param_se, t_sel=t_sel, group_labels=group_labels,
-                                           dec=plot_dec[region], x_inc=x_inc[region], y_inc=y_inc[region])
+                                           dec=plot_dec[region], x_inc=x_inc[region], y_inc=y_inc[region], colors=colors)
                     
                     ax.set_title('{}, {}-aligned'.format(region, align))
                     
@@ -3423,9 +3798,9 @@ for signal_type in plot_signals:
                         ax.set_ylabel('Coefficient ({})'.format(y_label))
                         
     if plot_meta_subj:
-        for plot_group, group_label in zip(plot_groups, plot_group_titles):
+        for plot_group, group_label, colors in zip(plot_groups, plot_group_titles, group_colors):
             subj_id = 'all'
-            fig, axs = plt.subplots(n_rows, n_cols, layout='constrained', figsize=(fig_width, 3*n_rows+0.1), width_ratios=width_ratios, sharey='row')
+            fig, axs = plt.subplots(n_rows, n_cols, layout='constrained', figsize=(fig_width, row_height*n_rows+0.1), width_ratios=width_ratios, sharey='row')
             axs = np.array(axs).reshape((n_rows, n_cols))
             
             fig.suptitle('{} Regression, Subj {}'.format(group_label, subj_id))
@@ -3442,22 +3817,28 @@ for signal_type in plot_signals:
                         plot_regress_over_time(subj_params['params'], t_r, plot_group, ax, region,
                                                ci_lower=subj_params['ci_lower'], ci_upper=subj_params['ci_upper'], 
                                                sig=subj_params['sig'], t_sel=t_sel, group_labels=group_labels,
-                                               dec=plot_dec[region], x_inc=x_inc[region], y_inc=y_inc[region])
+                                               dec=plot_dec[region], x_inc=x_inc[region], y_inc=y_inc[region], colors=colors)
                     else:
                         plot_regress_over_time(subj_params['params'], t_r, plot_group, ax, region,
                                                error=subj_params['se'], sig=subj_params['sig'], 
-                                               t_sel=t_sel, group_labels=group_labels, dec=plot_dec[region], x_inc=x_inc[region], y_inc=y_inc[region])
+                                               t_sel=t_sel, group_labels=group_labels, dec=plot_dec[region], 
+                                               x_inc=x_inc[region], y_inc=y_inc[region], colors=colors)
                     
                     ax.set_title('{}, {}-aligned'.format(region, align))
                     
                     if j == 0:
                         ax.set_ylabel('Coefficient ({})'.format(y_label))
                         
+                    handles, labels = ax.get_legend_handles_labels()
+                    ax.legend().remove()
+            
+            fig.legend(handles, labels, loc='outside right center')
+                        
             plot_name = '{}_{}_persev_regression_{}_{}'.format('_'.join(plot_regions), '_'.join(plot_aligns), group_label, signal_type)
             fpah.save_fig(fig, fpah.get_figure_save_path('Two-armed Bandit', 'Reward History', plot_name), format='pdf')
             
         if plot_rmse:
-            fig, axs = plt.subplots(n_rows, n_cols, layout='constrained', figsize=(fig_width, 3*n_rows+0.1), width_ratios=width_ratios, sharey='row')
+            fig, axs = plt.subplots(n_rows, n_cols, layout='constrained', figsize=(fig_width, row_height*n_rows+0.1), width_ratios=width_ratios, sharey='row')
             axs = np.array(axs).reshape((n_rows, n_cols))
             
             fig.suptitle('Regression RMSE, Subj {}'.format(subj_id))

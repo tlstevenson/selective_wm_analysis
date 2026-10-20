@@ -30,7 +30,7 @@ import copy
 # %% Declare subject information
 
 # declare the variant names and subject ids for comparison
-variant_subj = {'3.6 CAG': [182, 202], '3.8 CAG': [179, 180, 188], '3.8 Syn': [191, 207]}
+variant_subj = {'3.6 CAG': [182, 202], '3.8 CAG': [179, 180, 188, 198, 199, 400, 402], '3.8 Syn': [191, 207]}
 subj_variant = {v: k for k, vs in variant_subj.items() for v in vs}
 subj_ids = utils.flatten(variant_subj)
 
@@ -51,7 +51,7 @@ sess_info_dict = {subjid: sess_info[sess_info['subjid'] == subjid][['sessid', 'p
 # %% Plot session information
 proto_stage_labels = {'ClassicRLTasks_1': 'Operant Conditioning', 'ClassicRLTasks_2': 'Two-armed Bandit', 'ClassicRLTasks_3': 'Intertemporal Choice',
                        'ClassicRLTasks_4': 'Foraging', 'ToneCatDelayResp2_10': 'Working Memory', 'ToneCatDelayResp2_7': 'Working Memory',
-                       'ToneCatDelayResp2_9': 'Working Memory', 'ToneCatDelayResp_8': 'Working Memory'}
+                       'ToneCatDelayResp2_9': 'Working Memory', 'ToneCatDelayResp_8': 'Working Memory', 'ToneCatDelayResp_7': 'Working Memory'}
 
 plot_protos = list(proto_stage_labels.keys()) #['ClassicRLTasks_1', 'ClassicRLTasks_2', 'ClassicRLTasks_3', 'ClassicRLTasks_4']
 

@@ -33,12 +33,10 @@ from pathlib import Path
 script_dir = Path(__file__).parent.resolve()
 
 
-
-
 subj_ids = [198, 199, 274, 400, 402]#[179, 188, 191, 207] # 182
 
 cluster_path = path.join(script_dir, 'fit_models_sep_rates_tszma.json')
-save_path = path.join(script_dir, 'fit_models_new.json')
+save_path = path.join(script_dir, 'fit_models_sep_rates.json')
 all_models={}
 print(f"Cluster file at: {cluster_path}")
 print(f"File exists: {path.exists(cluster_path)}")
