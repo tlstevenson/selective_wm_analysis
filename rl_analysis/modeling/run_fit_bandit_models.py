@@ -42,7 +42,6 @@ all_add_agents['Persev (fixed)'] = [agents.PerseverativeAgent(n_vals=2, constrai
 
 # all_main_agent_settings['Q'] = {
         # All Alphas Free, Different K Fixes
-        # 'All Free': {},
         #'All Free': {},
         
         # 'All Alpha Free, S/R K Fixed': {'k_same_rew': {'fit': False}},
